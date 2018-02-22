@@ -1,6 +1,6 @@
 uv   = v_uv;
 mat4 xform         = mat4(v_xform1, v_xform2, v_xform3, v_xform4);
-vec3 spacePosition = vec3(v_uv.x * v_dim.x, v_uv.y * v_dim.y, 0.0);
+vec3 spacePosition = vec3(v_uv.x * v_bbox.x, v_uv.y * v_bbox.y, 0.0);
 local              = spacePosition;
 spacePosition      = (xform * vec4(spacePosition, 1.0)).xyz;
 vec3 p1            = spacePosition;
@@ -20,4 +20,4 @@ zoomLevel = zoom;
 
 // gl_Position.z += v_zIndex - 100.0;
 world = gl_Position.xyz;
-stageDim = v_dim;
+bbox = v_bbox;

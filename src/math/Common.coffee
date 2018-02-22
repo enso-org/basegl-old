@@ -60,7 +60,10 @@ export bindNumConst = (name, fnative=null) ->
   GLSL.toCode fnative
 
 export abs    = bindNumFunc 'abs'
+export acos   = bindNumFunc 'acos'
+export asin   = bindNumFunc 'asin'
 export atan   = bindNumFunc 'atan'
+export atan2  = bindNumFunc 'atan2'
 export ceil   = bindNumFunc 'ceil'
 export cos    = bindNumFunc 'cos'
 export exp    = bindNumFunc 'exp'

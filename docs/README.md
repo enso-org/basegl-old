@@ -186,7 +186,7 @@ Local variables:
 
 | Variable name     | Type      | Description   |
 | ----------------- |:--------- | :------------ |
-| `dim`             | `Vector2` | The symbol dimensions. |
+| `bbox`            | `Vector2` | The symbol dimensions. |
 | `uv`              | `Vector2` | The local position in UV space (normalized XY space). |
 | `world`           | `Vector3` | The current point position in world coordinates. |
 | `local`           | `Vector3` | The current point position in local coordinates. |

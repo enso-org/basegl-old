@@ -100,6 +100,18 @@ export class Canvas
       else        "sdf_circle(p,#{g_r}, #{GLSL.toCode angle})"
     @defShape glsl, bb
 
+  halfplane: (angle = 0, fast = false) ->
+    g_a  = GLSL.toCode angle
+    g_0  = GLSL.toCode 0
+    bb   = "bbox_new(#{g_0},#{g_0})"
+    glsl = if fast then switch angle
+              when 0 then "sdf_halfplaneFast(p)"
+              else        "sdf_halfplaneFast(p, #{g_a})"
+           else switch angle
+              when 0 then "sdf_halfplane(p)"
+              else        "sdf_halfplane(p, #{g_a})"
+    @defShape glsl, bb
+
   pie: (angle) ->
     g_a  = GLSL.toCode angle
     g_0  = GLSL.toCode 0
@@ -223,15 +235,20 @@ export class Circle extends Shape
   renderGLSL: (r) -> r.canvas.circle @radius, @angle
 export circle = consAlias Circle
 
-export class Rect extends Shape
-  constructor: (@width, @height, @radiuses...) -> super()
-  renderGLSL: (r) -> r.canvas.rect @width, @height, @radiuses...
-export rect = consAlias Rect
+export class Halfplane extends Shape
+  constructor: (@angle = 0, @fast = false) -> super()
+  renderGLSL: (r) -> r.canvas.halfplane @angle, @fast
+export halfplane = consAlias Halfplane
 
 export class Pie extends Shape
   constructor: (@angle) -> super()
   renderGLSL: (r) -> r.canvas.pie @angle
 export pie = consAlias Pie
+
+export class Rect extends Shape
+  constructor: (@width, @height, @radiuses...) -> super()
+  renderGLSL: (r) -> r.canvas.rect @width, @height, @radiuses...
+export rect = consAlias Rect
 
 
 ##############

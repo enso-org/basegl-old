@@ -13,7 +13,7 @@ export variables =
   zoom        : "zoom"
   world_mouse : "world_mouse"
 
-  dim            : "dim"
+  bbox           : "bbox"
   uv             : "uv"
   world          : "world"
   local          : "local"
@@ -116,7 +116,7 @@ export class Symbol
     # We need to pass symbolID and symbolFamilyID as floats
     # until we hit WebGL 2.0 with "flat" attribute support.
     # For more information, see https://github.com/mrdoob/three.js/issues/9965
-    @variables.dim            = typedValue 'vec2'
+    @variables.bbox           = typedValue 'vec2'
     @variables.xform1         = typedValue 'vec4'
     @variables.xform2         = typedValue 'vec4'
     @variables.xform3         = typedValue 'vec4'
@@ -256,7 +256,7 @@ export class SymbolGeometry
     @attributes[vname].setDynamic true
     @geometry.addAttribute vname, attribute
 
-  setSize: (id, vals) -> @setBufferVal id, "dim", vals
+  setSize: (id, vals) -> @setBufferVal id, "bbox", vals
 
   dispose: (id) ->
     @_symbolIDPool.dispose id

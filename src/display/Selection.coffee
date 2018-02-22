@@ -159,7 +159,7 @@ export class QuadTree
 export boxSelectorShape = basegl.expr ->
   cd   = selectionColor.copy()
   cd.a = 0.3
-  rect('dim.x', 'dim.y').alignedTL.fill(cd)
+  rect('bbox.x', 'bbox.y').alignedTL.fill(cd)
 
 
 export class BoxSelector

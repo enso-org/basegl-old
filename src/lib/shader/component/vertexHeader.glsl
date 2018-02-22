@@ -8,7 +8,6 @@ attribute vec3 position;
 varying vec2 uv;
 varying vec3 world;
 varying vec3 local;
-varying vec2 stageDim;
 varying vec3 eye;
 varying vec3 scaledEye;
 varying float zoomLevel;
