@@ -18,7 +18,7 @@ letterShape = new Shape.RawShader
 const int SAMPLENUM = 1;
 
 float foo (float a, float d) {
-  float smoothing = zoom * 1.0/64.0;
+  float smoothing = 1.0/fontSize;
   return 1. - smoothstep(0.5 - smoothing, 0.5 + smoothing, (a - d));
 }
 
@@ -36,7 +36,7 @@ float multisample_gaussian3x3 (mat3 arr, float d) {
 
 
 void main() {
-  float smoothing = zoom * 1.0/64.0;
+  float smoothing = zoom * 1.0/fontSize;
 
   float dx = 1./2048.;
   float dy = 1./2048.;
@@ -227,9 +227,10 @@ class Atlas extends Composable
       @
 
     @_letterDef = new Symbol letterShape
-    @_letterDef.bbox.xy = [64,64]
+    @_letterDef.bbox.xy = [@_glyphSize,@_glyphSize]
     @_letterDef.variables.glyphLoc  = typedValue 'vec4' # FIXME utilize Vector defaults
     @_letterDef.variables.glyphZoom = 1
+    @_letterDef.variables.fontSize  = @_glyphSize
     @_letterDef.globalVariables.glyphsTexture = @_texture
     @_letterDef.globalVariables.glyphsTextureSize = @_size
 
@@ -306,36 +307,6 @@ class Atlas extends Composable
     @texture.needsUpdate = true
 
 
-  addText: (scene, str) ->
-    glyphMaxOff = 2
-
-    newlines = 0
-    for char in str
-      if char == '\n' then newlines += 1
-
-    offx = 0
-    offy = newlines * @glyphSize
-    letterSpacing = 0 # FIXME: make related to size
-    letters = []
-    for char in str
-      if char == '\n'
-        offx = 0
-        offy -= @glyphSize
-      else
-        letter = scene.add @letterDef
-        info   = @getInfo(char)
-        loc    = info.loc
-        letter.position.xy = [offx, info.shape.y + offy]
-
-        gw = loc.width  + 2*glyphMaxOff
-        gh = loc.height + 2*glyphMaxOff
-        letter.bbox.xy = [gw,gh]
-        letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
-        offx += loc.width + info.shape.advanceWidth + letterSpacing
-        letters.push letter
-
-    txt = group letters
-    txt
 
 export atlas = Property.consAlias Atlas
 
@@ -384,6 +355,7 @@ class Text extends Composable
   cons: (cfg) ->
     @_str         = ''
     @_fontFamily  = null
+    @_size        = 64
     @_fontManager = basegl.fontManager
     @configure cfg
     @_atlas = @_fontManager.lookupAtlas @_fontFamily
@@ -396,25 +368,27 @@ class Text extends Composable
     for char in @str
       if char == '\n' then newlines += 1
 
-    offx = 0
-    offy = newlines * @atlas.glyphSize
+    scale = @size / @atlas.glyphSize
+    offx  = 0
+    offy  = newlines * @atlas.glyphSize * scale
     letterSpacing = 0 # FIXME: make related to size
     letters = []
     for char in @str
       if char == '\n'
         offx = 0
-        offy -= @atlas.glyphSize
+        offy -= @size
       else
         letter = scene.add @atlas.letterDef
         info   = @atlas.getInfo char
         loc    = info.loc
-        letter.position.xy = [offx, info.shape.y + offy]
+        letter.position.xy = [offx, info.shape.y * scale + offy]
+        letter.variables.fontSize = @_glyphSize        
 
         gw = loc.width  + 2*glyphMaxOff
         gh = loc.height + 2*glyphMaxOff
-        letter.bbox.xy = [gw,gh]
+        letter.bbox.xy = [gw*scale, gh*scale]
         letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
-        offx += loc.width + info.shape.advanceWidth + letterSpacing
+        offx += (loc.width + info.shape.advanceWidth + letterSpacing) * scale
         letters.push letter
 
     textInstance letters

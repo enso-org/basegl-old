@@ -169,8 +169,8 @@ iframe.src = [ "http://www.weather.gov/" ].join( '' );
 main = () ->
 
   # Starting out, loading fonts, etc.
-  # basegl.fontManager.register 'DejaVuSansMono', 'fonts/DejaVuSansMono.ttf'
-  # await basegl.fontManager.load 'DejaVuSansMono'
+  basegl.fontManager.register 'DejaVuSansMono', 'fonts/DejaVuSansMono.ttf'
+  await basegl.fontManager.load 'DejaVuSansMono'
 
   # Creating a new scene and placing it in HTML div
   scene = basegl.scene {domElement: 'scene'}
@@ -205,11 +205,12 @@ main = () ->
   n3.position.xy = [400, 0]
   n3.id = 3
 
-  # txtDef = basegl.text
-  #   str: 'The quick brown fox \njumps over the lazy dog'
-  #   fontFamily: 'DejaVuSansMono'
+  txtDef = basegl.text
+    str: 'The quick brown fox \njumps over the lazy dog'
+    fontFamily: 'DejaVuSansMono'
+    size: 32
 
-  # txt1 = scene.add txtDef
+  txt1 = scene.add txtDef
 
 
   # str = 'The quick brown fox \njumps over the lazy dog'
