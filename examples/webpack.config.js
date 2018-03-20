@@ -45,7 +45,6 @@ module.exports =
       ]
     , alias:
       { 'basegl': libPath
-      , 'three/CSS3DRenderer': path.join(__dirname, '..', 'node_modules/three/examples/js/renderers/CSS3DRenderer.js')
   	  }
     }
   , module:

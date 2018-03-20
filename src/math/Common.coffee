@@ -17,8 +17,8 @@ export defineAssocOp = (t, tc, f) =>
       else f @, v
 
 export defineExprOp = (tc, fn) =>
-  TypeClass.implement String, tc,  (v) ->
-    parensed(@) + ' ' + fn + ' ' + parensed(GLSL.toCode v)
+  TypeClass.implement String, tc, (v) ->
+    parensed(parensed(@) + ' ' + fn + ' ' + parensed(GLSL.toCode v))
 
 export defBinaryOp = (ts, fn, f) =>
   tc = TypeClass.define fn

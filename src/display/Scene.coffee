@@ -16,7 +16,7 @@ import {define, mixin, configure, configureLazy, params, lazy, configure2, Compo
 
 import {eventDispatcherMixin} from 'basegl/event/EventDispatcher'
 
-require('three/CSS3DRenderer')
+require('basegl/display/render/CSS3DRenderer')
 
 
 unsafeWithReparented = (a, newParent, f) ->
