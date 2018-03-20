@@ -1,6 +1,6 @@
 {
   "name": "basegl",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "description": "A blazing fast WebGL drawing API. Currently supports two-dimensional operations, including SDF shapes, animation, mouse handling and SDF text (both online atlas baking as well as rendering).",
   "homepage": "https://luna.github.io/basegl/",
   "author": "Wojciech Danilo <wojciech.danilo@gmail.com>",
