@@ -21,6 +21,9 @@ export class Camera extends DisplayObject
     @__glCamera.position.y = @position.y + scene.height/2
     @__glCamera.position.z = @position.z * @_zoomFactor
 
+  onTransformed: () ->
+    super.onTransformed()
+    @dispatchEvent (new Event 'move')
 
 export class GLCamera extends THREE.PerspectiveCamera
   constructor: (@camera) ->
