@@ -185,10 +185,10 @@ main = () ->
   nodeDef.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
 
 
-  # vis  = basegl.symbol div
-  # vis1 = scene.add vis
-  # vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
-  # vis1.position.y = -80
+  vis  = basegl.symbol div
+  vis1 = scene.add vis
+  vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
+  vis1.position.y = -80
 
   n1 = scene.add nodeDef
   n1.position.xy = [0, 0]
@@ -199,8 +199,8 @@ main = () ->
   n2.position.xy = [200, 0]
   n2.id = 2
 
-  # nn1 = group [n1,vis1]
-  # console.log nn1
+  nn1 = group [n1,vis1]
+  console.log nn1
   n3 = scene.add nodeDef
   n3.position.xy = [400, 0]
   n3.id = 3
@@ -247,8 +247,8 @@ main = () ->
 
   n1.style.childrenPointerEvents = POINTER_EVENTS.DISABLED
 
-  # makeDraggable nn1
-  makeDraggable n1
+  makeDraggable nn1
+  # makeDraggable n1
   makeDraggable n2
   makeDraggable n3
 
