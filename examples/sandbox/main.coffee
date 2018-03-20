@@ -102,6 +102,7 @@ applySelectAnimation = (symbol, rev=false) ->
 selectedComponent = null
 makeSelectable = (a) ->
   a.addEventListener 'mousedown', (e) ->
+    console.log a.id
     if e.button != 0 then return
     symbol = e.symbol
     if selectedComponent == symbol then return
@@ -168,8 +169,8 @@ iframe.src = [ "http://www.weather.gov/" ].join( '' );
 main = () ->
 
   # Starting out, loading fonts, etc.
-  basegl.fontManager.register 'DejaVuSansMono', 'fonts/DejaVuSansMono.ttf'
-  await basegl.fontManager.load 'DejaVuSansMono'
+  # basegl.fontManager.register 'DejaVuSansMono', 'fonts/DejaVuSansMono.ttf'
+  # await basegl.fontManager.load 'DejaVuSansMono'
 
   # Creating a new scene and placing it in HTML div
   scene = basegl.scene {domElement: 'scene'}
@@ -184,10 +185,10 @@ main = () ->
   nodeDef.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
 
 
-  vis  = basegl.symbol div
-  vis1 = scene.add vis
-  vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
-  vis1.position.y = -80
+  # vis  = basegl.symbol div
+  # vis1 = scene.add vis
+  # vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
+  # vis1.position.y = -80
 
   n1 = scene.add nodeDef
   n1.position.xy = [0, 0]
@@ -198,17 +199,17 @@ main = () ->
   n2.position.xy = [200, 0]
   n2.id = 2
 
-  nn1 = group [n1,vis1]
-  console.log nn1
+  # nn1 = group [n1,vis1]
+  # console.log nn1
   n3 = scene.add nodeDef
   n3.position.xy = [400, 0]
   n3.id = 3
 
-  txtDef = basegl.text
-    str: 'The quick brown fox \njumps over the lazy dog'
-    fontFamily: 'DejaVuSansMono'
+  # txtDef = basegl.text
+  #   str: 'The quick brown fox \njumps over the lazy dog'
+  #   fontFamily: 'DejaVuSansMono'
 
-  txt1 = scene.add txtDef
+  # txt1 = scene.add txtDef
 
 
   # str = 'The quick brown fox \njumps over the lazy dog'
@@ -245,7 +246,8 @@ main = () ->
 
   n1.style.childrenPointerEvents = POINTER_EVENTS.DISABLED
 
-  makeDraggable nn1
+  # makeDraggable nn1
+  makeDraggable n1
   makeDraggable n2
   makeDraggable n3
 
@@ -259,6 +261,11 @@ main = () ->
   scene.addEventListener 'keydown', (event) =>
     if (event.code == 'Backspace') || (event.code == 'Delete')
       selectedComponent?.dispose()
+      selectedComponent = null
+    else if (event.code == 'KeyN')
+      newNode = scene.add nodeDef
+      makeSelectable newNode
+      makeDraggable  newNode
 
   # g1 = group [n1,n2,n3]
   # g1.position.x += 0

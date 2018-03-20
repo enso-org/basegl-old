@@ -10,4 +10,5 @@ export class IdxPool
       @_next += 1
     idx
 
-  dispose: (i) -> @_free.unshift i
+  dispose: (i) ->
+    @_free.unshift i

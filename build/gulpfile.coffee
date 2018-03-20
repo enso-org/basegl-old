@@ -51,6 +51,8 @@ watchableTask 'coffee', '**/*.coffee', (t) =>
 watchableTask 'glsl'  , '**/*.glsl'  , (t) =>
   t .pipe transform 'utf8', (str) => "var code = `\n#{str.replace(/`/g,"'")}`;\nexport default code;"
     .pipe rename (path) => path.extname = ".js"
+  
+watchableTask 'js'  , '**/*.js'  , (t) => t
 
 gulp.task 'watch', (gulp.parallel watchables...)
 
@@ -93,7 +95,7 @@ gulp.task 'copy:pkgCfg', -> gulp.src(pkgCfgPath).pipe gulp.dest distPath
 
 ### Group tasks ###
 
-gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'glsl'
+gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'glsl', 'js'
 gulp.task 'default' , gulp.series 'build'
 
 mkPublishTask = (tag, useTag=true) =>

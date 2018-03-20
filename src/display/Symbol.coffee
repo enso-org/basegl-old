@@ -239,6 +239,12 @@ export class SymbolGeometry
     size   = attribSizeByType.get(@attributeTypeMap.get(vname))
     start  = id * size
     buffer = @buffers[vname]
+    if window.BASEGL_DEBUG
+      console.debug "setBufferVal", id, name, vals      
+      attrib = @attributes[vname]
+      if vals.length != attrib.itemSize
+        console.error "Asserion failed: Attribute '#{name}' size mismatch. 
+          Expected #{attrib.itemSize}, got #{vals.length} (#{vals})."
     for v,i in vals
       buffer[start + i] = v
     @geometry.attributes[vname].needsUpdate = true
@@ -276,9 +282,8 @@ export class SymbolInstance extends DisplayObject
   constructor: (@id, @family) ->
     super()
     @bbox = @family.definition.bbox.clone()
-    @bbox.onChanged = () => @family.geometry.setSize @id, @bbox.xyz
+    @bbox.onChanged = () => @family.geometry.setSize @id, @bbox.xy
     @bbox.onChanged()
-
     @variables = new Proxy {},
       set: (target, name, val) =>
         @setVariable name, val
