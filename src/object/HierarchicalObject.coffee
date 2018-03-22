@@ -23,6 +23,11 @@ export class HierarchicalObject extends Composable
     for child from children
       @addChild child
 
+  dispose: ->
+    @_children.forEach (child) ->
+      child.dispose()
+    @_children.clear()
+
   getParentChain: () ->
     lst = if @_parent? then @_parent.getParentChain() else []
     lst.push @
