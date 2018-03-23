@@ -6,7 +6,7 @@ export class Stats
     @_stats  = []
     @_active = true
     @domElement = document.createElement 'div'
-    @domElement.classList.add("statsjs");
+    @domElement.classList.add("statsjs")
 
     for id in [0..2]
       widget = new Statsjs()
@@ -14,6 +14,7 @@ export class Stats
       @domElement.appendChild widget.dom
       widget.domElement.style.cssText = "position:absolute;top:0px;left:#{id*80}px;"
       @_stats.push widget
+    @hide()
 
   hide:   -> @_active = false; @domElement.style.display = "none"
   show:   -> @_active = true;  @domElement.style.display = ""

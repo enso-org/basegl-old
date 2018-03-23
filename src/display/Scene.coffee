@@ -270,7 +270,8 @@ export class Scene extends Composable
       if not trigger then return
       if (event.key >= '0') && (event.key <= '9')
         @_symbolRegistry.materials.uniforms.displayMode = parseInt(event.key)
-    #   else if (event.key == '`')
+      else if (event.key == '`')
+        @_stats.toggle()
     #     Debug.getInspector().toggle()
 
   initDomRenderer  : -> new THREE.CSS3DRenderer

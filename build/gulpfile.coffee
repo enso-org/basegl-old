@@ -72,7 +72,7 @@ incVersionWith = (v) => (str) =>
   version = (parseInt a for a in version)
   idx = versions.indexOf v
   version[idx] += 1
-  if idx != 0 then for j in [(idx-1)...0]
+  if idx < 2 then for j in [(idx+1)...2]
     version[j] = 0
   version = version.join '.'
   json.version = version
