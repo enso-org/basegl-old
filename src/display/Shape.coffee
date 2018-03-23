@@ -437,7 +437,6 @@ export class GLSLShape extends Shape
 
 ### ... ###
 # export grow          = consAlias Grow
-export inside        = consAlias Inside
 export codeCtx       = consAlias CodeCtx
 export glslShape     = consAlias GLSLShape
 
