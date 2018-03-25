@@ -304,8 +304,10 @@ export class Scene extends Composable
       @screenMouse.x = e.clientX
       @screenMouse.y = e.clientY
       campos = @camera.position
-      @mouse.x = (@screenMouse.x-@width/2 ) * campos.z + campos.x
-      @mouse.y = (@screenMouse.y-@height/2) * campos.z - campos.y
+      @mouse.x = @screenMouse.x * campos.z + campos.x
+      @mouse.y = @screenMouse.y * campos.z - campos.y
+      # @mouse.x = (@screenMouse.x-@width/2 ) * campos.z + campos.x
+      # @mouse.y = (@screenMouse.y-@height/2) * campos.z - campos.y
       @_mouseBaseEvent = e
 
 

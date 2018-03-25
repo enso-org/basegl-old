@@ -3,7 +3,7 @@ import * as Color     from 'basegl/display/Color'
 import {POINTER_EVENTS}      from 'basegl/display/DisplayObject'
 import {group}      from 'basegl/display/Symbol'
 import * as Symbol from 'basegl/display/Symbol'
-import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path}      from 'basegl/display/Shape'
+import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import {Navigator}      from 'basegl/navigation/Navigator'
 import * as basegl from 'basegl'
 import * as Shape     from 'basegl/display/Shape'
@@ -166,6 +166,90 @@ iframe.src = [ "http://www.weather.gov/" ].join( '' );
 #
 # animate()
 
+
+spanVisShape = basegl.expr ->
+  r  = 6
+  bg = plane().fill(Color.rgb [1,1,1,0])
+  hg = rect('bbox.x','bbox.y',r,r,r,r).alignedBL.fill(Color.rgb [1,1,1,'alpha'])
+  bg + hg
+spanVis = basegl.symbol spanVisShape
+spanVis.variables.alpha = 0.0
+
+spanType = 
+  REPLACE: 'REPLACE'
+  HOLE:    'HOLE'
+  INSERT:  'INSERT'
+
+class Span
+  constructor: (@type, @id, @length=0, @children=[]) ->
+
+class Span2D
+  constructor: (@type, @id, @minX, @minY, @maxX, @maxY, @chars, @children) ->
+
+
+computeTextSpan2D = (spaceOff, charOff, chars, span) ->
+  cs  = chars.slice(charOff, charOff + span.length) 
+  h   = 0
+  w   = 0
+  for c in cs
+    w += c.advanceWidth
+    if c.bbox.y > h then h = c.bbox.y
+  cspans = []
+  childCharOff  = charOff
+  childSpaceOff = spaceOff
+  children      = span.children || []
+  for child in children
+    cspan = computeTextSpan2D childSpaceOff, childCharOff, chars, child
+    cspans.push cspan
+    childCharOff  += child.length
+    childSpaceOff =  cspan.maxX
+  new Span2D span.type, span.id, spaceOff, 0, (spaceOff + w), h, cs, cspans
+
+growSpan2D = (d, span) ->
+  children = []
+  maxX     = span.maxX
+  minX     = span.minX
+  maxY     = span.maxY
+  minY     = span.minY
+  for child in span.children
+    nchild = growSpan2D d, child
+    if nchild.maxX > maxX then maxX = nchild.maxX
+    if nchild.maxY > maxY then maxY = nchild.maxY
+    if nchild.minX < minX then minX = nchild.minX
+    if nchild.minY < minY then minY = nchild.minY
+    children.push nchild 
+  maxX += d
+  maxY += d
+  minX -= d
+  minY -= d
+  new Span2D span.type, span.id, minX, minY, maxX, maxY, span.chars, children
+
+visSpan2D = (scene, chars, span) ->
+  if span.type == spanType.REPLACE
+    vis = scene.add spanVis
+    vis.position.x = span.minX  
+    vis.position.y = span.minY  
+    vis.bbox.x = span.maxX - span.minX  
+    vis.bbox.y = span.maxY - span.minY
+    cvs = []
+    for child in span.children
+      cv = visSpan2D scene, chars, child
+      if cv? then cvs.push cv
+    cvs.push vis
+    vis.addEventListener 'mouseover', (e) ->
+      e.currentTarget.variables.alpha = 0.05
+      for char in chars
+        char.originalColor = char.color
+        char.color = Color.rgb [1,1,1,0.3]
+      for char in span.chars
+        char.color = char.originalColor
+      # e.currentTarget.position.y += 2
+    vis.addEventListener 'mouseout', (e) ->
+      e.currentTarget.variables.alpha = 0.0
+      for char in chars
+        char.color = char.originalColor
+
+    group cvs
 main = () ->
 
   # Starting out, loading fonts, etc.
@@ -196,22 +280,79 @@ main = () ->
 
 
   n2 = scene.add nodeDef
-  n2.position.xy = [200, 0]
+  n2.position.xy = [600, 0]
   n2.id = 2
 
   nn1 = group [n1,vis1]
   console.log nn1
   n3 = scene.add nodeDef
-  n3.position.xy = [400, 0]
+  n3.position.xy = [900, 0]
   n3.id = 3
 
-  txtDef = basegl.text
-    str: 'The quick brown fox \njumps over the lazy dog'
+  # txt1 = basegl.text
+  #   str: ''
+  #   fontFamily: 'DejaVuSansMono'
+  #   size: 20
+  #   scene: scene
+
+  # # txt1 = scene.add txtDef
+  # console.log txt1
+  # txt1.pushStr 'The quick brown fox \njumps over the lazy dog'
+
+  code1 = basegl.text
+    str: 'foo ([7,3,2,9].sort.take 2)'
     fontFamily: 'DejaVuSansMono'
-    size: 32
+    size: 16
+    scene: scene
 
-  txt1 = scene.add txtDef
+  codeAlpha = 0.85
+  parensColor = Color.rgb [1,1,1,0.5]
+  numberColor = Color.rgb [107/255, 160/255, 219/255]
+  dotColor    = Color.rgb [219/255, 107/255, 115/255]
+  code1.setColor (Color.rgb [1,1,1,codeAlpha])
+  code1.setColor parensColor, 4  , 6
+  code1.setColor parensColor, 13 , 14
+  code1.setColor parensColor, 26 , 27
+  code1.setColor numberColor, 6  , 7
+  code1.setColor numberColor, 8  , 9
+  code1.setColor numberColor, 10 , 11
+  code1.setColor numberColor, 12 , 13
+  code1.setColor numberColor, 25 , 26
+  code1.setColor dotColor   , 7  , 8
+  code1.setColor dotColor   , 9  , 10
+  code1.setColor dotColor   , 11 , 12
+  code1.setColor dotColor   , 14 , 15
+  code1.setColor dotColor   , 19 , 20
 
+  code1.position.x = 100
+  code1.position.y = 800
+
+
+
+  spanTree = new Span spanType.REPLACE, 0, 27, 
+    [ (new Span spanType.REPLACE, 1, 3)
+    , (new Span spanType.INSERT, 2, 1)
+    , (new Span spanType.REPLACE, 3, 23, 
+      [ (new Span spanType.HOLE   , 4, 1)
+      , (new Span spanType.REPLACE, 5, 9, 
+        [ (new Span spanType.HOLE   , 6, 1)
+        , (new Span spanType.REPLACE, 7, 1)
+        , (new Span spanType.HOLE   , 8, 1)
+        , (new Span spanType.REPLACE, 9, 1)
+        , (new Span spanType.HOLE   , 10, 1)
+        , (new Span spanType.REPLACE, 11, 1)
+        , (new Span spanType.HOLE   , 12, 1)
+        , (new Span spanType.REPLACE, 13, 1)
+        ])
+      , (new Span spanType.HOLE   , 14, 11)
+      , (new Span spanType.REPLACE, 15, 1)
+      ]) 
+    ]
+  ts = computeTextSpan2D 0, 0, code1.chars, spanTree
+  ts2 = growSpan2D 4, ts
+  vg = visSpan2D scene, code1.chars, ts2
+  vg.position.xy = [100,800]
+  vg.position.x -= 2 # letterOffset / 2
 
   # str = 'The quick brown fox \njumps over the lazy dog'
   # txt = atlas.addText scene, str

@@ -1,10 +1,12 @@
+import * as Reflect      from 'basegl/object/Reflect'
+import * as Property     from 'basegl/object/Property'
+import * as Image        from 'basegl/display/Image'
+
+import {Color}           from 'basegl/display/Color'
 import {Vector}          from "basegl/math/Vector"
 import {DisplayObject}   from "basegl/display/DisplayObject"
 import {IdxPool}         from 'basegl/lib/container/Pool'
 import {Composable}      from 'basegl/object/Property'
-import * as Reflect      from 'basegl/object/Reflect'
-import * as Property     from 'basegl/object/Property'
-import * as Image        from 'basegl/display/Image'
 
 
 
@@ -45,6 +47,7 @@ attribTypeByJSType = new Map \
   [ [ Number              , 'float' ]
   , [ Image.DataTexture   , 'sampler2D']
   , [ Image.CanvasTexture , 'sampler2D']
+  , [ Color               , 'vec4']
   ]
 
 inferAttribType = (a) ->
@@ -234,7 +237,11 @@ export class SymbolGeometry
 
 
   setBufferVal: (id, name, vals) =>
-    if not (vals instanceof Array) then vals = [vals]
+    if not (vals instanceof Array)
+      if      typeof vals == 'number' then vals = [vals]
+      else if vals instanceof Color   then vals = vals.toRGB().rgba
+      else 
+        throw {msg: "Wrong buffer value", vals}
     vname  = 'v_' + name
     size   = attribSizeByType.get(@attributeTypeMap.get(vname))
     start  = id * size

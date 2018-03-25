@@ -111,6 +111,12 @@ export class Canvas
               when 0 then "sdf_halfplane(p)"
               else        "sdf_halfplane(p, #{g_a})"
     @defShape glsl, bb
+  
+  plane: () ->
+    g_0  = GLSL.toCode 0
+    bb   = "bbox_new(#{g_0},#{g_0})"
+    glsl = "sdf_plane(p)"
+    @defShape glsl, bb
 
   pie: (angle) ->
     g_a  = GLSL.toCode angle
@@ -234,6 +240,11 @@ export class Circle extends Shape
   constructor: (@radius, @angle=0) -> super()
   renderGLSL: (r) -> r.canvas.circle @radius, @angle
 export circle = consAlias Circle
+
+export class Plane extends Shape
+  constructor: () -> super()
+  renderGLSL: (r) -> r.canvas.plane()
+export plane = consAlias Plane
 
 export class Halfplane extends Shape
   constructor: (@angle = 0, @fast = false) -> super()

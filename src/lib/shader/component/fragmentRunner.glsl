@@ -6,7 +6,7 @@ void main() {
   int       sid   = shape.id;
   float     alpha = sdf_render(shape.density);
 
-  float idMask           = (shape.cd.a * float(sid)) > 0. ? 1. : 0.;
+  float idMask           = (float(sid)) > 0. ? 1. : 0.; // shape.cd.a * float(sid)
   float symbolFamilyID_r = float(floor(symbolFamilyID + 0.5));
   float symbolID_r       = float(floor(symbolID + 0.5));
 

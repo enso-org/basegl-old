@@ -248,6 +248,10 @@ float sdf_blur (float d, float r) { return d/((r/zoomLevel) + 1.0); }
 
 ////// Plane //////
 
+float sdf_plane(vec2 p) {
+  return -1.0;
+}
+
 float sdf_halfplaneFast(vec2 p, vec2 dir) {
   return dir.x * p.x + dir.y * p.y;
 }

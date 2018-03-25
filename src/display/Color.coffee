@@ -1,3 +1,4 @@
+import * as Reflect   from 'basegl/object/Reflect'
 import * as Property  from 'basegl/object/Property'
 import * as GLSL      from 'basegl/display/target/WebGL'
 import * as TypeClass from 'basegl/lib/TypeClass'
@@ -24,6 +25,15 @@ export class Color
   copy: () ->
     new @constructor @_arr.slice()
 
+Reflect.addTypeInformation Color
+
+addAlpha = (arr) =>
+  if arr.length == 3
+    arr2 = arr.slice()
+    arr2.push(1)
+  else
+    arr2 = arr
+  arr2
 
 
 
@@ -34,7 +44,7 @@ export class Color
 export class RGB extends Color
   Property.swizzleFieldsRGBA @, '_arr'
 
-  constructor: (arr=[0,0,0]) -> super arr
+  constructor: (arr=[0,0,0]) -> super (addAlpha arr)
   @fromInt: (i) ->
     r = (i & 0xff0000) >> 16
     g = (i & 0x00ff00) >> 8
@@ -61,7 +71,7 @@ export rgb = Property.consAlias RGB
 
 export class HSL extends Color
   Property.swizzleFields @, '_arr', ['h','s','l','a']
-  constructor: (arr=[0,0,0]) -> super arr
+  constructor: (arr=[0,0,0]) -> super (addAlpha arr)
 
   mix: (c, t=0.5) -> hsl (mixArrays @_arr, c.toHSL()._arr, t)
 

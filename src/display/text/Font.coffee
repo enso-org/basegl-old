@@ -1,14 +1,15 @@
 import * as basegl   from 'basegl'
+import * as Color    from 'basegl/display/Color'
+import * as OpenType from 'opentype.js'
+import * as Promise  from 'bluebird'
 import * as Property from 'basegl/object/Property'
 import * as Shape    from 'basegl/display/Shape'
 import * as Image    from 'basegl/display/Image'
-import * as OpenType from 'opentype.js'
-import * as Promise  from 'bluebird'
 
-import {Symbol, group}   from 'basegl/display/Symbol'
-import {BinPack}     from 'basegl/display/texture/BinPack'
-import {Composition, Composable} from 'basegl/object/Property'
-import {typedValue}  from 'basegl/display/Symbol'
+import {Symbol, group}                     from 'basegl/display/Symbol'
+import {BinPack}                           from 'basegl/display/texture/BinPack'
+import {Composition, Composable}           from 'basegl/object/Property'
+import {typedValue}                        from 'basegl/display/Symbol'
 import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
 
 
@@ -72,9 +73,9 @@ void main() {
 
   float s = pow(multisample_gaussian3x3(samples, realZoom/150.0),realZoom/2.);
 
-  float alpha = 1. - smoothstep(0.5 - smoothing, 0.5 + smoothing, img.r);
+  float alpha = color.a * (1. - smoothstep(0.5 - smoothing, 0.5 + smoothing, img.r));
   //float alpha = s;
-  gl_FragColor = vec4(vec3(1.0), alpha);
+  gl_FragColor = vec4(color.rgb, alpha);
   //gl_FragColor = vec4((img.rgb - 0.5)*2.0, 1.0);
 }
 
@@ -231,6 +232,7 @@ class Atlas extends Composable
     @_letterDef.variables.glyphLoc  = typedValue 'vec4' # FIXME utilize Vector defaults
     @_letterDef.variables.glyphZoom = 1
     @_letterDef.variables.fontSize  = @_glyphSize
+    @_letterDef.variables.color     = new Color.RGB [1,1,1]
     @_letterDef.globalVariables.glyphsTexture = @_texture
     @_letterDef.globalVariables.glyphsTextureSize = @_size
 
@@ -275,6 +277,7 @@ class Atlas extends Composable
       canvas.h += Math.max canvas.h, height
       loc       = new GlyphLocation (rect.x + @spread), (rect.y + @spread), widthRaw, heightRaw, @spread
       shape     = new GlyphShape pathBBox.x1, pathBBox.y1, (@glyphSize*glyph.advanceWidth/@_font.unitsPerEm)
+      console.log "%%%", char, glyph.advanceWidth
       info      = new GlyphInfo shape, loc
       locs.push loc
       @_glyphs.set char, info
@@ -335,15 +338,94 @@ export manager = Property.consAlias Manager
 
 
 
-####################
-### TextInstance ###
-####################
+############
+### Text ###
+############
 
-class TextInstance extends Composable
-  cons: (letters, cfg) ->
-    @mixin displayObjectMixin, letters, cfg
+class Char extends Composable
+  cons: (@raw, cfg) ->
+    @_text         = null
+    @_symbol       = null
+    @_size         = 64
+    @__color       = Color.rgb [1,1,1]
+    @__idx         = 0
+    @_advanceWidth = 0
+    @configure cfg
+  @getter 'color', () -> @__color
+  @setter 'color', (color) -> 
+    @symbol.variables.color = color
+    @__color = color
+  @getter 'bbox', () -> @symbol.bbox
+    
 
-export textInstance = Property.consAlias TextInstance
+class Text extends Composable
+  cons: (cfg) ->
+    @mixin displayObjectMixin, [], cfg
+    @_scene        = null
+    @_fontFamily   = null 
+    @_fontManager  = basegl.fontManager    
+    @_size         = 64
+    @_color        = Color.rgb [1,1,1]
+    @configure cfg
+    @_length      = 0
+    @_width       = 0
+    @_endPosition = {x:0, y:0}
+    @_atlas       = @_fontManager.lookupAtlas @_fontFamily
+    @_chars       = []
+  
+  init: (cfg) ->
+    if cfg.str?
+      @pushStr cfg.str
+  
+  pushChar: (char) ->
+    glyphMaxOff = 2
+    scale = char.size / @atlas.glyphSize
+    letterSpacing = 10 # FIXME: make related to size
+  
+    if char.raw == '\n'
+      @_endPosition.x = 0
+      @_endPosition.y -= char.size
+    else
+      letter = @scene.add @atlas.letterDef
+      info   = @atlas.getInfo char.raw
+      loc    = info.loc
+      letter.position.xy = [@_endPosition.x, info.shape.y * scale + @_endPosition.y]
+      letter.variables.fontSize = char.size        
+      letter.variables.color    = char.color        
+
+      gw = loc.width  + 2*glyphMaxOff
+      gh = loc.height + 2*glyphMaxOff
+      letter.bbox.xy = [gw*scale, gh*scale]
+      letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
+      letterWidth    = (info.shape.advanceWidth + letterSpacing) * scale
+      @_endPosition.x += letterWidth
+      if @_endPosition.x > @_width then @_width = @_endPosition.x
+      @addChild letter
+      idx                = @_length
+      char._symbol       = letter
+      char.__idx         = idx
+      char._advanceWidth = letterWidth
+      @[idx]             = char
+      @_chars.push char
+      @_length += 1
+  
+  setColor: (color, start, end) ->
+    if start == undefined then start = 0
+    if end   == undefined then end   = @length
+    for i in [start...end]
+      @[i].color = color
+    
+  pushStr: (str) ->
+    for char in str
+      char = new Char char, 
+        text:  @
+        size:  @size
+        color: @color
+      @pushChar char 
+      
+
+
+export text = Property.consAlias Text
 
 
 
@@ -351,49 +433,60 @@ export textInstance = Property.consAlias TextInstance
 ### Text ###
 ############
 
-class Text extends Composable
-  cons: (cfg) ->
-    @_str         = ''
-    @_fontFamily  = null
-    @_size        = 64
-    @_fontManager = basegl.fontManager
-    @configure cfg
-    @_atlas = @_fontManager.lookupAtlas @_fontFamily
 
 
-  addToScene: (scene) ->
-    glyphMaxOff = 2
 
-    newlines = 0
-    for char in @str
-      if char == '\n' then newlines += 1
+# class Text extends Composable
+#   cons: (cfg) ->
+#     @_str         = ''
+#     @_fontFamily  = null
+#     @_size        = 64
+#     @_fontManager = basegl.fontManager
+#     @configure cfg
+#     @_atlas = @_fontManager.lookupAtlas @_fontFamily
+#     if typeof @_str == 'string'
+#       @_chars = []
+#       for char in @_str
+#         @_chars.push (new Char char, cfg)
 
-    scale = @size / @atlas.glyphSize
-    offx  = 0
-    offy  = newlines * @atlas.glyphSize * scale
-    letterSpacing = 0 # FIXME: make related to size
-    letters = []
-    for char in @str
-      if char == '\n'
-        offx = 0
-        offy -= @size
-      else
-        letter = scene.add @atlas.letterDef
-        info   = @atlas.getInfo char
-        loc    = info.loc
-        letter.position.xy = [offx, info.shape.y * scale + offy]
-        letter.variables.fontSize = @_glyphSize        
+#   setColor: (color, start, end) ->
+#     for char in @chars.slice(start,end)
+#       char.color = color
 
-        gw = loc.width  + 2*glyphMaxOff
-        gh = loc.height + 2*glyphMaxOff
-        letter.bbox.xy = [gw*scale, gh*scale]
-        letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
-        offx += (loc.width + info.shape.advanceWidth + letterSpacing) * scale
-        letters.push letter
+#   addToScene: (scene) ->
+#     glyphMaxOff = 2
 
-    textInstance letters
+#     newlines = 0
+#     for char in @chars
+#       if char.raw == '\n' then newlines += 1
 
-export text = Property.consAlias Text
+#     scale = @size / @atlas.glyphSize
+#     offx  = 0
+#     offy  = newlines * @atlas.glyphSize * scale
+#     letterSpacing = 0 # FIXME: make related to size
+#     letters = []
+#     for char in @chars
+#       if char.raw == '\n'
+#         offx = 0
+#         offy -= @size
+#       else
+#         letter = scene.add @atlas.letterDef
+#         info   = @atlas.getInfo char.raw
+#         loc    = info.loc
+#         letter.position.xy = [offx, info.shape.y * scale + offy]
+#         letter.variables.fontSize = @_glyphSize        
+#         letter.variables.color    = char.color        
+
+#         gw = loc.width  + 2*glyphMaxOff
+#         gh = loc.height + 2*glyphMaxOff
+#         letter.bbox.xy = [gw*scale, gh*scale]
+#         letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
+#         offx += (loc.width + info.shape.advanceWidth + letterSpacing) * scale
+#         letters.push letter
+
+#     textInstance letters, {scene: scene, fontManager: @fontManager, fontFamily: @fontFamily}
+
+# export text = Property.consAlias Text
 
 
 

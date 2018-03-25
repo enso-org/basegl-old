@@ -171,6 +171,25 @@ export extend = (obj, cfg) =>
   nobj
 
 
+# class C1 extends Composable
+#   cons: (cfg) -> 
+#     @_foo = 1
+#     @configure cfg
+
+# t1 = new C1
+# t1._foo = 7
+# t1._bar = 9
+
+# t2 = new C1
+# t2._foo = 8
+# t2._bar = 10
+
+
+# console.log t1
+# console.log t2
+
+# throw "end"
+
 #
 # foo = () ->
 #
