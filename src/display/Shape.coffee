@@ -342,6 +342,7 @@ export class Difference extends Shape
     [a, b] = r.renderShapes @a, @b
     r.canvas.difference a,b
 Shape::difference = protoBindCons Difference
+export difference = consAlias Difference
 
 
 
@@ -356,6 +357,7 @@ export class Grow extends Shape
     r.canvas.grow a, @radius
 Shape::grow = protoBindCons Grow
 Shape::shrink = (radius) -> @grow(-radius)
+export grow = consAlias Grow
 
 export class Inside extends Shape
   constructor: (@a) -> super(); @addChildren @a
@@ -363,6 +365,7 @@ export class Inside extends Shape
     a = r.renderShape @a
     r.canvas.inside a
 Shape::inside = protoBindCons Inside
+export inside = consAlias Inside
 
 
 
@@ -381,6 +384,7 @@ export class Move extends Shape
 Shape::move  = protoBindCons Move
 Shape::moveX = (x) -> @move x,0
 Shape::moveY = (y) -> @move 0,y
+export move = consAlias Move
 
 export class Rotate extends Shape
   constructor: (@a, @angle) -> super(); @addChildren @a
@@ -388,6 +392,7 @@ export class Rotate extends Shape
     r.canvas.rotate (-@angle)
     r.renderShape @a
 Shape :: rotate = protoBindCons Rotate
+export rotate = consAlias Rotate
 
 
 
@@ -401,6 +406,7 @@ export class Blur extends Shape
     a = r.renderShape @a
     r.canvas.blur a, @radius
 Shape::blur = protoBindCons Blur
+export blur = consAlias Blur
 
 
 
@@ -414,6 +420,7 @@ export class Fill extends Shape
     a = r.renderShape @a
     r.canvas.fill a, @color
 Shape::fill = protoBindCons Fill
+export fill = consAlias Fill
 
 
 
@@ -441,7 +448,6 @@ export class GLSLShape extends Shape
 
 ### ... ###
 # export grow          = consAlias Grow
-export inside        = consAlias Inside
 export codeCtx       = consAlias CodeCtx
 export glslShape     = consAlias GLSLShape
 
