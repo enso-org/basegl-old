@@ -98,7 +98,9 @@ embedMixin = (self, mx, fredirect) =>
 embedIfMixin = (self,key) =>
   val = self[key]
   if val?.__isMixin__
+    delete val.__isMixin__
     self[key] = embedMixin self, val, (subredirect self, key)
+    val.__isMixin__ = true
 
 subredirect = (self,mk) => (k) =>
   defineGetter self, k,     -> @[mk][k]
@@ -169,7 +171,6 @@ export extend = (obj, cfg) =>
   for k,v of cfg
     nobj[k] = v
   nobj
-
 
 # class C1 extends Composable
 #   cons: (cfg) -> 
