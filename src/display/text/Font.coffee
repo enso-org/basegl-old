@@ -387,7 +387,7 @@ class Text extends Composable
       @_endPosition.y -= char.size
     else
       letter = @scene.add @atlas.letterDef
-      info   = @atlas.getInfo char.raw
+      info   = (@atlas.getInfo char.raw) or (@atlas.getInfo '?')
       loc    = info.loc
       letter.position.xy = [@_endPosition.x, info.shape.y * scale + @_endPosition.y]
       letter.variables.fontSize = char.size        
