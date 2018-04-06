@@ -505,6 +505,11 @@ bool interiorChec_union(bool c1, bool c2) {
 
 
 
+vec2 sdf_repeat (vec2 p, vec2 dir) {
+    return mod(p,dir);
+}
+
+
 
 ///////////////////////
 ////// Debugging //////

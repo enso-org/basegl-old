@@ -158,6 +158,7 @@ export class Canvas
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
   rotate:        (a)       -> @addCodeLine "p = sdf_rotate(p, #{GLSL.toCode a});"
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
+  repeat:        (x,y)     -> @addCodeLine "p = sdf_repeat(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
   fill:          (s1,c)    ->
     c = c.toRGB()
     if c.a == undefined
@@ -393,6 +394,19 @@ export class Rotate extends Shape
     r.renderShape @a
 Shape :: rotate = protoBindCons Rotate
 export rotate = consAlias Rotate
+
+export class Repeat extends Shape
+  constructor: (@a, @dir, @length) -> super(); @addChildren @a
+  renderGLSL: (r) -> r.withNewTxCtx () =>
+    len = @dir.length()
+    if len > 0
+      norm = @dir.normalize()
+      x    = norm.x * @length
+      y    = norm.y * @length
+      r.canvas.repeat(x,y)
+    r.renderShape @a
+Shape :: repeat = protoBindCons Repeat
+export repeat = consAlias Repeat
 
 
 

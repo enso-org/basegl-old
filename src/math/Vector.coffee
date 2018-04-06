@@ -61,5 +61,5 @@ export class Vector
   length:        -> M.sqrt (@x*@x + @y*@y + @z*@z)
 
 
-export vector = (args...) -> new Vector [args...]
+export vector = (x=0, y=0, z=0) -> new Vector [x,y,z]
 export point  = (args...) -> vector args...
