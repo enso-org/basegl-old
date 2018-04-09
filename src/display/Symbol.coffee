@@ -201,7 +201,8 @@ class DOMSymbolInstance extends DisplayObject
 
   _updatePosition: () -> @obj.matrix.fromArray @xform
 
-
+  dispose: ()->
+    @obj.parent.remove(@obj)
 
 
 export symbol = (a) =>
