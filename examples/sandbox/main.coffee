@@ -255,6 +255,7 @@ tmpShape = basegl.expr ->
   circle(100).fill Color.rgb([1,1,1])
 
 
+
 main = () ->
 
   # Starting out, loading fonts, etc.
@@ -270,16 +271,16 @@ main = () ->
 
   # Defining shapes
   nodeDef = basegl.symbol nodeShape
-  tmpDef = basegl.symbol tmpShape
+  nodeDef.variables.selected = 0
+  nodeDef.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
+  nodeFamily = scene.register nodeDef # REMEMBER to use it AFTER global settings ^^^
 
-  nodeFamily = scene.register nodeDef
-  tmpFamily  = scene.register tmpDef
+  tmpDef    = basegl.symbol tmpShape
+  tmpFamily = scene.register tmpDef
 
   nodeFamily.zIndex = 10
   tmpFamily.zIndex  = 5
 
-  nodeDef.variables.selected = 0
-  nodeDef.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
 
   scene.add tmpDef
 
