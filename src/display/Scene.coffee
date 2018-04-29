@@ -301,8 +301,8 @@ export class Scene extends Composable
     redirectCaptureListener 'click'
     redirectCaptureListener 'dblclick'
     addCaptureListener      'mousemove', (e) =>
-      @screenMouse.x = e.clientX
-      @screenMouse.y = e.clientY
+      @screenMouse.x = e.layerX
+      @screenMouse.y = e.layerY
       campos = @camera.position
       @mouse.x = @screenMouse.x * campos.z + campos.x
       @mouse.y = @screenMouse.y * campos.z - campos.y
