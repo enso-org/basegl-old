@@ -39,9 +39,12 @@ export class SymbolTarget
     if @shapeDef? then unsafeWithReparented @shapeDef, @symbol, f
     else f()
 
+  getParentChain: -> 
+    @runInContext => @element.getParentChain()
+
   dispatchEvent: (e) ->
     setObjectProperty e, 'symbol', @symbol
-    setObjectProperty e, 'shapeDef' , @shapeDef
+    setObjectProperty e, 'shapeDef', @shapeDef
     @runInContext => @element.dispatchEvent e
 
   discoverPointerEventTarget: () ->
@@ -60,6 +63,7 @@ export class SymbolTarget
         result
       test
     @runInContext => @element.captureBy(pointerEventTargetDiscovery())
+
 
 
 export class MaterialStore
@@ -389,15 +393,38 @@ export class Scene extends Composable
       symbolChanged = (not (target.path.compareSymbol @_lastTarget.path)) &&
                       (target.element.type == Shape)
       if targetChanged || symbolChanged
+        lastChain    = @_lastTarget.getParentChain()
+        currentChain = target.getParentChain()
         mkMouseEvent = (name) => new MouseEvent name, @_mouseBaseEvent
+
+        
+        # Mouse OVER / OUT
+
         overEvent  = mkMouseEvent 'mouseover'
         outEvent   = mkMouseEvent 'mouseout'
+        
+        @_lastTarget.dispatchEvent outEvent
+        target.dispatchEvent overEvent
+
+
+        # Mouse ENTER / LEAVE 
+
         enterEvent = disableBubbling (mkMouseEvent 'mouseenter')
         leaveEvent = disableBubbling (mkMouseEvent 'mouseleave')
-        @_lastTarget.dispatchEvent outEvent
-        @_lastTarget.dispatchEvent leaveEvent
-        target.dispatchEvent overEvent
-        target.dispatchEvent enterEvent
+
+        j = 0
+        for i in [0 ... currentChain.length]
+          if lastChain[i] != currentChain[i]
+            j = i
+            break
+
+        for i in [j ... currentChain.length]
+          currentChain[i].dispatchEvent enterEvent
+
+        for i in [j ... lastChain.length]
+          lastChain[i].dispatchEvent leaveEvent
+
+
         @_lastTarget = target
 
 

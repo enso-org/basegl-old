@@ -299,8 +299,6 @@ main = () ->
   n2.position.xy = [600, 0]
   n2.id = 2
 
-  nn1 = group [n1,vis1]
-  console.log nn1
   n3 = scene.add nodeDef
   n3.position.xy = [900, 0]
   n3.id = 3
@@ -319,7 +317,7 @@ main = () ->
     str: 'foo ([7,3,2,9].sort.take 2)'
     fontFamily: 'DejaVuSansMono'
     size: 16
-    scene: scene
+    scene: scene  
 
   codeAlpha = 0.85
   parensColor = Color.rgb [1,1,1,0.5]
@@ -340,8 +338,8 @@ main = () ->
   code1.setColor dotColor   , 14 , 15
   code1.setColor dotColor   , 19 , 20
 
-  code1.position.x = 100
-  code1.position.y = 800
+  code1.position.x = 30
+  code1.position.y = 750
 
 
 
@@ -367,8 +365,10 @@ main = () ->
   ts = computeTextSpan2D 0, 0, code1.chars, spanTree
   ts2 = growSpan2D 4, ts
   vg = visSpan2D scene, code1.chars, ts2
-  vg.position.xy = [100,800]
+  vg.position.xy = [30,750]
   vg.position.x -= 2 # letterOffset / 2
+
+  nn1 = group [n1,vis1, code1, vg]
 
   # str = 'The quick brown fox \njumps over the lazy dog'
   # txt = atlas.addText scene, str
@@ -388,6 +388,12 @@ main = () ->
 
   n2.addEventListener 'mouseover', (e) ->
     console.log "OVER NODE 2!"
+
+  n2.addEventListener 'mouseenter', (e) ->
+    console.log "ENTER NODE 2!"
+
+  n2.addEventListener 'mouseleave', (e) ->
+    console.log "LEAVE NODE 2!"
 
   n3.addEventListener 'mouseover', (e) ->
     console.log "OVER NODE 3!"
