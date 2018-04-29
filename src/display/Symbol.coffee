@@ -336,7 +336,10 @@ export class SymbolFamily
   constructor: (@id, @definition, @geometry=new SymbolGeometry) ->
     @_mesh = new THREE.Mesh @geometry.geometry, @definition.material
     @_symbolIDMap = new Map
-
+  
+  @getter 'zIndex',       -> @_mesh.renderOrder
+  @setter 'zIndex', (idx) -> @_mesh.renderOrder = idx
+  
   newInstance: () ->
     id   = @geometry.reserveID()
     inst = new SymbolInstance id, @

@@ -250,6 +250,11 @@ visSpan2D = (scene, chars, span) ->
         char.color = char.originalColor
 
     group cvs
+
+tmpShape = basegl.expr ->
+  circle(100).fill Color.rgb([1,1,1])
+
+
 main = () ->
 
   # Starting out, loading fonts, etc.
@@ -265,9 +270,18 @@ main = () ->
 
   # Defining shapes
   nodeDef = basegl.symbol nodeShape
+  tmpDef = basegl.symbol tmpShape
+
+  nodeFamily = scene.register nodeDef
+  tmpFamily  = scene.register tmpDef
+
+  nodeFamily.zIndex = 10
+  tmpFamily.zIndex  = 5
+
   nodeDef.variables.selected = 0
   nodeDef.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
 
+  scene.add tmpDef
 
   vis  = basegl.symbol div
   vis1 = scene.add vis
@@ -277,7 +291,6 @@ main = () ->
   n1 = scene.add nodeDef
   n1.position.xy = [0, 0]
   n1.id = 1
-
 
   n2 = scene.add nodeDef
   n2.position.xy = [600, 0]

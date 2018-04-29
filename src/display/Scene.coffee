@@ -330,14 +330,15 @@ export class Scene extends Composable
   visibleHeight : -> @height * @camera.position.z
 
   add: (a) -> a.addToScene @
-  addSymbol: (s) ->
-    def = @symbolRegistry.registerSymbol s
-    def.newInstance()
+  addSymbol: (s) -> @register(s).newInstance()
 
   addDOMSymbol: (s) ->
     inst = s.newInstance()
     @domModel.model.add inst.obj
     inst
+
+  register: (s) ->
+    @symbolRegistry.registerSymbol s
 
   update: -> @_stats.measure =>
     @camera.update @
@@ -423,7 +424,7 @@ export class SymbolRegistry extends DisplayObject
       @_symbolFamilyDefMap.set comp, family
       @_symbolFamilyIDMap.set  id  , family
       @materials.add comp.material
-      @_model.add  family._mesh
+      @_model.add family._mesh
     family
 
   lookupSymbolFamily: (id) -> @_symbolFamilyIDMap.get id

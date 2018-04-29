@@ -283,7 +283,6 @@ class Atlas extends Composable
         return false
       loc       = new GlyphLocation (rect.x + @spread), (rect.y + @spread), widthRaw, heightRaw, @spread
       shape     = new GlyphShape pathBBox.x1, pathBBox.y1, (@glyphSize*glyph.advanceWidth/@_font.unitsPerEm)
-      console.log "%%%", char, glyph.advanceWidth
       info      = new GlyphInfo shape, loc
       locs.push loc
       @_glyphs.set char, info
