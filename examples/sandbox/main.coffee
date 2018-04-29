@@ -252,8 +252,10 @@ visSpan2D = (scene, chars, span) ->
     group cvs
 
 tmpShape = basegl.expr ->
-  circle(100).fill Color.rgb([1,1,1])
-
+  c1 = circle(100).fill Color.rgb([0.3,0,0])
+  c2 = circle(100).fill Color.rgb([0.3,0,0])
+  out = c1 + c2
+  # out.fill Color.rgb([0.3,0,0])
 
 
 main = () ->
