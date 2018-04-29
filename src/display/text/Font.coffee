@@ -241,10 +241,19 @@ class Atlas extends Composable
 
 
   getInfo: (glyph) ->
-    @_glyphs.get glyph
+    out = @_glyphs.get glyph
+    if out == undefined
+      # FIXME
+      # This is basically a hack. If a letter is missing, we are adding it to 
+      # @_preload list and we are loading ALL letters again. The real solution
+      # would be just to add new letters to the already rendered canvas, but
+      # it's much more tricky.
+      @_preload.push glyph.charCodeAt()
+      @loadGlyphs @_preload
+      out = @_glyphs.get glyph
+    out
 
   loadGlyphs: (args...) ->
-    # console.log (64*font.descender/font.unitsPerEm)
     chars = []
     addInput = (a) =>
       if a instanceof Array
@@ -260,7 +269,6 @@ class Atlas extends Composable
     glyphPaths = []
     glyphDefs  = []
     locs       = []
-    canvas     = {w:0, h:0}
     for char in chars
       glyph     = @_font.charToGlyph char
       path      = pathFlipYMut (@_font.getPath char, 0, 0, @glyphSize)
@@ -273,8 +281,6 @@ class Atlas extends Composable
       if not rect
         throw "Cannot pack letter to atlas, out of space." # TODO: resize atlas
         return false
-      canvas.w += width
-      canvas.h += Math.max canvas.h, height
       loc       = new GlyphLocation (rect.x + @spread), (rect.y + @spread), widthRaw, heightRaw, @spread
       shape     = new GlyphShape pathBBox.x1, pathBBox.y1, (@glyphSize*glyph.advanceWidth/@_font.unitsPerEm)
       console.log "%%%", char, glyph.advanceWidth
@@ -308,8 +314,6 @@ class Atlas extends Composable
     @scene.update()
     @scene.update()
     @texture.needsUpdate = true
-
-
 
 export atlas = Property.consAlias Atlas
 
