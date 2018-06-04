@@ -149,22 +149,22 @@ class SceneDOM extends Composable
 
       @domElement.style.display = 'flex'
 
-      mkLayer = (name) =>
-        layer = document.createElement 'div'
-        layer.style.position = 'absolute'
-        layer.style.margin   = 0
-        layer.style.width    = '100%'
-        layer.style.height   = '100%'
-        layer.id = @domElement.id + '-layer-' + name
-        @domElement.appendChild layer
-        layer
-
-      @domLayer   = mkLayer 'dom'
-      @glLayer    = mkLayer 'gl'
-      @statsLayer = mkLayer 'stats'
+      @domLayer   = @addLayer 'dom'
+      @glLayer    = @addLayer 'gl'
+      @statsLayer = @addLayer 'stats'
 
       @glLayer    . style.pointerEvents = 'none'
       @statsLayer . style.pointerEvents = 'none'
+
+  addLayer: (name) =>
+    layer = document.createElement 'div'
+    layer.style.position = 'absolute'
+    layer.style.margin   = 0
+    layer.style.width    = '100%'
+    layer.style.height   = '100%'
+    layer.id = @domElement.id + '-layer-' + name
+    @domElement.appendChild layer
+    layer
 
   refreshSize: () ->
     @geometry.resize @domElement.clientWidth, @domElement.clientHeight
