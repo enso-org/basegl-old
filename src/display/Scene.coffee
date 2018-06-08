@@ -219,9 +219,10 @@ export class Scene extends Composable
     @_dom            = @mixin SceneDOM, cfg
     @_autoUpdate     = true
     @_camera         = new Camera
-    modeCfg          = extend cfg, {camera: @_camera}
-    @_symbolModel    = new SceneModel modeCfg
-    @_domModel       = new SceneModel modeCfg
+    @_modeCfg        = extend cfg, {camera: @_camera}
+    @_symbolModel    = new SceneModel @_modeCfg
+    @_domModel       = new SceneModel @_modeCfg
+    @_scenes         = [@_symbolModel, @_domModel]
     @_symbolRegistry = new SymbolRegistry @_symbolModel.model
     @configure cfg
     @_creationTime   = Date.now()
@@ -232,6 +233,11 @@ export class Scene extends Composable
 
     @_stats = new Stats
 
+  addDOMScene: =>
+    newScene = new SceneModel @_modeCfg
+    newScene._renderer = @initDomRenderer()
+    @_scenes.push newScene
+    newScene
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
@@ -319,8 +325,8 @@ export class Scene extends Composable
 
   onResized: () ->
     @initSymbolPointerBuffers()
-    @symbolModel . setSize @width, @height
-    @domModel    . setSize @width, @height
+    for scene in @scenes
+      scene . setSize @width, @height
     @camera.adjustToScene @
 
   requestIDScreenshot: (callback) ->
@@ -349,8 +355,8 @@ export class Scene extends Composable
     @symbolRegistry.materials.uniforms.zoom       = @camera.position.z
     @symbolRegistry.materials.uniforms.time       = Date.now() - @_beginTime
     @symbolRegistry.materials.uniforms.drawBuffer = DRAW_BUFFER.NORMAL
-    @symbolModel.render()
-    @domModel.render()
+    for scene in @scenes
+      scene.render()
     if @onscreen then @handleMouse()
 
   handleMouse: ->
