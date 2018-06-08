@@ -452,6 +452,7 @@ export class SymbolRegistry extends DisplayObject
       @_symbolFamilyIDMap.set  id  , family
       @materials.add comp.material
       @_model.add family._mesh
+      if comp.defaultZIndex? then family.zIndex = comp.defaultZIndex
     family
 
   lookupSymbolFamily: (id) -> @_symbolFamilyIDMap.get id
