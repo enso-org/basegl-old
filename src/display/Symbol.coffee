@@ -181,7 +181,7 @@ class DOMSymbol
   addToScene: (scene) -> scene.addDOMSymbol @
 
   newInstance: () ->
-    new DOMSymbolInstance @domElement.cloneNode()
+    new DOMSymbolInstance @domElement.cloneNode(true)
 
 
 class DOMSymbolInstance extends DisplayObject
@@ -202,7 +202,7 @@ class DOMSymbolInstance extends DisplayObject
   _updatePosition: () -> @obj.matrix.fromArray @xform
 
   dispose: ()->
-    @obj.parent.remove(@obj)
+    @obj.parent?.remove(@obj)
 
 
 export symbol = (a) =>
