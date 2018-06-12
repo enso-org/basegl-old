@@ -137,6 +137,13 @@ export class Canvas
       else        "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[2]},#{GLSL.toCode rs[3]}));"
     @defShape glsl, bb
 
+  triangle: (w, h) ->
+    g_w = GLSL.toCode w
+    g_h = GLSL.toCode h
+    bb   = "bbox_new(#{g_w}/2.0,#{g_h}/2.0)"
+    glsl = "sdf_triangle(p,#{g_w},#{g_h})"
+    @defShape glsl, bb
+
   quadraticCurveTo: (cx,cy,x,y) ->
     g_cx = GLSL.toCode cx
     g_cy = GLSL.toCode cy
@@ -261,6 +268,11 @@ export class Rect extends Shape
   constructor: (@width, @height, @radiuses...) -> super()
   renderGLSL: (r) -> r.canvas.rect @width, @height, @radiuses...
 export rect = consAlias Rect
+
+export class Triangle extends Shape
+  constructor: (@width, @height) -> super()
+  renderGLSL: (r) -> r.canvas.triangle @width, @height
+export triangle = consAlias Triangle
 
 
 ##############
