@@ -163,7 +163,7 @@ export class Canvas
   blur:          (s1,r)    -> @defShape "sdf_blur(#{s1.name},#{GLSL.toCode r})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
   move:          (x,y)     -> @addCodeLine "p = sdf_translate(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
-  rotate:        (a)       -> @addCodeLine "p = sdf_rotate(p, #{GLSL.toCode a});"
+  rotate:        (a)       -> @addCodeLine "p = sdf_rotate(p, - #{GLSL.toCode a});"
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
   repeat:        (x,y)     -> @addCodeLine "p = sdf_repeat(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
   fill:          (s1,c)    ->
@@ -402,7 +402,7 @@ export move = consAlias Move
 export class Rotate extends Shape
   constructor: (@a, @angle) -> super(); @addChildren @a
   renderGLSL: (r) -> r.withNewTxCtx () =>
-    r.canvas.rotate (-@angle)
+    r.canvas.rotate @angle
     r.renderShape @a
 Shape :: rotate = protoBindCons Rotate
 export rotate = consAlias Rotate
