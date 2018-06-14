@@ -219,6 +219,7 @@ export class Scene extends Composable
     @_dom            = @mixin SceneDOM, cfg
     @_autoUpdate     = true
     @_camera         = new Camera
+    @_cameras        = [@_camera]
     @_modeCfg        = extend cfg, {camera: @_camera}
     @_symbolModel    = new SceneModel @_modeCfg
     @_domModel       = new SceneModel @_modeCfg
@@ -244,15 +245,20 @@ export class Scene extends Composable
     @__addDOMScene @_modeCfg
 
   addDOMSceneWithNewCamera: =>
-    cfg = extend @_modeCfg, {camera: new Camera}
-    @__addDOMScene cfg
+    camera = new Camera
+    cfg = extend @_modeCfg, {camera: camera}
+    newScene = @__addDOMScene cfg
+    camera.adjustToScene @
+    @_cameras.push camera
+    newScene
 
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
     @symbolModel._renderer = @initWebGLRenderer()
     @domModel._renderer    = @initDomRenderer()
-    @camera.adjustToScene @
+    for camera in @cameras
+      camera.adjustToScene @
     World.globalWorld.registerScene @
     @geometry.onResized = @onResized.bind(@)
     @geometry.onResized()
@@ -336,7 +342,8 @@ export class Scene extends Composable
     @initSymbolPointerBuffers()
     for scene in @scenes
       scene . setSize @width, @height
-    @camera.adjustToScene @
+    for camera in @cameras
+      camera.adjustToScene @
 
   requestIDScreenshot: (callback) ->
     @idScreenshotRequests.push callback
@@ -360,7 +367,8 @@ export class Scene extends Composable
     @symbolRegistry.registerSymbol s
 
   update: -> @_stats.measure =>
-    @camera.update @
+    for camera in @cameras
+      camera.update @
     @symbolRegistry.materials.uniforms.zoom       = @camera.position.z
     @symbolRegistry.materials.uniforms.time       = Date.now() - @_beginTime
     @symbolRegistry.materials.uniforms.drawBuffer = DRAW_BUFFER.NORMAL
