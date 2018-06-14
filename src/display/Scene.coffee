@@ -153,16 +153,16 @@ class SceneDOM extends Composable
       @glLayer    = @addLayer 'gl'
       @statsLayer = @addLayer 'stats'
 
-      @glLayer    . style.pointerEvents = 'none'
-      @statsLayer . style.pointerEvents = 'none'
+      @domLayer.style.pointerEvents = 'auto'
 
   addLayer: (name) =>
     layer = document.createElement 'div'
-    layer.style.position = 'absolute'
-    layer.style.margin   = 0
-    layer.style.width    = '100%'
-    layer.style.height   = '100%'
-    layer.id = @domElement.id + '-layer-' + name
+    layer.style.pointerEvents = 'none'
+    layer.style.position      = 'absolute'
+    layer.style.margin        = 0
+    layer.style.width         = '100%'
+    layer.style.height        = '100%'
+    layer.id                  = @domElement.id + '-layer-' + name
     @domElement.appendChild layer
     layer
 
@@ -233,11 +233,20 @@ export class Scene extends Composable
 
     @_stats = new Stats
 
-  addDOMScene: =>
-    newScene = new SceneModel @_modeCfg
+
+  __addDOMScene: (cfg) =>
+    newScene = new SceneModel cfg
     newScene._renderer = @initDomRenderer()
     @_scenes.push newScene
     newScene
+
+  addDOMScene: =>
+    @__addDOMScene @_modeCfg
+
+  addDOMSceneWithNewCamera: =>
+    cfg = extend @_modeCfg, {camera: new Camera}
+    @__addDOMScene cfg
+
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
