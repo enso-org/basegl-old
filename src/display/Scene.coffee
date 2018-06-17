@@ -234,22 +234,32 @@ export class Scene extends Composable
 
     @_stats = new Stats
 
+  # Makes new DOMScene inside of this instance. layer argument can be:
+  # 1. string - then new layer is created and scene is attached to it,
+  #   string is used as name
+  # 2. div - layer which should be used as parent of new scene
+  # 3. undefined - new scene will not be attached to anything and user needs
+  #    to handle it manually
+  # CAREFUL: Other objects passed here as layer can cause problems
+  __addDOMScene: (cfg, layer) ->
+    if typeof layer == 'string'
+      layer = @addLayer layer
 
-  __addDOMScene: (cfg) =>
     newScene = new SceneModel cfg
     newScene._renderer = @initDomRenderer()
     @_scenes.push newScene
+    layer?.appendChild newScene.renderer.domElement
     newScene
 
-  addDOMScene: =>
-    @__addDOMScene @_modeCfg
+  addDOMScene: (layer) ->
+    @__addDOMScene @_modeCfg, layer
 
-  addDOMSceneWithNewCamera: =>
+  addDOMSceneWithNewCamera: (layer) ->
     camera = new Camera
     cfg = extend @_modeCfg, {camera: camera}
-    newScene = @__addDOMScene cfg
-    camera.adjustToScene @
+    newScene = @__addDOMScene cfg, layer
     @_cameras.push camera
+    @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
     newScene
 
 
