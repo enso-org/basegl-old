@@ -2,6 +2,18 @@ import {Vector}           from "basegl/math/Vector"
 import {animationManager} from "basegl/animation/Manager"
 
 
+# Handy aliases for common event predicates
+isLeftClick        = (e) -> e.button == 0
+isMiddleClick      = (e) -> e.button == 1
+isRightClick       = (e) -> e.button == 2
+isCtrlLeftClick    = (e) -> e.button == 0 and e.ctrlKey
+isCtrlMiddleClick  = (e) -> e.button == 1 and e.ctrlKey
+isCtrlRightClick   = (e) -> e.button == 2 and e.ctrlKey
+isShiftLeftClick   = (e) -> e.button == 0 and e.shiftKey
+isShiftMiddleClick = (e) -> e.button == 1 and e.shiftKey
+isShiftRightClick  = (e) -> e.button == 2 and e.shiftKey
+
+
 #################
 ### Navigator ###
 #################
@@ -11,7 +23,9 @@ export class Navigator
     PAN : 'PAN'
     ZOOM: 'ZOOM'
 
-  constructor: (@scene) ->
+  constructor: (@scene, actions={ isPan:  isMiddleClick
+                                , isZoom: isRightClick
+                                }) ->
     @zoomFactor   = 1
     @drag         = 10
     @springCoeff  = 1.5
@@ -27,6 +41,8 @@ export class Navigator
     @campos       = null
     @action       = null
     @started      = false
+    @eventIsPan   = actions.isPan
+    @eventIsZoom  = actions.isZoom
 
     @scene.domElement.addEventListener 'mousedown'  , @onMouseDown
     @scene.domElement.addEventListener 'contextmenu', @onContextMenu
@@ -107,10 +123,11 @@ export class Navigator
     document.addEventListener 'mousemove', @onMouseMove
     @started = false
 
-    switch event.button
-      when 2 then @action = Navigator.ACTION.ZOOM
-      when 1 then @action = Navigator.ACTION.PAN
-      else @action = null
+    if @eventIsZoom event
+      @action = Navigator.ACTION.ZOOM
+    else if @eventIsPan event
+      @action = Navigator.ACTION.PAN
+    else @action = null
 
     @_calcCameraPath event
 
