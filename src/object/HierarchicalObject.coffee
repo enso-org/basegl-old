@@ -19,6 +19,10 @@ export class HierarchicalObject extends Composable
     @_children.add(a)
     a._parent = @src
 
+  removeChild: (a) ->
+    @_children.delete a
+    a._parent = undefined
+
   addChildren: (children...) ->
     for child from children
       @addChild child
