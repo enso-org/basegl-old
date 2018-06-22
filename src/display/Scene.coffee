@@ -255,7 +255,7 @@ export class Scene extends Composable
   addDOMScene: (layer) ->
     @__addDOMScene @_modeCfg, layer
 
-  addDOMSceneWithCamera: (layer, camera=new Camera) ->
+  addDOMSceneWithNewCamera: (layer, camera=new Camera) ->
     cfg = extend @_modeCfg, {camera: camera}
     newScene = @__addDOMScene cfg, layer
     @_cameras.push camera
