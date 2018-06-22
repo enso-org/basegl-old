@@ -42,6 +42,7 @@ export class ZoomlessCamera extends Camera
     @parentCam.addEventListener 'move', @onParentMove
 
   onParentMove: (event) =>
-    factor = 1 / @parentCam.position.z
-    @position.x = @parentCam.position.x * factor
-    @position.y = @parentCam.position.y * factor
+    unless @parentCam.position.z == 0.0
+      factor = 1 / @parentCam.position.z
+      @position.x = @parentCam.position.x * factor
+      @position.y = @parentCam.position.y * factor
