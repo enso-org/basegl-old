@@ -221,10 +221,10 @@ export class Scene extends Composable
     @_autoUpdate     = true
     @_camera         = new Camera
     @_cameras        = [@_camera]
-    @_modeCfg        = extend cfg, {camera: @_camera}
-    @_symbolModel    = new SceneModel @_modeCfg
-    @_domModel       = new SceneModel @_modeCfg
-    @_scenes         = [@_symbolModel, @_domModel]
+    @_modelCfg       = extend cfg, {camera: @_camera}
+    @_symbolModel    = new SceneModel @_modelCfg
+    @_domModel       = new SceneModel @_modelCfg
+    @_models         = [@_symbolModel, @_domModel]
     @_symbolRegistry = new SymbolRegistry @_symbolModel.model
     @configure cfg
     @_creationTime   = Date.now()
@@ -235,29 +235,29 @@ export class Scene extends Composable
 
     @_stats = new Stats
 
-  # Makes new DOMScene inside of this instance. layer argument can be:
+  # Makes new DOMModel inside of this instance. layer argument can be:
   # 1. string - then new layer is created and scene is attached to it,
   #   string is used as name
   # 2. div - layer which should be used as parent of new scene
   # 3. undefined - new scene will not be attached to anything and user needs
   #    to handle it manually
   # CAREFUL: Other objects passed here as layer can cause problems
-  __addDOMScene: (cfg, layer) ->
+  __addDomModel: (cfg, layer) ->
     if typeof layer == 'string'
       layer = @addLayer layer
 
     newScene = new SceneModel cfg
     newScene._renderer = @initDomRenderer()
-    @_scenes.push newScene
+    @_models.push newScene
     layer?.appendChild newScene.renderer.domElement
     newScene
 
-  addDOMScene: (layer) ->
-    @__addDOMScene @_modeCfg, layer
+  addDomModel: (layer) ->
+    @__addDomModel @_modelCfg, layer
 
-  addDOMSceneWithNewCamera: (layer, camera=new Camera) ->
+  addDomModelWithNewCamera: (layer, camera=new Camera) ->
     cfg = extend @_modeCfg, {camera: camera}
-    newScene = @__addDOMScene cfg, layer
+    newScene = @__addDomModel cfg, layer
     @_cameras.push camera
     @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
     newScene
@@ -349,7 +349,7 @@ export class Scene extends Composable
 
   onResized: () ->
     @initSymbolPointerBuffers()
-    for scene in @scenes
+    for scene in @models
       scene . setSize @width, @height
     for camera in @cameras
       camera.adjustToScene @
@@ -359,8 +359,6 @@ export class Scene extends Composable
 
 
   ### Utils ###
-
-  mainCamera: => @_camera
 
   visibleSpace  : -> [@visibleWidth(), @visibleHeight()]
   visibleWidth  : -> @width  * @camera.position.z
@@ -383,8 +381,8 @@ export class Scene extends Composable
     @symbolRegistry.materials.uniforms.zoom       = @camera.position.z
     @symbolRegistry.materials.uniforms.time       = Date.now() - @_beginTime
     @symbolRegistry.materials.uniforms.drawBuffer = DRAW_BUFFER.NORMAL
-    for scene in @scenes
-      scene.render()
+    for model in @models
+      model.render()
     if @onscreen then @handleMouse()
 
   handleMouse: ->
