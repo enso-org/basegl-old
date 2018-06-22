@@ -1,6 +1,6 @@
 import {DisplayObject, POINTER_EVENTS}    from 'basegl/display/DisplayObject'
 import {SymbolGeometry, SymbolFamily, DRAW_BUFFER}    from 'basegl/display/Symbol'
-import {Camera, GLCamera}  from 'basegl/navigation/Camera'
+import {Camera, GLCamera, SlaveCamera}  from 'basegl/navigation/Camera'
 import {animationManager}  from 'basegl/animation/Manager'
 import {disableBubbling}   from 'basegl/event/EventDispatcher'
 import {Shape}             from 'basegl/display/Shape'
@@ -254,14 +254,18 @@ export class Scene extends Composable
   addDOMScene: (layer) ->
     @__addDOMScene @_modeCfg, layer
 
-  addDOMSceneWithNewCamera: (layer) ->
-    camera = new Camera
+  __addDOMSceneWithCamera: (layer, camera) ->
     cfg = extend @_modeCfg, {camera: camera}
     newScene = @__addDOMScene cfg, layer
     @_cameras.push camera
     @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
     newScene
 
+  addDOMSceneWithNewCamera: (layer) =>
+    @__addDOMSceneWithCamera(layer, new Camera)
+
+  addDOMSceneWithSlaveCamera: (layer) =>
+    @__addDOMSceneWithCamera(layer, new SlaveCamera @_camera)
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!

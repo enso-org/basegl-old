@@ -42,7 +42,7 @@ export class DisplayObject extends Composable
     mat4.translate @xform, @xform, @position.xyz
     mat4.multiply(@xform, @origin, @xform)
 
-    @children.forEach (child) =>
+    @children?.forEach (child) =>
       child.setOrigin @xform
 
   onTransformed: () ->

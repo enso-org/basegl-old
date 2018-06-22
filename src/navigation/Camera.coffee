@@ -25,6 +25,7 @@ export class Camera extends DisplayObject
     super.onTransformed()
     @dispatchEvent (new Event 'move')
 
+
 export class GLCamera extends THREE.PerspectiveCamera
   constructor: (@camera) ->
     super 45, 1, 0.1, 1000000
@@ -32,3 +33,15 @@ export class GLCamera extends THREE.PerspectiveCamera
   adjustToScene: (scene) ->
     @aspect = scene.width / scene.height
     @updateProjectionMatrix()
+
+
+export class SlaveCamera extends Camera
+  constructor: (@parentCam) ->
+    super()
+    @position.z = 1.0
+    @parentCam.addEventListener 'move', @onParentMove
+
+  onParentMove: (event) =>
+    factor = 1 / @parentCam.position.z
+    @position.x = @parentCam.position.x * factor
+    @position.y = @parentCam.position.y * factor
