@@ -35,7 +35,7 @@ export class GLCamera extends THREE.PerspectiveCamera
     @updateProjectionMatrix()
 
 
-export class SlaveCamera extends Camera
+export class ZoomlessCamera extends Camera
   constructor: (@parentCam) ->
     super()
     @position.z = 1.0

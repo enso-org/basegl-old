@@ -1,18 +1,19 @@
-import {DisplayObject, POINTER_EVENTS}    from 'basegl/display/DisplayObject'
-import {SymbolGeometry, SymbolFamily, DRAW_BUFFER}    from 'basegl/display/Symbol'
-import {Camera, GLCamera, SlaveCamera}  from 'basegl/navigation/Camera'
+import {DisplayObject, POINTER_EVENTS}             from 'basegl/display/DisplayObject'
+import {SymbolGeometry, SymbolFamily, DRAW_BUFFER} from 'basegl/display/Symbol'
+import {Camera, ZoomlessCamera}                    from 'basegl/navigation/Camera'
 import {animationManager}  from 'basegl/animation/Manager'
 import {disableBubbling}   from 'basegl/event/EventDispatcher'
 import {Shape}             from 'basegl/display/Shape'
 import {IdxPool}           from 'basegl/lib/container/Pool'
 import {Stats}             from 'basegl/lib/Stats'
 import {setObjectProperty} from 'basegl/object/Property'
-import * as World from 'basegl/display/World'
-
-import * as Color from 'basegl/display/Color'
-import * as Debug from 'basegl/debug/GLInspector'
-import * as Property    from 'basegl/object/Property'
-import {define, mixin, configure, configureLazy, params, lazy, configure2, Composition, Composable, fieldMixin, extend} from 'basegl/object/Property'
+import * as World          from 'basegl/display/World'
+import * as Color          from 'basegl/display/Color'
+import * as Debug          from 'basegl/debug/GLInspector'
+import * as Property       from 'basegl/object/Property'
+import {define, mixin, configure, configureLazy,
+        params, lazy, configure2, Composition,
+        Composable, fieldMixin, extend} from 'basegl/object/Property'
 
 import {eventDispatcherMixin} from 'basegl/event/EventDispatcher'
 
@@ -254,18 +255,12 @@ export class Scene extends Composable
   addDOMScene: (layer) ->
     @__addDOMScene @_modeCfg, layer
 
-  __addDOMSceneWithCamera: (layer, camera) ->
+  addDOMSceneWithCamera: (layer, camera=new Camera) ->
     cfg = extend @_modeCfg, {camera: camera}
     newScene = @__addDOMScene cfg, layer
     @_cameras.push camera
     @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
     newScene
-
-  addDOMSceneWithNewCamera: (layer) =>
-    @__addDOMSceneWithCamera(layer, new Camera)
-
-  addDOMSceneWithSlaveCamera: (layer) =>
-    @__addDOMSceneWithCamera(layer, new SlaveCamera @_camera)
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
@@ -364,6 +359,8 @@ export class Scene extends Composable
 
 
   ### Utils ###
+
+  mainCamera: => @_camera
 
   visibleSpace  : -> [@visibleWidth(), @visibleHeight()]
   visibleWidth  : -> @width  * @camera.position.z
