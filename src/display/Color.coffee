@@ -2,7 +2,7 @@ import * as Reflect   from 'basegl/object/Reflect'
 import * as Property  from 'basegl/object/Property'
 import * as GLSL      from 'basegl/display/target/WebGL'
 import * as TypeClass from 'basegl/lib/TypeClass'
-
+import * as Math      from 'basegl/math/Common'
 
 
 
@@ -10,7 +10,7 @@ import * as TypeClass from 'basegl/lib/TypeClass'
 mixArrays = (a1, a2, s=0.5) ->
   out = []
   for i in [0..a1.length-1]
-    out[i] = a1[i]*(1-s) + a2[i]*s
+    out[i] = Math.add(Math.mul(a1[i],(Math.sub(1,s))),Math.mul(a2[i],s))
   out
 
 
