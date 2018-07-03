@@ -174,7 +174,9 @@ export class Canvas
     cc = "rgb2lch(toLinear(#{GLSL.toCode c}))"
     @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
 
-
+  fillGLSL:     (s1,s)    ->
+    cc = "rgb2lch(" + s + ")"
+    @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
 
 
   glslShape: (code, bbox="vec4(0.0,0.0,0.0,0.0)") -> @defShape code, bbox
@@ -447,6 +449,15 @@ export class Fill extends Shape
     r.canvas.fill a, @color
 Shape::fill = protoBindCons Fill
 export fill = consAlias Fill
+
+
+export class FillGLSL extends Shape
+  constructor: (@a, @color) -> super(); @addChildren @a
+  renderGLSL: (r) ->
+    a = r.renderShape @a
+    r.canvas.fillGLSL a, @color
+Shape::fillGLSL = protoBindCons FillGLSL
+export fillGLSL = consAlias FillGLSL
 
 
 

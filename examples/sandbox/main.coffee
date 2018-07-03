@@ -60,6 +60,7 @@ nodeShape = basegl.expr ->
   body          = rect(bodyWidth + 2*border, bodyHeight + 2*border, 0, nodeRadius).alignedBL
   node          = (header + body).move(nodeSelectionBorderMaxSize,nodeSelectionBorderMaxSize)
   node          = node.fill nodeBg
+  # node          = node.fillGLSL "vec4(p.x/500.0, p.y/500.0, 0.0, 1.0)"
 
   eye           = 'scaledEye.z'
   border        = node.grow(Math.pow(Math.clamp(eye*20.0, 0.0, 400.0),0.7)).grow(-1)
