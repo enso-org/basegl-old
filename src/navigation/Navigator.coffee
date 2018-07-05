@@ -92,13 +92,13 @@ export class Navigator
 
   _moveCamera: (event, wheel=false) =>
     if wheel
-      movement = new Vector [event.deltaX, event.deltaY, 0]
+      movement = new Vector [-event.deltaX, -event.deltaY, 0]
     else
       movement = new Vector [event.movementX, event.movementY, 0]
 
     applyDir = (a) ->
       if wheel
-        if event.deltaY > 0 then a.negate() else a
+        if event.deltaY > 0 then a else a.negate()
       else
         if event.movementX < event.movementY then a.negate() else a
 
