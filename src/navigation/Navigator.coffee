@@ -116,8 +116,9 @@ export class Navigator
 
     else if @action == Navigator.ACTION.PAN
       [visibleWidth, visibleHeight] = @scene.visibleSpace()
-      @desiredPos.x += movement.x * (visibleWidth  / @scene.width)
-      @desiredPos.y -= movement.y * (visibleHeight / @scene.height)
+      dir = if wheel then -1.0 else 1.0
+      @desiredPos.x -= movement.x * (visibleWidth  / @scene.width)  * dir
+      @desiredPos.y += movement.y * (visibleHeight / @scene.height) * dir
 
   onMouseDown: (event) =>
     document.addEventListener 'mousemove', @onMouseMove
