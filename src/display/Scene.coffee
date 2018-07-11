@@ -414,6 +414,7 @@ export class Scene extends Composable
         family         = @_symbolRegistry.lookupSymbolFamily symbolFamilyID
         if not family then return # wrong results when resizing scene!
         symbol         = family.lookupSymbol symbolID
+        return unless symbol?
         shapeDef       = family.definition.shape
         shapeDefTarget = symbol.lookupShapeDef shapeID
         target         = new SymbolTarget targetPath, symbol,
