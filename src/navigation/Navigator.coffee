@@ -55,6 +55,8 @@ export class Navigator
   onEveryFrame: () =>
     camDelta    = @desiredPos.sub @scene.camera.position
     camDeltaLen = camDelta.length()
+    return if camDeltaLen == 0
+
     forceVal    = camDeltaLen * @springCoeff
     force       = camDelta.normalize().mul forceVal
     force.z     = camDelta.z * @springCoeff
