@@ -12,6 +12,56 @@ isCtrlRightClick   = (e) -> e.button == 2 and e.ctrlKey
 isShiftLeftClick   = (e) -> e.button == 0 and e.shiftKey
 isShiftMiddleClick = (e) -> e.button == 1 and e.shiftKey
 isShiftRightClick  = (e) -> e.button == 2 and e.shiftKey
+isCtrlPlus         = (e) -> e.key == "="  and e.shiftKey and (e.ctrlKey or e.metaKey)  # handle Cmd+"+" as well
+isCtrlMinus        = (e) -> e.key == "-"  and (e.ctrlKey or e.metaKey)
+isCtrlZero         = (e) -> e.key == "0"  and (e.ctrlKey or e.metaKey)
+
+
+################
+### Movement ###
+################
+
+# NOTE: this class is instantiated with each movement-related event.
+# This means there will be some GC involved when there's a lot of
+# objects created. However, it accounts for about 0.25% of program
+# execution time, so not a bottleneck at all. Object creation
+# is 0.02% of execution time.
+class Movement
+  constructor: ->
+    @vec      = new Vector [0.0, 0.0, 0.0]
+    @wheel    = false
+    @applyDir = (a) -> a
+
+  @ZOOM_SPEED: 4.0  # controls how much each "Ctrl + (+/-) zooms in/out
+  @IDENTITY:   (a) -> a
+  @NEGATE:     (a) -> a.negate()
+
+  @zoomIn: ->
+    movement = new Movement
+    movement.vec.x = Movement.ZOOM_SPEED
+    movement.wheel = true
+    movement
+
+  @zoomOut: ->
+    movement = Movement.zoomIn()
+    movement.applyDir = Movement.NEGATE
+    movement
+
+  @fromEvent: (event) ->
+    wheel     = event.type == 'wheel'
+    movementX = event.movementX || 0.0
+    movementY = event.movementY || 0.0
+    deltaX    = event.deltaX    || 0.0
+    deltaY    = event.deltaY    || 0.0
+
+    movement       = new Movement
+    movement.vec.x = if wheel then deltaX else movementX
+    movement.vec.y = if wheel then deltaY else movementY
+    movement.wheel = wheel
+    if (wheel and deltaY > 0) or (not wheel and movementX < movementY)
+      movement.applyDir = Movement.NEGATE
+
+    movement
 
 
 #################
@@ -48,6 +98,7 @@ export class Navigator
     @scene.domElement.addEventListener 'contextmenu', @onContextMenu
     document.addEventListener          'mouseup'    , @onMouseUp
     document.addEventListener          'wheel'      , @onWheel
+    document.addEventListener          'keydown'    , @onKeyDown
 
     animationManager.addConstantRateAnimation @.onEveryFrame
 
@@ -81,10 +132,12 @@ export class Navigator
 
 
   _calcCameraPath: (event) =>
-    @campos = Vector.fromXYZ @scene.camera.position    
+    @campos = Vector.fromXYZ @scene.camera.position
+    offsetX = event.offsetX || 0.0
+    offsetY = event.offsetY || 0.0
 
-    rx =   (event.offsetX / @scene.width  - 0.5)
-    ry = - (event.offsetY / @scene.height - 0.5)
+    rx =   (offsetX / @scene.width  - 0.5)
+    ry = - (offsetY / @scene.height - 0.5)
 
     [visibleWidth, visibleHeight] = @scene.visibleSpace()
     @clickPoint = new Vector [@scene.camera.position.x + rx * visibleWidth, @scene.camera.position.y + ry * visibleHeight, 0]
@@ -92,23 +145,13 @@ export class Navigator
     camPathNorm = @camPath.normalize()
     @camPath    = camPathNorm.div Math.abs(camPathNorm.z)
 
-  _moveCamera: (event, wheel=false) =>
-    if wheel
-      movement = new Vector [event.deltaX, event.deltaY, 0]
-    else
-      movement = new Vector [event.movementX, event.movementY, 0]
-
-    applyDir = (a) ->
-      if wheel
-        if event.deltaY > 0 then a.negate() else a
-      else
-        if event.movementX < event.movementY then a.negate() else a
-
+  _moveCamera: (movement) =>
     if @action == Navigator.ACTION.ZOOM
-      movementDeltaLen2 = movement.length()
-      trans             = applyDir (@camPath.mul (Math.abs (@scene.camera.position.z) * movementDeltaLen2 / 100))
-      @desiredPos       = @desiredPos.add trans
-      limit             = null
+      movDeltaLen2 = movement.vec.length()
+      z            = @scene.camera.position.z
+      trans        = movement.applyDir (@camPath.mul (Math.abs z * movDeltaLen2 / 100))
+      @desiredPos  = @desiredPos.add trans
+      limit        = null
       if      (@desiredPos.z < @minDist) then limit = @minDist
       else if (@desiredPos.z > @maxDist) then limit = @maxDist
       if limit
@@ -118,9 +161,9 @@ export class Navigator
 
     else if @action == Navigator.ACTION.PAN
       [visibleWidth, visibleHeight] = @scene.visibleSpace()
-      dir = if wheel then -1.0 else 1.0
-      @desiredPos.x -= movement.x * (visibleWidth  / @scene.width)  * dir
-      @desiredPos.y += movement.y * (visibleHeight / @scene.height) * dir
+      dir = if movement.wheel then -1.0 else 1.0
+      @desiredPos.x -= movement.vec.x * (visibleWidth  / @scene.width)  * dir
+      @desiredPos.y += movement.vec.y * (visibleHeight / @scene.height) * dir
 
   onMouseDown: (event) =>
     document.addEventListener 'mousemove', @onMouseMove
@@ -134,12 +177,12 @@ export class Navigator
 
     @_calcCameraPath event
 
-  onMouseMove:   (event) => @_moveCamera event
+  onMouseMove:   (event) => @_moveCamera (Movement.fromEvent event)
   onMouseUp:     (event) => document.removeEventListener 'mousemove', @onMouseMove
   onContextMenu: (event) => event.preventDefault()
 
   onWheel: (event) =>
-    event.preventDefault();
+    event.preventDefault()
     @_calcCameraPath event
 
     if event.ctrlKey
@@ -149,4 +192,23 @@ export class Navigator
       # wheel only is two-finger scroll
       @action = Navigator.ACTION.PAN
 
-    @_moveCamera(event, wheel=true)
+    @_moveCamera (Movement.fromEvent event)
+
+  onKeyDown: (event) =>
+      ctrlMinus = isCtrlMinus event
+      ctrlPlus  = isCtrlPlus  event
+      ctrlZero  = isCtrlZero  event
+
+      if ctrlMinus or ctrlPlus or ctrlZero
+          event.preventDefault()
+          @action = Navigator.ACTION.ZOOM
+
+      if ctrlMinus
+        @_calcCameraPath event
+        @_moveCamera Movement.zoomOut()
+      else if ctrlPlus
+        @_calcCameraPath event
+        @_moveCamera Movement.zoomIn()
+      else if ctrlZero
+        @desiredPos.z = 1.0
+        @_moveCamera (new Movement)

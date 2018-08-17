@@ -258,7 +258,6 @@ tmpShape = basegl.expr ->
   out = c1 + c2
   # out.fill Color.rgb([0.3,0,0])
 
-
 main = () ->
 
   # Starting out, loading fonts, etc.
@@ -270,7 +269,6 @@ main = () ->
 
   # Adding navigation to scene
   controls = new Navigator scene
-
 
   # Defining shapes
   nodeDef = basegl.symbol nodeShape
