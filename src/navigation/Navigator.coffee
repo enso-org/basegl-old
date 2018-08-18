@@ -195,20 +195,26 @@ export class Navigator
     @_moveCamera (Movement.fromEvent event)
 
   onKeyDown: (event) =>
-      ctrlMinus = isCtrlMinus event
-      ctrlPlus  = isCtrlPlus  event
-      ctrlZero  = isCtrlZero  event
+    ctrlMinus = isCtrlMinus event
+    ctrlPlus  = isCtrlPlus  event
+    ctrlZero  = isCtrlZero  event
 
-      if ctrlMinus or ctrlPlus or ctrlZero
-          event.preventDefault()
-          @action = Navigator.ACTION.ZOOM
+    if ctrlMinus or ctrlPlus or ctrlZero
+        event.preventDefault()
+        @action = Navigator.ACTION.ZOOM
 
-      if ctrlMinus
-        @_calcCameraPath event
-        @_moveCamera Movement.zoomOut()
-      else if ctrlPlus
-        @_calcCameraPath event
-        @_moveCamera Movement.zoomIn()
-      else if ctrlZero
-        @desiredPos.z = 1.0
-        @_moveCamera (new Movement)
+    if ctrlMinus
+      @_calcCameraPath event
+      @_moveCamera Movement.zoomOut()
+    else if ctrlPlus
+      @_calcCameraPath event
+      @_moveCamera Movement.zoomIn()
+    else if ctrlZero
+      @desiredPos.z = 1.0
+      @_moveCamera (new Movement)
+
+  # Move the camera to a given point
+  moveTo: (x, y) =>
+    @desiredPos.x = x
+    @desiredPos.y = y
+    @_moveCamera (new Movement)
