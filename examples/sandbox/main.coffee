@@ -4,7 +4,7 @@ import {POINTER_EVENTS}      from 'basegl/display/DisplayObject'
 import {group}      from 'basegl/display/Symbol'
 import * as Symbol from 'basegl/display/Symbol'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
-import {Navigator}      from 'basegl/navigation/Navigator'
+import {KeyboardMouseReactor} from 'basegl/navigation/EventReactor'
 import * as basegl from 'basegl'
 import * as Shape     from 'basegl/display/Shape'
 
@@ -268,7 +268,7 @@ main = () ->
   scene = basegl.scene {domElement: 'scene'}
 
   # Adding navigation to scene
-  controls = new Navigator scene
+  eventReactor = new KeyboardMouseReactor scene
 
   # Defining shapes
   nodeDef = basegl.symbol nodeShape
