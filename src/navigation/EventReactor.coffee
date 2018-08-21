@@ -2,19 +2,42 @@ import {Movement}  from "basegl/navigation/Movement"
 import {Navigator} from "basegl/navigation/Navigator"
 
 
-# Handy aliases for common event predicates
-isLeftClick        = (e) -> e.button == 0
-isMiddleClick      = (e) -> e.button == 1
-isRightClick       = (e) -> e.button == 2
-isCtrlLeftClick    = (e) -> e.button == 0 and e.ctrlKey
-isCtrlMiddleClick  = (e) -> e.button == 1 and e.ctrlKey
-isCtrlRightClick   = (e) -> e.button == 2 and e.ctrlKey
-isShiftLeftClick   = (e) -> e.button == 0 and e.shiftKey
-isShiftMiddleClick = (e) -> e.button == 1 and e.shiftKey
-isShiftRightClick  = (e) -> e.button == 2 and e.shiftKey
-isCtrlPlus         = (e) -> e.key == "="  and e.shiftKey and (e.ctrlKey or e.metaKey)  # handle Cmd+"+" as well
-isCtrlMinus        = (e) -> e.key == "-"  and (e.ctrlKey or e.metaKey)
-isCtrlZero         = (e) -> e.key == "0"  and (e.ctrlKey or e.metaKey)
+now = -> new Date().getTime()
+
+
+export class EventInfo
+
+  constructor: ->
+    @isTouchPad = null
+    @eventCount = 0
+    @eventCountStart = null
+
+  # Handy aliases for common event predicates
+  isLeftClick:        (e) => e.button == 0
+  isMiddleClick:      (e) => e.button == 1
+  isRightClick:       (e) => e.button == 2
+  isCtrlLeftClick:    (e) => e.button == 0 and e.ctrlKey
+  isCtrlMiddleClick:  (e) => e.button == 1 and e.ctrlKey
+  isCtrlRightClick:   (e) => e.button == 2 and e.ctrlKey
+  isShiftLeftClick:   (e) => e.button == 0 and e.shiftKey
+  isShiftMiddleClick: (e) => e.button == 1 and e.shiftKey
+  isShiftRightClick:  (e) => e.button == 2 and e.shiftKey
+  isCtrlPlus:         (e) => e.key == "="  and e.shiftKey and (e.ctrlKey or e.metaKey)  # handle Cmd+"+" as well
+  isCtrlMinus:        (e) => e.key == "-"  and (e.ctrlKey or e.metaKey)
+  isCtrlZero:         (e) => e.key == "0"  and (e.ctrlKey or e.metaKey)
+
+  isTouchpadEvent: (e) =>
+    return unless e.type == 'wheel'
+
+    currTime = now()
+    @eventCountStart = currTime if @eventCount == 0
+    @eventCount++
+
+    if currTime - @eventCountStart > 100
+      @isTouchPad = @eventCount > 5
+      @eventCount = 0
+
+    return @isTouchPad
 
 
 ######################################################################
@@ -34,13 +57,14 @@ export class EventReactor
 
   constructor: (@scene, @navigator) ->
     @navigator ?= new Navigator @scene
+    @eventInfo = new EventInfo
     @action = null
 
   registerEvents: =>
     @scene.domElement.addEventListener 'contextmenu', @onContextMenu
 
-  eventIsZoom: (event) => isRightClick  event
-  eventIsPan:  (event) => isMiddleClick event
+  eventIsZoom: (event) => @eventInfo.isRightClick  event
+  eventIsPan:  (event) => @eventInfo.isMiddleClick event
 
   onContextMenu: (event) => event.preventDefault()
 
@@ -60,6 +84,7 @@ export class KeyboardMouseReactor extends EventReactor
 
   constructor: (scene, navigator) ->
     super scene, navigator
+    @eventInfo = new EventInfo
     @registerEvents()
 
   registerEvents: =>
@@ -69,8 +94,8 @@ export class KeyboardMouseReactor extends EventReactor
     document.addEventListener          'wheel'      , @onWheel
     document.addEventListener          'keydown'    , @onKeyDown
 
-  eventIsZoom: (event) => isRightClick  event
-  eventIsPan:  (event) => isMiddleClick event
+  eventIsZoom: (event) => @eventInfo.isRightClick  event
+  eventIsPan:  (event) => @eventInfo.isMiddleClick event
 
   onMouseDown: (event) =>
     document.addEventListener 'mousemove', @onMouseMove
@@ -96,20 +121,30 @@ export class KeyboardMouseReactor extends EventReactor
 
   onWheel: (event) =>
     event.preventDefault()
+    isTouchPad = @eventInfo.isTouchpadEvent event
+    console.log "isTouchPad: ", isTouchPad
+    return if isTouchPad == null
+
     movement = Movement.fromEvent event
     @navigator.calcCameraPath movement
 
-    if event.ctrlKey
-      # ctrl + wheel is how the trackpad-pinch is represented
-      @navigator.zoom movement
+    if isTouchPad
+      if event.ctrlKey
+        # ctrl + wheel is how the trackpad-pinch is represented
+        @navigator.zoom movement
+      else
+        # wheel only is two-finger scroll
+        @navigator.pan movement
     else
-      # wheel only is two-finger scroll
-      @navigator.pan movement
+      if event.ctrlKey
+        @navigator.pan movement
+      else
+        @navigator.zoom movement
 
   onKeyDown: (event) =>
-    ctrlMinus = isCtrlMinus event
-    ctrlPlus  = isCtrlPlus  event
-    ctrlZero  = isCtrlZero  event
+    ctrlMinus = @eventInfo.isCtrlMinus event
+    ctrlPlus  = @eventInfo.isCtrlPlus  event
+    ctrlZero  = @eventInfo.isCtrlZero  event
 
     if ctrlMinus or ctrlPlus or ctrlZero
         event.preventDefault()
