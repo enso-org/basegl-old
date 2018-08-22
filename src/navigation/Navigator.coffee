@@ -1,31 +1,18 @@
 import {Vector}           from "basegl/math/Vector"
 import {animationManager} from "basegl/animation/Manager"
+import {Movement}         from "basegl/navigation/Movement"
 
 
-# Handy aliases for common event predicates
-isLeftClick        = (e) -> e.button == 0
-isMiddleClick      = (e) -> e.button == 1
-isRightClick       = (e) -> e.button == 2
-isCtrlLeftClick    = (e) -> e.button == 0 and e.ctrlKey
-isCtrlMiddleClick  = (e) -> e.button == 1 and e.ctrlKey
-isCtrlRightClick   = (e) -> e.button == 2 and e.ctrlKey
-isShiftLeftClick   = (e) -> e.button == 0 and e.shiftKey
-isShiftMiddleClick = (e) -> e.button == 1 and e.shiftKey
-isShiftRightClick  = (e) -> e.button == 2 and e.shiftKey
-
-
-#################
-### Navigator ###
-#################
+#############################################################################
+### Navigator ###                                                           #
+#                                                                           #
+# The utility for moving (and animating) the camera. Supports commands such #
+# as `zoom`, `pan` and `moveTo`                                             #
+#############################################################################
 
 export class Navigator
-  @ACTION:
-    PAN : 'PAN'
-    ZOOM: 'ZOOM'
 
-  constructor: (@scene, actions={ isPan:  isMiddleClick
-                                , isZoom: isRightClick
-                                }) ->
+  constructor: (@scene) ->
     @zoomFactor   = 1
     @drag         = 10
     @springCoeff  = 1.5
@@ -36,21 +23,10 @@ export class Navigator
     @minVel       = 0.001
 
     @vel          = new Vector
-    @acc          = new Vector
     @desiredPos   = Vector.fromXYZ @scene.camera.position
     @campos       = null
-    @action       = null
-    @started      = false
-    @eventIsPan   = actions.isPan
-    @eventIsZoom  = actions.isZoom
-
-    @scene.domElement.addEventListener 'mousedown'  , @onMouseDown
-    @scene.domElement.addEventListener 'contextmenu', @onContextMenu
-    document.addEventListener          'mouseup'    , @onMouseUp
-    document.addEventListener          'wheel'      , @onWheel
 
     animationManager.addConstantRateAnimation @.onEveryFrame
-
 
   onEveryFrame: () =>
     camDelta    = @desiredPos.sub @scene.camera.position
@@ -79,74 +55,40 @@ export class Navigator
       if newVelVal != 0
         @vel = @vel.div (1 + @drag * newVelVal)
 
-
-  _calcCameraPath: (event) =>
-    @campos = Vector.fromXYZ @scene.camera.position    
-
-    rx =   (event.offsetX / @scene.width  - 0.5)
-    ry = - (event.offsetY / @scene.height - 0.5)
+  calcCameraPath: (movement) =>
+    rx =   (movement.offset.x / @scene.width  - 0.5)
+    ry = - (movement.offset.y / @scene.height - 0.5)
 
     [visibleWidth, visibleHeight] = @scene.visibleSpace()
-    @clickPoint = new Vector [@scene.camera.position.x + rx * visibleWidth, @scene.camera.position.y + ry * visibleHeight, 0]
-    @camPath    = @clickPoint.sub @scene.camera.position
+    clickPointX = @scene.camera.position.x + rx * visibleWidth
+    clickPointY = @scene.camera.position.y + ry * visibleHeight
+    clickPoint  = new Vector [ clickPointX, clickPointY, 0]
+    @camPath    = clickPoint.sub @scene.camera.position
     camPathNorm = @camPath.normalize()
     @camPath    = camPathNorm.div Math.abs(camPathNorm.z)
 
-  _moveCamera: (event, wheel=false) =>
-    if wheel
-      movement = new Vector [event.deltaX, event.deltaY, 0]
-    else
-      movement = new Vector [event.movementX, event.movementY, 0]
+  zoom: (movement) =>
+    movDeltaLen2 = movement.vec.length()
+    z            = @scene.camera.position.z
+    trans        = movement.applyDir (@camPath.mul (Math.abs z * movDeltaLen2 / 100))
+    @desiredPos  = @desiredPos.add trans
+    limit        = null
+    if      (@desiredPos.z < @minDist) then limit = @minDist
+    else if (@desiredPos.z > @maxDist) then limit = @maxDist
+    if limit
+      transNorm   = trans.normalize()
+      transFix    = transNorm.div(transNorm.z).mul(limit-@desiredPos.z)
+      @desiredPos = @desiredPos.add transFix
 
-    applyDir = (a) ->
-      if wheel
-        if event.deltaY > 0 then a.negate() else a
-      else
-        if event.movementX < event.movementY then a.negate() else a
+  pan: (movement) =>
+    [visibleWidth, visibleHeight] = @scene.visibleSpace()
+    @desiredPos.x -= movement.vec.x * (visibleWidth  / @scene.width)
+    @desiredPos.y += movement.vec.y * (visibleHeight / @scene.height)
 
-    if @action == Navigator.ACTION.ZOOM
-      movementDeltaLen2 = movement.length()
-      trans             = applyDir (@camPath.mul (Math.abs (@scene.camera.position.z) * movementDeltaLen2 / 100))
-      @desiredPos       = @desiredPos.add trans
-      limit             = null
-      if      (@desiredPos.z < @minDist) then limit = @minDist
-      else if (@desiredPos.z > @maxDist) then limit = @maxDist
-      if limit
-        transNorm   = trans.normalize()
-        transFix    = transNorm.div(transNorm.z).mul(limit-@desiredPos.z)
-        @desiredPos = @desiredPos.add transFix
+  # Move the camera to a given point.
+  moveTo: (coords) =>
+    @desiredPos.x = coords2.x if coords.x?
+    @desiredPos.y = coords2.y if coords.y?
+    @desiredPos.z = coords2.z if coords.z?
 
-    else if @action == Navigator.ACTION.PAN
-      [visibleWidth, visibleHeight] = @scene.visibleSpace()
-      dir = if wheel then -1.0 else 1.0
-      @desiredPos.x -= movement.x * (visibleWidth  / @scene.width)  * dir
-      @desiredPos.y += movement.y * (visibleHeight / @scene.height) * dir
-
-  onMouseDown: (event) =>
-    document.addEventListener 'mousemove', @onMouseMove
-    @started = false
-
-    if @eventIsZoom event
-      @action = Navigator.ACTION.ZOOM
-    else if @eventIsPan event
-      @action = Navigator.ACTION.PAN
-    else @action = null
-
-    @_calcCameraPath event
-
-  onMouseMove:   (event) => @_moveCamera event
-  onMouseUp:     (event) => document.removeEventListener 'mousemove', @onMouseMove
-  onContextMenu: (event) => event.preventDefault()
-
-  onWheel: (event) =>
-    event.preventDefault();
-    @_calcCameraPath event
-
-    if event.ctrlKey
-      # ctrl + wheel is how the trackpad-pinch is represented
-      @action = Navigator.ACTION.ZOOM
-    else
-      # wheel only is two-finger scroll
-      @action = Navigator.ACTION.PAN
-
-    @_moveCamera(event, wheel=true)
+    @pan (new Movement)
