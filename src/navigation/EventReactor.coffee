@@ -147,7 +147,7 @@ export class KeyboardMouseReactor extends EventReactor
     ctrlZero  = @eventInfo.isCtrlZero  event
 
     if ctrlMinus or ctrlPlus or ctrlZero
-        event.preventDefault()
+      event.preventDefault()
 
     if ctrlMinus
       movement = Movement.zoomOut()

@@ -87,10 +87,8 @@ export class Navigator
 
   # Move the camera to a given point.
   moveTo: (coords) =>
-    defCoords = { x: null, y: null, z: null }
-    coords2   = Object.assign(defCoords, coords)
-    @desiredPos.x = coords2.x if coords2.x?
-    @desiredPos.y = coords2.y if coords2.y?
-    @desiredPos.z = coords2.z if coords2.z?
+    @desiredPos.x = coords2.x if coords.x?
+    @desiredPos.y = coords2.y if coords.y?
+    @desiredPos.z = coords2.z if coords.z?
 
     @pan (new Movement)
