@@ -87,8 +87,8 @@ export class Navigator
 
   # Move the camera to a given point.
   moveTo: (coords) =>
-    @desiredPos.x = coords2.x if coords.x?
-    @desiredPos.y = coords2.y if coords.y?
-    @desiredPos.z = coords2.z if coords.z?
+    @desiredPos.x = coords.x if coords.x?
+    @desiredPos.y = coords.y if coords.y?
+    @desiredPos.z = coords.z if coords.z?
 
     @pan (new Movement)
