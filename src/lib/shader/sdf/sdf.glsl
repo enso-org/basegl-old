@@ -230,13 +230,9 @@ float sdf_differenceChamfer (float a, float b, float r) {
 ////// Filters //////
 /////////////////////
 
-float sdf_blur (float d, float r) { return d/((r/zoomLevel) + 1.0); }
-// float sdf_blur (float d, float r) {
-//   float d2 = d/((r/zoomLevel) + 1.0);
-//   float d3 = (d2 + 1.0)/2.0;
-//   float d4 = sign(d3) * pow(abs(d3),(1.0/2.2));
-//   return d4 * 2.0 - 1.0;
-// }
+float sdf_blur (float d, float radius, float power) {
+    return 1.0-2.0*pow(clamp((radius - d) / radius),power);
+}
 
 
 

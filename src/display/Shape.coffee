@@ -160,7 +160,7 @@ export class Canvas
   grow:          (s1,r)    -> @defShape "sdf_grow(#{GLSL.toCode r},#{s1.name})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
   outside:       (s1)      -> @defShape "sdf_removeInside(#{s1.name})"          , s1.bbName                                  , s1.cdName
   inside:        (s1)      -> @defShape "sdf_removeOutside(#{s1.name})"         , s1.bbName                                  , s1.cdName, @keepIDLayer(s1)
-  blur:          (s1,r)    -> @defShape "sdf_blur(#{s1.name},#{GLSL.toCode r})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
+  blur:          (s1,r, p) -> @defShape "sdf_blur(#{s1.name}, #{GLSL.toCode r}, #{GLSL.toCode p})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
   move:          (x,y)     -> @addCodeLine "p = sdf_translate(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
   rotate:        (a)       -> @addCodeLine "p = sdf_rotate(p, - #{GLSL.toCode a});"
@@ -429,10 +429,10 @@ export repeat = consAlias Repeat
 ###############
 
 export class Blur extends Shape
-  constructor: (@a, @radius) -> super(); @addChildren @a
+  constructor: (@a, @radius, @power=2.0) -> super(); @addChildren @a
   renderGLSL: (r) ->
     a = r.renderShape @a
-    r.canvas.blur a, @radius
+    r.canvas.blur a, @radius, @power
 Shape::blur = protoBindCons Blur
 export blur = consAlias Blur
 
