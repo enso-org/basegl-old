@@ -753,6 +753,23 @@ vec3 rgb2lch(in vec3 c)
 vec4 rgb2lch(vec4 c) {
     return vec4(rgb2lch(c.rgb), c.a);
 }
+vec3 hue2rgb(float hue) {
+    float R = abs(hue * 6.0 - 3.0) - 1.0;
+    float G = 2.0 - abs(hue * 6.0 - 2.0);
+    float B = 2.0 - abs(hue * 6.0 - 4.0);
+    return clamp(vec3(R,G,B), 0.0, 1.0);
+}
+vec3 hsl2rgb(vec3 hsl) {
+    vec3 rgb = hue2rgb(hsl.x);
+    float C = (1.0 - abs(2.0 * hsl.z - 1.0)) * hsl.y;
+    return (rgb - 0.5) * C + hsl.z;
+}
+vec3 hsl2lch(vec3 c) {
+    return rgb2lch(hsl2rgb(c));
+}
+vec4 hsl2lch(vec4 c) {
+    return vec4(hsl2lch(c.xyz), c.a);
+}
 
 vec3 lch2rgb(in vec3 c)
 {

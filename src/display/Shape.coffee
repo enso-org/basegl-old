@@ -167,11 +167,11 @@ export class Canvas
   moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
   repeat:        (x,y)     -> @addCodeLine "p = sdf_repeat(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
   fill:          (s1,c)    ->
-    c = c.toRGB()
     if c.a == undefined
       c = c.copy()
       c.a = 1
-    cc = "rgb2lch(toLinear(#{GLSL.toCode c}))"
+    conv = if c instanceof Color.RGB then 'rgb2lch' else 'hsl2lch'
+    cc = "#{conv}(toLinear(#{GLSL.toCode c}))"
     @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
 
   fillGLSL:     (s1,s)    ->

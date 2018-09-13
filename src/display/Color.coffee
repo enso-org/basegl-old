@@ -75,6 +75,9 @@ export class HSL extends Color
 
   mix: (c, t=0.5) -> hsl (mixArrays @_arr, c.toHSL()._arr, t)
 
+  TypeClass.implement @, GLSL.toExpr, () ->
+    if @a == undefined then GLSL.callExpr 'vec3' , @hsl
+    else                    GLSL.callExpr 'vec4' , @hsla
 
 export hsl = Property.consAlias HSL
 
