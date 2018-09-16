@@ -264,6 +264,7 @@ export class Scene extends Composable
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
+    @_beginTime            = Date.now()
     @symbolModel._renderer = @initWebGLRenderer()
     @domModel._renderer    = @initDomRenderer()
     for camera in @cameras

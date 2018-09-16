@@ -129,6 +129,12 @@ div.style.height = '200px';
 div.style.backgroundColor = '#FF0000';
 div.id = 'examplebutton'
 
+div2 = document.createElement( 'div' );
+div2.style.width = nodew + 'px';
+div2.style.height = '200px';
+div2.style.backgroundColor = '#FF0000';
+div2.id = 'examplebutton'
+
 xid = 'SJOz3qjfQXU'
 iframe = document.createElement( 'iframe' );
 iframe.style.width = '480px';
@@ -290,6 +296,12 @@ main = () ->
   vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
   vis1.position.y = -80
 
+
+  visx  = basegl.symbol div2
+  visx1 = scene.add visx
+  visx1.position.x = nodew/2 + nodeSelectionBorderMaxSize
+  visx1.position.y = -80
+
   n1 = scene.add nodeDef
   n1.position.xy = [0, 0]
   n1.id = 1
@@ -368,6 +380,7 @@ main = () ->
   vg.position.x -= 2 # letterOffset / 2
 
   nn1 = group [n1,vis1, code1, vg]
+  nn2 = group [n2,visx1]
 
   # str = 'The quick brown fox \njumps over the lazy dog'
   # txt = atlas.addText scene, str
