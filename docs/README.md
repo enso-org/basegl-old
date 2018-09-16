@@ -42,7 +42,7 @@ In order to create a scene use a `scene` function:
 
 ```coffeescript
 scene = basegl.scene
-  domElement: 'basegl-root'
+  domElement: 'scene'
 ```
 
 There are multiple options to configure a scene:
