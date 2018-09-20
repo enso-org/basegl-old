@@ -94,15 +94,17 @@ export class Symbol
     @shader.uniforms   = @_globalVariables
 
   _initVariables: () ->
-    mkVariableProxy = (fdef) => new Proxy {},
+    mkVariableProxy = (fdef, fget) => new Proxy {},
+      get: (target, name)      => fget.call @, name
       set: (target, name, val) =>
         tval = val
         if not (tval instanceof TypedValue)
           tval = new TypedValue (inferAttribType val), val
         fdef.call @, name, tval
         true
-    @variables       = mkVariableProxy @defineVariable
-    @globalVariables = mkVariableProxy @defineGlobalVariable
+
+    @variables       = mkVariableProxy @defineVariable, @readVariable
+    @globalVariables = mkVariableProxy @defineGlobalVariable, @readGlobalVariable
 
   _initMaterial: () ->
     @material = new THREE.RawShaderMaterial
@@ -144,13 +146,17 @@ export class Symbol
     @_globalVariables.set name, v
     @material.uniforms[name] = v
 
+  readVariable: (name) -> @_localVariables.get name
+
   defineVariable: (name, def) ->
-    cvar = @_localVariables.get name
+    cvar = @readVariable name
     @setVariable name, def
     if not (cvar? && cvar.type == def.type) then @_recomputeShader()
 
+  readGlobalVariable: (name) -> @_globalVariables.get name
+
   defineGlobalVariable: (name, def) ->
-    cvar = @_globalVariables.get name
+    cvar = @readGlobalVariable name
     @setGlobalVariable name, def
     if not (cvar? && cvar.type == def.type) then @_recomputeShader()
 
@@ -257,6 +263,19 @@ export class SymbolGeometry
       buffer[start + i] = v
     @geometry.attributes[vname].needsUpdate = true
 
+  getBufferVal: (id, name) ->
+    vname  = 'v_' + name
+    size   = attribSizeByType.get(@attributeTypeMap.get(vname))
+    start  = id * size
+    buffer = @buffers[vname]
+    attrib = @attributes[vname]
+    if window.BASEGL_DEBUG
+      console.debug "getBufferVal", id, name
+    if attrib.itemSize == 1
+      buffer[start]
+    else
+      buffer.slice(start, start + attrib.itemSize)
+
   addAttribute: (v, name) ->
     vname = 'v_' + name
     @attributeTypeMap.set vname, v.type
@@ -293,6 +312,7 @@ export class SymbolInstance extends DisplayObject
     @bbox.onChanged = () => @family.geometry.setSize @id, @bbox.xy
     @bbox.onChanged()
     @variables = new Proxy {},
+      get: (target, name)      => @getVariable name
       set: (target, name, val) =>
         @setVariable name, val
         true
@@ -318,6 +338,9 @@ export class SymbolInstance extends DisplayObject
 
   setVariable: (name, val) ->
     @family.geometry.setBufferVal @id, name, val
+
+  getVariable: (name) ->
+    @family.geometry.getBufferVal @id, name
 
   dispose: ()->
     @family.geometry.dispose @id
