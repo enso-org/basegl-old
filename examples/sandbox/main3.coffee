@@ -35,9 +35,7 @@ nodeh = 750
 
 white          = Color.rgb [1,1,1]
 bg             = (Color.hsl [40,0.08,0.09]).toRGB()
-selectionColor = bg.mix (Color.hsl [50, 0.8, 0.6]), 0.9
-# selectionColor = bg.mix (Color.hsl [50, 1, 0.6]), 0.8
-# selectionColor = bg.mix (Color.hsl [4.3, 0.61, 0.44]), 1.0
+selectionColor = bg.mix (Color.hsl [50, 1, 0.6]), 0.8
 # selectionColor = Color.rgb [107/255, 160/255, 219/255, 1]
 nodeBg         = bg.mix white, 0.04
 
@@ -113,8 +111,6 @@ nodeShapeComplex = basegl.expr ->
 
   node
 
-nodeHeight = 40
-
 nodeShape = basegl.expr ->
   r = 20
   node          = rect('bbox.x' - 2*nodeSelectionBorderMaxSize, 'bbox.y' - 2*nodeSelectionBorderMaxSize,r,r,r,r).alignedBL
@@ -122,18 +118,13 @@ nodeShape = basegl.expr ->
   node          = node.fill nodeBg
 
   eye           = 'scaledEye.z'
-  border        = node.grow(Math.pow(Math.clamp(eye*10.0, 0.0, 400.0),0.7)).grow(-1)
+  border        = node.grow(Math.pow(Math.clamp(eye*20.0, 0.0, 400.0),0.7)).grow(-1)
 
   sc            = selectionColor.copy()
-  sc.a = 'selected'  
-
-  sel          = rect('bbox.x' - 2*nodeSelectionBorderMaxSize, 'bbox.y' - 2*nodeSelectionBorderMaxSize,r,r,r,r).alignedBL
-  sel          = sel.move(nodeSelectionBorderMaxSize,nodeSelectionBorderMaxSize)
-  sel          = sel.fill sc
-  
+  sc.a = 'selected'
   border        = border.fill sc
 
-  node + sel
+  border + node
 
 
 
@@ -361,13 +352,6 @@ tmpShape = basegl.expr ->
   out = c1 + c2
   # out.fill Color.rgb([0.3,0,0])
 
-
-
-parensColor   = Color.rgb [1,1,1,0.5]
-numberColor   = Color.rgb [107/255, 160/255, 219/255]
-operatorColor = Color.rgb [219/255, 107/255, 115/255]
-stringColor   = (Color.hsl [50, 0.9, 0.7])
-
 main = () ->
 
   # Starting out, loading fonts, etc.
@@ -395,183 +379,6 @@ main = () ->
   tmpFamily.zIndex  = 5
 
 
-  mkNode2 = (expr,cfg) -> # y,x=0) ->
-    y = cfg.y || 0
-    x = cfg.x || 0 
-    y = 1200 - y
-    dColor = cfg.dotColor || 0
-    
-
-    code = basegl.text2
-      str: expr
-      fontFamily: 'SourceCodePro'
-      size: 16
-      scene: scene  
-
-    code.position.x = x+56
-    code.position.y = y+54
-
-    # === adding colors ===
-
-    charOff   = 0
-    codeAlpha = 0.85
-    
-    numberPattern = /^[0-9]+/
-    parensPattern = /^[\[\](){}]+/
-    stringPattern = /^'.*'+/
-
-    code.firstLine.setColor (Color.rgb [1,1,1,codeAlpha])
-
-    expr2 = expr.slice()
-    while true
-      numMatch    = expr2.match numberPattern
-      parensMatch = expr2.match parensPattern
-      stringMatch = expr2.match stringPattern
-      if numMatch
-        chars = numMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(numberColor, charOff , charOff += chars)  
-      else if parensMatch
-        chars = parensMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(parensColor, charOff , charOff += chars)  
-      else if stringMatch
-        chars = stringMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(stringColor, charOff , charOff += chars)  
-      else if expr2[0] == '●'
-        c = [numberColor, operatorColor, stringColor][dColor]
-        code.firstLine.setColor(c, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else if (expr2[0] == '.') || (expr2[0] == ',')
-        code.firstLine.setColor(operatorColor, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else
-        charOff += 1
-        expr2 = expr2.slice(1)
-      if expr2 == "" then break
-
-    # for i in expr 
-      
-          
-    #   if i == '●'
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)
-    #   else if i == '.'
-    #     code.firstLine.setColor(dotColor, charOff , charOff += 1)
-    #   else if (i == '(') || (i == ')') || (i == '[') || (i == ']')
-    #     code.firstLine.setColor(parensColor, charOff , charOff += 1)
-    #   else if (i >= '0') && (i <= '9')
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)        
-    #   else
-    #     charOff += 1
-        
-
-    node = scene.add nodeDef
-    node.position.xy = [x, y]
-    node.bbox.xy = [code.firstLine._x_max + 2*56 - 8 ,120]
-
-
-    node.addEventListener 'mousedown', (e) ->
-      code.firstLine.setColor (Color.rgb [0,0,0])
-
-    node.code = code
-    
-    node
-
-  # scene.add tmpDef
-
-
-
-  mkNode = (strName,expr) -> # y,x=0) ->
-    
-    nodeWidth = 300
-    name = basegl.text2
-      str: strName
-      fontFamily: 'SourceCodePro'
-      size: 16
-      scene: scene  
-
-    code = basegl.text2
-      str: expr
-      fontFamily: 'SourceCodePro'
-      size: 16
-      scene: scene  
-
-    # code.position.x = x+56
-    # code.position.y = y+54
-
-    # === adding colors ===
-
-    charOff   = 0
-    codeAlpha = 0.85
-    
-    numberPattern = /^[0-9]+/
-    parensPattern = /^[\[\](){}]+/
-    stringPattern = /^'.*'+/
-
-    code.firstLine.setColor (Color.rgb [1,1,1,codeAlpha])
-
-    expr2 = expr.slice()
-    while true
-      numMatch    = expr2.match numberPattern
-      parensMatch = expr2.match parensPattern
-      stringMatch = expr2.match stringPattern
-      if numMatch
-        chars = numMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(numberColor, charOff , charOff += chars)  
-      else if parensMatch
-        chars = parensMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(parensColor, charOff , charOff += chars)  
-      else if stringMatch
-        chars = stringMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(stringColor, charOff , charOff += chars)  
-      else if expr2[0] == '●'
-        c = [numberColor, operatorColor, stringColor][dColor]
-        code.firstLine.setColor(c, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else if (expr2[0] == '.') || (expr2[0] == ',')
-        code.firstLine.setColor(operatorColor, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else
-        charOff += 1
-        expr2 = expr2.slice(1)
-      if expr2 == "" then break
-
-
-    name.position.y = 100
-    name.position.x = -name.firstLine._x_max/2 + 8
-    code.position.x = -code.firstLine._x_max/2 + 8
-    code.position.y = 14
-    # for i in expr 
-      
-          
-    #   if i == '●'
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)
-    #   else if i == '.'
-    #     code.firstLine.setColor(dotColor, charOff , charOff += 1)
-    #   else if (i == '(') || (i == ')') || (i == '[') || (i == ']')
-    #     code.firstLine.setColor(parensColor, charOff , charOff += 1)
-    #   else if (i >= '0') && (i <= '9')
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)        
-    #   else
-    #     charOff += 1
-        
-
-    node = scene.add nodeDef
-    node.position.xy = [-nodeSelectionBorderMaxSize - nodeWidth/2, -nodeSelectionBorderMaxSize]
-    node.bbox.xy = [nodeWidth + 2*nodeSelectionBorderMaxSize,120]
-
-
-    node.addEventListener 'mousedown', (e) ->
-      code.firstLine.setColor (Color.rgb [0,0,0])
-
-    s = group [name,code, node]
-    s.code = code
-    s
-
   # scene.add tmpDef
 
   vis  = basegl.symbol div
@@ -585,38 +392,71 @@ main = () ->
   visx1.position.x = nodew/2 + nodeSelectionBorderMaxSize
   visx1.position.y = -80
 
+  n1 = scene.add nodeDef
+  n1.position.xy = [0, 700]
+  n1.bbox.xy = [430,120]
+  n1.id = 1
 
+  n2 = scene.add nodeDef
+  n2.position.xy = [600, 0]
+  n2.id = 2
 
-  # n2 = scene.add nodeDef
-  # n2.position.xy = [600, 0]
-  # n2.id = 2
-
-  # n3 = scene.add nodeDef
-  # n3.position.xy = [900, 0]
-  # n3.id = 3
-
-  n1 = mkNode 'properties', "read 'test.csv'", {y: 0}
-  n1.position.xy = [400,200]
-  # n1 = mkNode "lines ●",  {y: 60, dotColor: 2}
-  # n1 = mkNode "sort ●",   {y: 120, dotColor: 2}
-  # n2 = mkNode '● . sort ([●,●,●,●].take ●)', 60
-
-
-  # n1 = mkNode "open 'test.csv'", {y: 0}
-  # n1 = mkNode "lines ●",  {y: 60, dotColor: 2}
-  # n1 = mkNode "sort ●",   {y: 120, dotColor: 2}
-  # n2 = mkNode '● . sort ([●,●,●,●].take ●)', 60
-
-  
+  n3 = scene.add nodeDef
+  n3.position.xy = [900, 0]
+  n3.id = 3
 
 
   nodeDefComplex = basegl.symbol nodeShapeComplex
   nodeDefComplex.variables.selected = 0
   nodeDefComplex.bbox.xy = [nodew + 2*nodeSelectionBorderMaxSize, nodeh + 2*nodeSelectionBorderMaxSize]
 
- 
+  nc1 = scene.add nodeDefComplex
+  nc1.position.y = 500
+  # txt1 = basegl.text
+  #   str: ''
+  #   fontFamily: 'DejaVuSansMono'
+  #   size: 20
+  #   scene: scene
 
-  
+  # # txt1 = scene.add txtDef
+  # console.log txt1
+  # txt1.pushStr 'The quick brown fox \njumps over the lazy dog'
+
+  code1 = basegl.text2
+    str: '● . sort ([●,●,●,●].take ●)'
+    fontFamily: 'SourceCodePro'
+    size: 16
+    scene: scene  
+
+  console.log code1
+  window.code = code1
+
+  coff       = 0
+  codeAlpha = 0.85
+  parensColor = Color.rgb [1,1,1,0.5]
+  numberColor = Color.rgb [107/255, 160/255, 219/255]
+  dotColor    = Color.rgb [219/255, 107/255, 115/255]
+  code1.firstLine.setColor (Color.rgb [1,1,1,codeAlpha])
+  code1.firstLine.setColor(numberColor, coff , coff += 2);
+  code1.firstLine.setColor(dotColor   , coff , coff += 2);
+  coff += 5
+  code1.firstLine.setColor(parensColor, coff , coff += 1);
+  code1.firstLine.setColor(parensColor, coff , coff += 1);
+  code1.firstLine.setColor(numberColor, coff , coff += 1);
+  code1.firstLine.setColor(dotColor   , coff , coff += 1);
+  code1.firstLine.setColor(numberColor, coff , coff += 1);
+  code1.firstLine.setColor(dotColor   , coff , coff += 1);
+  code1.firstLine.setColor(numberColor, coff , coff += 1);
+  code1.firstLine.setColor(dotColor   , coff , coff += 1);
+  code1.firstLine.setColor(numberColor, coff , coff += 1);
+  code1.firstLine.setColor(parensColor, coff , coff += 1);  
+  code1.firstLine.setColor(dotColor   , coff , coff += 1);
+  coff += 5  
+  code1.firstLine.setColor(numberColor, coff , coff += 1);
+  code1.firstLine.setColor(parensColor, coff , coff += 1);  
+
+  code1.position.x = 56
+  code1.position.y = 754
 
 
 
@@ -642,46 +482,31 @@ main = () ->
       , (new Span spanType.INSERT, 2, 1)
       ]) 
     ]
-  ts = computeTextSpan2D 0, 0, n1.code.firstLine.chars, spanTree
+  ts = computeTextSpan2D 0, 0, code1.firstLine.chars, spanTree
   console.log (ts);
-  window.chars = n1.code.firstLine.chars
+  window.chars = code1.firstLine.chars
   ts2 = growSpan2D 4, ts
-  vg = visSpan2D scene, n1.code.firstLine.chars, ts2
+  vg = visSpan2D scene, code1.firstLine.chars, ts2
   vg.position.xy = [54,754]
   vg.position.x -= 2 # letterOffset / 2
 
-  nn1 = group [n1,vis1, n1.code, vg]
-  # nn2 = group [n2,visx1]
+  nn1 = group [n1,vis1, code1, vg]
+  nn2 = group [n2,visx1]
 
 
-  linkShape = basegl.expr ->
-    s = rect(3,'bbox.y').alignedBL
-    s = s.fill stringColor.toRGB()
-    s
-  link = basegl.symbol linkShape
-  link.bbox.xy = [4,100]
 
-  # l1 = scene.add link
-  # l1.bbox.y = 40
-  # l1.position.xy=[131,1200]
-
-  # l1 = scene.add link
-  # l1.bbox.y = 40
-  # l1.position.xy=[119,1200-60]
+  portShape = basegl.expr ->
+    cd = numberColor
+    s  = circle('radius').move('bbox.x'/2,'bbox.y'/2)
+    s.fill cd 
+  port = basegl.symbol portShape
+  port.variables.radius = 3.1
+  port.bbox.xy = [8,8]
   # port.variables
 
-  # portShape = basegl.expr ->
-  #   cd = numberColor
-  #   s  = circle('radius').move('bbox.x'/2,'bbox.y'/2)
-  #   s.fill cd 
-  # port = basegl.symbol portShape
-  # port.variables.radius = 3.1
-  # port.bbox.xy = [8,8]
-  # # port.variables
 
-
-  # p1 = scene.add port
-  # p1.position.xy = [56,726]
+  p1 = scene.add port
+  p1.position.xy = [56,726]
 
 
   # str = 'The quick brown fox \njumps over the lazy dog'
@@ -689,49 +514,49 @@ main = () ->
   # txt.position.x += 100
   # txt.position.y += 100
 
-  # n1.variables.pointerEvents = 1
-  # n2.variables.pointerEvents = 1
-  # n3.variables.pointerEvents = 1
+  n1.variables.pointerEvents = 1
+  n2.variables.pointerEvents = 1
+  n3.variables.pointerEvents = 1
 
-  # n1.variables.zIndex = 1
-  # n2.variables.zIndex = 1
-  # n3.variables.zIndex = 1
+  n1.variables.zIndex = 1
+  n2.variables.zIndex = 1
+  n3.variables.zIndex = 1
 
   n1.addEventListener 'mouseover', (e) ->
     console.log "OVER NODE 1!"
 
-  # n2.addEventListener 'mouseover', (e) ->
-  #   console.log "OVER NODE 2!"
+  n2.addEventListener 'mouseover', (e) ->
+    console.log "OVER NODE 2!"
 
-  # n2.addEventListener 'mouseenter', (e) ->
-  #   console.log "ENTER NODE 2!"
+  n2.addEventListener 'mouseenter', (e) ->
+    console.log "ENTER NODE 2!"
 
-  # n2.addEventListener 'mouseleave', (e) ->
-  #   console.log "LEAVE NODE 2!"
+  n2.addEventListener 'mouseleave', (e) ->
+    console.log "LEAVE NODE 2!"
 
-  # n3.addEventListener 'mouseover', (e) ->
-  #   console.log "OVER NODE 3!"
+  n3.addEventListener 'mouseover', (e) ->
+    console.log "OVER NODE 3!"
 
 
   n1.addEventListener 'mouseout', (e) ->
     console.log "OUT NODE 1!"
 
-  # n2.addEventListener 'mouseout', (e) ->
-  #   console.log "OUT NODE 2!"
+  n2.addEventListener 'mouseout', (e) ->
+    console.log "OUT NODE 2!"
 
-  # n3.addEventListener 'mouseout', (e) ->
-  #   console.log "OUT NODE 3!"
+  n3.addEventListener 'mouseout', (e) ->
+    console.log "OUT NODE 3!"
 
   n1.style.childrenPointerEvents = POINTER_EVENTS.DISABLED
 
   makeDraggable nn1
   # makeDraggable n1
-  # makeDraggable n2
-  # makeDraggable n3
+  makeDraggable n2
+  makeDraggable n3
 
   makeSelectable n1
-  # makeSelectable n2
-  # makeSelectable n3
+  makeSelectable n2
+  makeSelectable n3
 
   scene.addEventListener 'mousedown', (e) -> deselectAll e
 

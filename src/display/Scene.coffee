@@ -16,6 +16,7 @@ import {define, mixin, configure, configureLazy,
         Composable, fieldMixin, extend} from 'basegl/object/Property'
 
 import {eventDispatcherMixin} from 'basegl/event/EventDispatcher'
+import {logger}               from 'basegl/debug/logger'
 
 require('basegl/display/render/CSS3DRenderer')
 
@@ -216,6 +217,7 @@ export class Scene extends Composable
   ### Initialization ###
 
   cons: (cfg) ->
+    logger.info "New Scene", cfg
     @mixin eventDispatcherMixin, @
     @_dom            = @mixin SceneDOM, cfg
     @_autoUpdate     = true
@@ -376,7 +378,7 @@ export class Scene extends Composable
   register: (s) ->
     @symbolRegistry.registerSymbol s
 
-  update: -> @_stats.measure =>
+  update: -> @_stats.measure => 
     for camera in @cameras
       camera.update @
     @symbolRegistry.materials.uniforms.zoom       = @camera.position.z

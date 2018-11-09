@@ -1,6 +1,6 @@
 {
   "name": "basegl",
-  "version": "0.2.33",
+  "version": "0.2.35",
   "description": "A blazing fast WebGL drawing API. Currently supports two-dimensional operations, including SDF shapes, animation, mouse handling and SDF text (both online atlas baking as well as rendering).",
   "homepage": "https://luna.github.io/basegl/",
   "author": "Wojciech Danilo <wojciech.danilo@gmail.com>",
@@ -31,30 +31,30 @@
     "url": "https://github.com/luna/basegl/issues"
   },
   "devDependencies": {
-    "coffeescript": "next",
-    "webpack": "^3.9.1",
-    "webpack-dev-server": "^2.9.7",
+    "@luna-lang/jsnext": "^0.0.10",
     "coffee-loader": "^0.9.0",
-    "@luna-lang/jsnext": "^0.0.10"
+    "coffeescript": "^2.3.2",
+    "luna-logger": "^0.1.5",
+    "webpack": "^3.12.0",
+    "webpack-dev-server": "^2.11.3"
   },
   "dependencies": {
-    "bluebird": "^3.5.1",
+    "acorn": "^5.7.3",
+    "bluebird": "^3.5.3",
+    "escodegen": "^1.11.0",
+    "gl-matrix": "^2.8.1",
+    "glsl-gamma": "^2.0.0",
+    "glslify-loader": "^1.0.2",
+    "gulp": "next",
+    "gulp-coffee": "^3.0.3",
+    "gulp-debug": "^3.2.0",
+    "gulp-plumber": "^1.2.0",
+    "gulp-rename": "^1.4.0",
+    "gulp-transform": "^3.0.5",
+    "opentype.js": "^0.7.3",
+    "raw-loader": "^0.5.1",
     "stats.js": "^0.17.0",
     "three": "^0.94.0",
-    "three-effectcomposer-es6": "^0.0.4",
-    "glslify-loader": "^1.0.2",
-    "raw-loader": "^0.5.1",
-    "acorn": "^5.3.0",
-    "escodegen": "^1.9.0",
-    "glsl-gamma": "^2.0.0",
-    "opentype.js": "^0.7.3",
-    "gulp": "next",
-    "gulp-coffee": "^3.0.2",
-    "coffeescript": "^2.1.1",
-    "gulp-transform": "^3.0.5",
-    "gulp-rename": "^1.2.2",
-    "gulp-plumber": "^1.2.0",
-    "gl-matrix": "^2.4.0",
-    "gulp-debug": "^3.2.0"
+    "three-effectcomposer-es6": "^0.0.4"
   }
 }

@@ -395,7 +395,7 @@ main = () ->
   tmpFamily.zIndex  = 5
 
 
-  mkNode2 = (expr,cfg) -> # y,x=0) ->
+  mkNode = (expr,cfg) -> # y,x=0) ->
     y = cfg.y || 0
     x = cfg.x || 0 
     y = 1200 - y
@@ -480,100 +480,6 @@ main = () ->
 
   # scene.add tmpDef
 
-
-
-  mkNode = (strName,expr) -> # y,x=0) ->
-    
-    nodeWidth = 300
-    name = basegl.text2
-      str: strName
-      fontFamily: 'SourceCodePro'
-      size: 16
-      scene: scene  
-
-    code = basegl.text2
-      str: expr
-      fontFamily: 'SourceCodePro'
-      size: 16
-      scene: scene  
-
-    # code.position.x = x+56
-    # code.position.y = y+54
-
-    # === adding colors ===
-
-    charOff   = 0
-    codeAlpha = 0.85
-    
-    numberPattern = /^[0-9]+/
-    parensPattern = /^[\[\](){}]+/
-    stringPattern = /^'.*'+/
-
-    code.firstLine.setColor (Color.rgb [1,1,1,codeAlpha])
-
-    expr2 = expr.slice()
-    while true
-      numMatch    = expr2.match numberPattern
-      parensMatch = expr2.match parensPattern
-      stringMatch = expr2.match stringPattern
-      if numMatch
-        chars = numMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(numberColor, charOff , charOff += chars)  
-      else if parensMatch
-        chars = parensMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(parensColor, charOff , charOff += chars)  
-      else if stringMatch
-        chars = stringMatch[0].length
-        expr2 = expr2.slice(chars)
-        code.firstLine.setColor(stringColor, charOff , charOff += chars)  
-      else if expr2[0] == '●'
-        c = [numberColor, operatorColor, stringColor][dColor]
-        code.firstLine.setColor(c, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else if (expr2[0] == '.') || (expr2[0] == ',')
-        code.firstLine.setColor(operatorColor, charOff , charOff += 1)
-        expr2 = expr2.slice(1)
-      else
-        charOff += 1
-        expr2 = expr2.slice(1)
-      if expr2 == "" then break
-
-
-    name.position.y = 100
-    name.position.x = -name.firstLine._x_max/2 + 8
-    code.position.x = -code.firstLine._x_max/2 + 8
-    code.position.y = 14
-    # for i in expr 
-      
-          
-    #   if i == '●'
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)
-    #   else if i == '.'
-    #     code.firstLine.setColor(dotColor, charOff , charOff += 1)
-    #   else if (i == '(') || (i == ')') || (i == '[') || (i == ']')
-    #     code.firstLine.setColor(parensColor, charOff , charOff += 1)
-    #   else if (i >= '0') && (i <= '9')
-    #     code.firstLine.setColor(numberColor, charOff , charOff += 1)        
-    #   else
-    #     charOff += 1
-        
-
-    node = scene.add nodeDef
-    node.position.xy = [-nodeSelectionBorderMaxSize - nodeWidth/2, -nodeSelectionBorderMaxSize]
-    node.bbox.xy = [nodeWidth + 2*nodeSelectionBorderMaxSize,120]
-
-
-    node.addEventListener 'mousedown', (e) ->
-      code.firstLine.setColor (Color.rgb [0,0,0])
-
-    s = group [name,code, node]
-    s.code = code
-    s
-
-  # scene.add tmpDef
-
   vis  = basegl.symbol div
   vis1 = scene.add vis
   vis1.position.x = nodew/2 + nodeSelectionBorderMaxSize
@@ -595,16 +501,9 @@ main = () ->
   # n3.position.xy = [900, 0]
   # n3.id = 3
 
-  n1 = mkNode 'properties', "read 'test.csv'", {y: 0}
-  n1.position.xy = [400,200]
-  # n1 = mkNode "lines ●",  {y: 60, dotColor: 2}
-  # n1 = mkNode "sort ●",   {y: 120, dotColor: 2}
-  # n2 = mkNode '● . sort ([●,●,●,●].take ●)', 60
-
-
-  # n1 = mkNode "open 'test.csv'", {y: 0}
-  # n1 = mkNode "lines ●",  {y: 60, dotColor: 2}
-  # n1 = mkNode "sort ●",   {y: 120, dotColor: 2}
+  n1 = mkNode "open 'test.csv'", {y: 0}
+  n1 = mkNode "lines ●",  {y: 60, dotColor: 2}
+  n1 = mkNode "sort ●",   {y: 120, dotColor: 2}
   # n2 = mkNode '● . sort ([●,●,●,●].take ●)', 60
 
   
@@ -661,13 +560,13 @@ main = () ->
   link = basegl.symbol linkShape
   link.bbox.xy = [4,100]
 
-  # l1 = scene.add link
-  # l1.bbox.y = 40
-  # l1.position.xy=[131,1200]
+  l1 = scene.add link
+  l1.bbox.y = 40
+  l1.position.xy=[131,1200]
 
-  # l1 = scene.add link
-  # l1.bbox.y = 40
-  # l1.position.xy=[119,1200-60]
+  l1 = scene.add link
+  l1.bbox.y = 40
+  l1.position.xy=[119,1200-60]
   # port.variables
 
   # portShape = basegl.expr ->

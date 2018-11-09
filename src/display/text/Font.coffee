@@ -411,6 +411,11 @@ class Text extends Composable
       @[idx]             = char
       @_chars.push char
       @_length += 1
+
+  # insertChar: (pos, char) ->
+  #   before = @_chars.slice()
+  #   after  = before.splice(pos)
+
   
   setColor: (color, start, end) ->
     if start == undefined then start = 0
@@ -431,6 +436,113 @@ class Text extends Composable
 export text = Property.consAlias Text
 
 
+
+class Line extends Composable
+  cons: (cfg) ->
+    @mixin displayObjectMixin, [], cfg
+    @_scene = null
+    @_atlas = null
+    @configure cfg
+
+    @_length = 0
+    @_chars  = []
+    @_y      = 0
+    @_x_max  = 0
+
+  pushChar: (char) ->
+    glyphMaxOff = 2
+    scale = char.size / @atlas.glyphSize
+    letterSpacing = 10 # FIXME: make related to size
+
+    letter = @scene.add @atlas.letterDef
+    info   = (@atlas.getInfo char.raw) or (@atlas.getInfo '?')
+    loc    = info.loc
+    letter.position.xy = [@_x_max, info.shape.y * scale + @_y]
+    letter.variables.fontSize = char.size        
+    letter.variables.color    = char.color        
+
+    gw = loc.width  + 2*glyphMaxOff
+    gh = loc.height + 2*glyphMaxOff
+    letter.bbox.xy = [gw*scale, gh*scale]
+    letter.variables.glyphLoc = [loc.x - glyphMaxOff, loc.y - glyphMaxOff, gw, gh]
+    letterWidth    = (info.shape.advanceWidth + letterSpacing) * scale
+    @_x_max += letterWidth
+    if @_x_max > @_width then @_width = @_x_max
+    @addChild letter
+    idx                = @_length
+    char._symbol       = letter
+    char.__idx         = idx
+    char._advanceWidth = letterWidth
+    @[idx]             = char
+    @_chars.push char
+    @_length += 1
+
+  setColor: (color, start, end) ->
+    if start == undefined then start = 0
+    if end   == undefined then end   = @length
+    for i in [start...end]
+      @[i].color = color
+  
+
+class Text2 extends Composable
+  cons: (cfg) ->
+    @mixin displayObjectMixin, [], cfg
+    @_scene        = null
+    @_fontFamily   = null 
+    @_fontManager  = basegl.fontManager    
+    @_size         = 64
+    @_color        = Color.rgb [1,1,1]
+    @configure cfg
+    @_length      = 0
+    @_width       = 0
+    @_endPosition = {x:0, y:0}
+    @_y_max       = 0
+    @_atlas       = @_fontManager.lookupAtlas @_fontFamily
+    @_chars       = []
+    @lines        = []
+  
+  init: (cfg) ->
+    @newLine()
+    if cfg.str?
+      @pushStr cfg.str
+
+  newLine: () ->
+    line = new Line {scene: @scene, atlas: @atlas}
+    @lines.push line
+    @addChild line
+    
+
+  @getter 'firstLine', () -> @lines[0]
+  @getter 'lastLine' , () -> @lines[@lines.length - 1]
+
+  pushChar: (char) ->
+    if char.raw == '\n'
+      line = new Line {scene: @scene, atlas: @atlas}
+      line._y = @_y_max
+      @lines.push line
+      # @_endPosition.x = 0
+      # @_endPosition.y -= char.size
+    else
+      @lastLine.pushChar(char)
+
+  
+  # setColor: (color, start, end) ->
+    # if start == undefined then start = 0
+    # if end   == undefined then end   = @length
+    # for i in [start...end]
+    #   @[i].color = color
+    
+  pushStr: (str) ->
+    for char in str
+      char = new Char char, 
+        text:  @
+        size:  @size
+        color: @color
+      @pushChar char 
+      
+
+
+export text2 = Property.consAlias Text2
 
 ############
 ### Text ###
