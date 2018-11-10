@@ -1,211 +1,178 @@
-import * as matrix2 from 'gl-matrix'
-import * as utils   from 'basegl/render/webgl'
 
-
-
-bindVariables = (gl, program, vars) ->
-  out =
-    attributes : {}
-    uniforms   : {}
-
-  for a of vars.attributes
-    out.attributes[a] = gl.getAttribLocation program, a
-  
-  for a of vars.uniforms
-    out.uniforms[a] = gl.getUniformLocation program, a
-  
-  out
-    
-
-main = () ->
-  # Get A WebGL context
-  canvas = document.getElementById("canvas");
-  gl = canvas.getContext("webgl2");
-  if (!gl) 
+function main() {
+  // Get A WebGL context
+  /** @type {HTMLCanvasElement} */
+  var canvas = document.getElementById("canvas");
+  var gl = canvas.getContext("webgl2");
+  if (!gl) {
     return;
-  
+  }
 
-  # Use our boilerplate utils to compile the shaders and link into a program
-  program = utils.createProgramFromSources(gl,
+  // Use our boilerplate utils to compile the shaders and link into a program
+  var program = webglUtils.createProgramFromSources(gl,
       [vertexShaderSource, fragmentShaderSource]);
 
-  # look up where the vertex data needs to go.
-  positionAttributeLocation = gl.getAttribLocation(program, "position");
-  colorAttributeLocation = gl.getAttribLocation(program, "color");
+  // look up where the vertex data needs to go.
+  var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+  var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
 
-  # look up uniform locations
-  matrixLocation = gl.getUniformLocation(program, "matrix");
+  // look up uniform locations
+  var matrixLocation = gl.getUniformLocation(program, "u_matrix");
 
+  // Create a buffer
+  var positionBuffer = gl.createBuffer();
 
-  variables =
-    attributes:
-      position : null
-      color    : null
-    uniforms:
-      matrix   : null
+  // Create a vertex array object (attribute state)
+  var vao = gl.createVertexArray();
 
-  locs = bindVariables gl, program, variables
-
-
-  # Create a buffer
-  positionBuffer = gl.createBuffer();
-
-  # Create a vertex array object (attribute state)
-  vao = gl.createVertexArray();
-
-  # and make it the one we're currently working with
+  // and make it the one we're currently working with
   gl.bindVertexArray(vao);
 
-  # Turn on the attribute
+  // Turn on the attribute
   gl.enableVertexAttribArray(positionAttributeLocation);
 
-  # Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+  // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  # Set Geometry.
+  // Set Geometry.
   setGeometry(gl);
 
-  # Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  size = 3;          # 3 components per iteration
-  type = gl.FLOAT;   # the data is 32bit floats
-  normalize = false; # don't normalize the data
-  stride = 0;        # 0 = move forward size * sizeof(type) each iteration to get the next position
-  offset = 0;        # start at the beginning of the buffer
+  // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+  var size = 3;          // 3 components per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
   gl.vertexAttribPointer(
       positionAttributeLocation, size, type, normalize, stride, offset);
 
-  # create the color buffer, make it the current ARRAY_BUFFER
-  # and copy in the color values
-  colorBuffer = gl.createBuffer();
+  // create the color buffer, make it the current ARRAY_BUFFER
+  // and copy in the color values
+  var colorBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   setColors(gl);
 
-  # Turn on the attribute
+  // Turn on the attribute
   gl.enableVertexAttribArray(colorAttributeLocation);
 
-  # Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
-  size = 3;          # 3 components per iteration
-  type = gl.UNSIGNED_BYTE;   # the data is 8bit unsigned bytes
-  normalize = true;  # convert from 0-255 to 0.0-1.0
-  stride = 0;        # 0 = move forward size * sizeof(type) each iteration to get the next color
-  offset = 0;        # start at the beginning of the buffer
+  // Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
+  var size = 3;          // 3 components per iteration
+  var type = gl.UNSIGNED_BYTE;   // the data is 8bit unsigned bytes
+  var normalize = true;  // convert from 0-255 to 0.0-1.0
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next color
+  var offset = 0;        // start at the beginning of the buffer
   gl.vertexAttribPointer(
       colorAttributeLocation, size, type, normalize, stride, offset);
 
 
-  radToDeg = (r) ->
+  function radToDeg(r) {
     return r * 180 / Math.PI;
-  
+  }
 
-  degToRad = (d) ->
+  function degToRad(d) {
     return d * Math.PI / 180;
-  
+  }
 
-  # First let's make some variables
-  # to hold the translation,
-  fieldOfViewRadians = degToRad(60);
-  cameraAngleRadians = degToRad(0);
+  // First let's make some variables
+  // to hold the translation,
+  var fieldOfViewRadians = degToRad(60);
+  var cameraAngleRadians = degToRad(0);
 
+  drawScene();
 
+  // Setup a ui.
+  webglLessonsUI.setupSlider("#cameraAngle", {value: radToDeg(cameraAngleRadians), slide: updateCameraAngle, min: -360, max: 360});
 
+  function updateCameraAngle(event, ui) {
+    cameraAngleRadians = degToRad(ui.value);
+    drawScene();
+  }
 
+  // Draw the scene.
+  function drawScene() {
+    var numFs = 5;
+    var radius = 200;
 
-  # Draw the scene.
-  drawScene = () ->
-    numFs = 5;
-    radius = 200;
+    webglUtils.resizeCanvasToDisplaySize(gl.canvas);
 
-    utils.resizeCanvasToDisplaySize(gl.canvas);
-
-    # Tell WebGL how to convert from clip space to pixels
+    // Tell WebGL how to convert from clip space to pixels
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-    # Clear the canvas
+    // Clear the canvas
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    # turn on depth testing
+    // turn on depth testing
     gl.enable(gl.DEPTH_TEST);
 
-    # tell webgl to cull faces
+    // tell webgl to cull faces
     gl.enable(gl.CULL_FACE);
 
-    # Tell it to use our program (pair of shaders)
+    // Tell it to use our program (pair of shaders)
     gl.useProgram(program);
 
-    # Bind the attribute/buffer set we want.
+    // Bind the attribute/buffer set we want.
     gl.bindVertexArray(vao);
 
-    # Compute the matrix
-    aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-    zNear = 1;
-    zFar = 2000;
-    projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
+    // Compute the matrix
+    var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+    var zNear = 1;
+    var zFar = 2000;
+    var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
 
-    # Compute the position of the first F
-    fPosition = [radius, 0, 0];
+    // Compute the position of the first F
+    var fPosition = [radius, 0, 0];
 
-    # Use matrix math to compute a position on the circle.
-    cameraMatrix = m4.yRotation(cameraAngleRadians);
+    // Use matrix math to compute a position on the circle.
+    var cameraMatrix = m4.yRotation(cameraAngleRadians);
     cameraMatrix = m4.translate(cameraMatrix, 0, 50, radius * 1.5);
 
-    # Get the camera's postion from the matrix we computed
-    cameraPosition = [
+    // Get the camera's postion from the matrix we computed
+    var cameraPosition = [
       cameraMatrix[12],
       cameraMatrix[13],
       cameraMatrix[14],
     ];
 
-    up = [0, 1, 0];
+    var up = [0, 1, 0];
 
-    # Compute the camera's matrix using look at.
-    cameraMatrix = m4.lookAt(cameraPosition, fPosition, up);
+    // Compute the camera's matrix using look at.
+    var cameraMatrix = m4.lookAt(cameraPosition, fPosition, up);
 
-    # Make a view matrix from the camera matrix.
-    viewMatrix = m4.inverse(cameraMatrix);
+    // Make a view matrix from the camera matrix.
+    var viewMatrix = m4.inverse(cameraMatrix);
 
-    # Make a view matrix from the camera matrix.
-    viewMatrix = m4.inverse(cameraMatrix);
+    // Make a view matrix from the camera matrix.
+    var viewMatrix = m4.inverse(cameraMatrix);
 
-    # create a viewProjection matrix. This will both apply perspective
-    # AND move the world so that the camera is effectively the origin
-    viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+    // create a viewProjection matrix. This will both apply perspective
+    // AND move the world so that the camera is effectively the origin
+    var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
-    # Draw 'F's in a circle
-    for ii in [0..numFs]
-      angle = ii * Math.PI * 2 / numFs;
+    // Draw 'F's in a circle
+    for (var ii = 0; ii < numFs; ++ii) {
+      var angle = ii * Math.PI * 2 / numFs;
 
-      x = Math.cos(angle) * radius;
-      z = Math.sin(angle) * radius;
-      matrix = m4.translate(viewProjectionMatrix, x, 0, z);
+      var x = Math.cos(angle) * radius;
+      var z = Math.sin(angle) * radius;
+      var matrix = m4.translate(viewProjectionMatrix, x, 0, z);
 
-      # Set the matrix.
+      // Set the matrix.
       gl.uniformMatrix4fv(matrixLocation, false, matrix);
 
-      # Draw the geometry.
-      primitiveType = gl.TRIANGLES;
-      offset = 0;
-      count = 16 * 6;
+      // Draw the geometry.
+      var primitiveType = gl.TRIANGLES;
+      var offset = 0;
+      var count = 16 * 6;
       gl.drawArrays(primitiveType, offset, count);
+    }
+  }
+}
 
-  
-
-  drawScene()
-
-  updateCameraAngle = (event, ui) ->
-    cameraAngleRadians = degToRad(ui.value);
-    drawScene();
-
-  # Setup a ui.
-  webglLessonsUI.setupSlider("#cameraAngle", {value: radToDeg(cameraAngleRadians), slide: updateCameraAngle, min: -360, max: 360});
-
-  
-
-
-# Fill the current ARRAY_BUFFER buffer
-# with the values that define a letter 'F'.
-setGeometry = (gl) ->
-  positions = new Float32Array([
-          # left column front
+// Fill the current ARRAY_BUFFER buffer
+// with the values that define a letter 'F'.
+function setGeometry(gl) {
+  var positions = new Float32Array([
+          // left column front
           0,   0,  0,
           0, 150,  0,
           30,   0,  0,
@@ -213,7 +180,7 @@ setGeometry = (gl) ->
           30, 150,  0,
           30,   0,  0,
 
-          # top rung front
+          // top rung front
           30,   0,  0,
           30,  30,  0,
           100,   0,  0,
@@ -221,7 +188,7 @@ setGeometry = (gl) ->
           100,  30,  0,
           100,   0,  0,
 
-          # middle rung front
+          // middle rung front
           30,  60,  0,
           30,  90,  0,
           67,  60,  0,
@@ -229,7 +196,7 @@ setGeometry = (gl) ->
           67,  90,  0,
           67,  60,  0,
 
-          # left column back
+          // left column back
             0,   0,  30,
            30,   0,  30,
             0, 150,  30,
@@ -237,7 +204,7 @@ setGeometry = (gl) ->
            30,   0,  30,
            30, 150,  30,
 
-          # top rung back
+          // top rung back
            30,   0,  30,
           100,   0,  30,
            30,  30,  30,
@@ -245,7 +212,7 @@ setGeometry = (gl) ->
           100,   0,  30,
           100,  30,  30,
 
-          # middle rung back
+          // middle rung back
            30,  60,  30,
            67,  60,  30,
            30,  90,  30,
@@ -253,7 +220,7 @@ setGeometry = (gl) ->
            67,  60,  30,
            67,  90,  30,
 
-          # top
+          // top
             0,   0,   0,
           100,   0,   0,
           100,   0,  30,
@@ -261,7 +228,7 @@ setGeometry = (gl) ->
           100,   0,  30,
             0,   0,  30,
 
-          # top rung right
+          // top rung right
           100,   0,   0,
           100,  30,   0,
           100,  30,  30,
@@ -269,7 +236,7 @@ setGeometry = (gl) ->
           100,  30,  30,
           100,   0,  30,
 
-          # under top rung
+          // under top rung
           30,   30,   0,
           30,   30,  30,
           100,  30,  30,
@@ -277,7 +244,7 @@ setGeometry = (gl) ->
           100,  30,  30,
           100,  30,   0,
 
-          # between top rung and middle
+          // between top rung and middle
           30,   30,   0,
           30,   60,  30,
           30,   30,  30,
@@ -285,7 +252,7 @@ setGeometry = (gl) ->
           30,   60,   0,
           30,   60,  30,
 
-          # top of middle rung
+          // top of middle rung
           30,   60,   0,
           67,   60,  30,
           30,   60,  30,
@@ -293,7 +260,7 @@ setGeometry = (gl) ->
           67,   60,   0,
           67,   60,  30,
 
-          # right of middle rung
+          // right of middle rung
           67,   60,   0,
           67,   90,  30,
           67,   60,  30,
@@ -301,7 +268,7 @@ setGeometry = (gl) ->
           67,   90,   0,
           67,   90,  30,
 
-          # bottom of middle rung.
+          // bottom of middle rung.
           30,   90,   0,
           30,   90,  30,
           67,   90,  30,
@@ -309,7 +276,7 @@ setGeometry = (gl) ->
           67,   90,  30,
           67,   90,   0,
 
-          # right of bottom
+          // right of bottom
           30,   90,   0,
           30,  150,  30,
           30,   90,  30,
@@ -317,7 +284,7 @@ setGeometry = (gl) ->
           30,  150,   0,
           30,  150,  30,
 
-          # bottom
+          // bottom
           0,   150,   0,
           0,   150,  30,
           30,  150,  30,
@@ -325,43 +292,41 @@ setGeometry = (gl) ->
           30,  150,  30,
           30,  150,   0,
 
-          # left side
+          // left side
           0,   0,   0,
           0,   0,  30,
           0, 150,  30,
           0,   0,   0,
           0, 150,  30,
           0, 150,   0,
-  ])
+  ]);
 
-  # Center the F around the origin and Flip it around. We do this because
-  # we're in 3D now with and +Y is up where as before when we started with 2D
-  # we had +Y as down.
+  // Center the F around the origin and Flip it around. We do this because
+  // we're in 3D now with and +Y is up where as before when we started with 2D
+  // we had +Y as down.
 
-  # We could do by changing all the values above but I'm lazy.
-  # We could also do it with a matrix at draw time but you should
-  # never do stuff at draw time if you can do it at init time.
-  matrix = m4.xRotation(Math.PI);
+  // We could do by changing all the values above but I'm lazy.
+  // We could also do it with a matrix at draw time but you should
+  // never do stuff at draw time if you can do it at init time.
+  var matrix = m4.xRotation(Math.PI);
   matrix = m4.translate(matrix, -50, -75, -15);
 
-  for ii in [0 .. positions.length] by 3
-    vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
+  for (var ii = 0; ii < positions.length; ii += 3) {
+    var vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
     positions[ii + 0] = vector[0];
     positions[ii + 1] = vector[1];
     positions[ii + 2] = vector[2];
-  
+  }
 
   gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+}
 
-
-
-
-# Fill the current ARRAY_BUFFER buffer with colors for the 'F'.
-setColors = (gl) ->
+// Fill the current ARRAY_BUFFER buffer with colors for the 'F'.
+function setColors(gl) {
   gl.bufferData(
       gl.ARRAY_BUFFER,
       new Uint8Array([
-          # left column front
+          // left column front
         200,  70, 120,
         200,  70, 120,
         200,  70, 120,
@@ -369,7 +334,7 @@ setColors = (gl) ->
         200,  70, 120,
         200,  70, 120,
 
-          # top rung front
+          // top rung front
         200,  70, 120,
         200,  70, 120,
         200,  70, 120,
@@ -377,7 +342,7 @@ setColors = (gl) ->
         200,  70, 120,
         200,  70, 120,
 
-          # middle rung front
+          // middle rung front
         200,  70, 120,
         200,  70, 120,
         200,  70, 120,
@@ -385,7 +350,7 @@ setColors = (gl) ->
         200,  70, 120,
         200,  70, 120,
 
-          # left column back
+          // left column back
         80, 70, 200,
         80, 70, 200,
         80, 70, 200,
@@ -393,7 +358,7 @@ setColors = (gl) ->
         80, 70, 200,
         80, 70, 200,
 
-          # top rung back
+          // top rung back
         80, 70, 200,
         80, 70, 200,
         80, 70, 200,
@@ -401,7 +366,7 @@ setColors = (gl) ->
         80, 70, 200,
         80, 70, 200,
 
-          # middle rung back
+          // middle rung back
         80, 70, 200,
         80, 70, 200,
         80, 70, 200,
@@ -409,7 +374,7 @@ setColors = (gl) ->
         80, 70, 200,
         80, 70, 200,
 
-          # top
+          // top
         70, 200, 210,
         70, 200, 210,
         70, 200, 210,
@@ -417,7 +382,7 @@ setColors = (gl) ->
         70, 200, 210,
         70, 200, 210,
 
-          # top rung right
+          // top rung right
         200, 200, 70,
         200, 200, 70,
         200, 200, 70,
@@ -425,7 +390,7 @@ setColors = (gl) ->
         200, 200, 70,
         200, 200, 70,
 
-          # under top rung
+          // under top rung
         210, 100, 70,
         210, 100, 70,
         210, 100, 70,
@@ -433,7 +398,7 @@ setColors = (gl) ->
         210, 100, 70,
         210, 100, 70,
 
-          # between top rung and middle
+          // between top rung and middle
         210, 160, 70,
         210, 160, 70,
         210, 160, 70,
@@ -441,7 +406,7 @@ setColors = (gl) ->
         210, 160, 70,
         210, 160, 70,
 
-          # top of middle rung
+          // top of middle rung
         70, 180, 210,
         70, 180, 210,
         70, 180, 210,
@@ -449,7 +414,7 @@ setColors = (gl) ->
         70, 180, 210,
         70, 180, 210,
 
-          # right of middle rung
+          // right of middle rung
         100, 70, 210,
         100, 70, 210,
         100, 70, 210,
@@ -457,7 +422,7 @@ setColors = (gl) ->
         100, 70, 210,
         100, 70, 210,
 
-          # bottom of middle rung.
+          // bottom of middle rung.
         76, 210, 100,
         76, 210, 100,
         76, 210, 100,
@@ -465,7 +430,7 @@ setColors = (gl) ->
         76, 210, 100,
         76, 210, 100,
 
-          # right of bottom
+          // right of bottom
         140, 210, 80,
         140, 210, 80,
         140, 210, 80,
@@ -473,7 +438,7 @@ setColors = (gl) ->
         140, 210, 80,
         140, 210, 80,
 
-          # bottom
+          // bottom
         90, 130, 110,
         90, 130, 110,
         90, 130, 110,
@@ -481,7 +446,7 @@ setColors = (gl) ->
         90, 130, 110,
         90, 130, 110,
 
-          # left side
+          // left side
         160, 160, 220,
         160, 160, 220,
         160, 160, 220,
@@ -490,10 +455,10 @@ setColors = (gl) ->
         160, 160, 220,
       ]),
       gl.STATIC_DRAW);
+}
 
 
 
-`
 var m4 = {
 
   perspective: function(fieldOfViewInRadians, aspect, near, far) {
@@ -781,6 +746,5 @@ var m4 = {
   },
 
 };
-`
 
-main()
+main();

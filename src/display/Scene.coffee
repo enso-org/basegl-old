@@ -205,12 +205,21 @@ class SceneModel extends Composable
 
   render: (args...) ->
     @renderer.render @model, @camera.__glCamera, args...
+    # @camera.position.x += 100
+    # @renderer.render @model, @camera.__glCamera, args...
+    # @camera.position.x -= 100
 
 
 
 #############
 ### Scene ###
 #############
+
+export class Viewport extends Composable
+  cons: (cfg) ->
+    @_size   = {x: 100, y: 100}
+    @_camera = new Camera
+    @configure cfg
 
 export class Scene extends Composable
 
@@ -227,6 +236,7 @@ export class Scene extends Composable
     @_symbolModel    = new SceneModel @_modelCfg
     @_domModel       = new SceneModel @_modelCfg
     @_models         = [@_symbolModel, @_domModel]
+    @_viewports      = [new Viewport ]
     @_symbolRegistry = new SymbolRegistry @_symbolModel.model
     @configure cfg
     @_creationTime   = Date.now()
@@ -244,33 +254,32 @@ export class Scene extends Composable
   # 3. undefined - new scene will not be attached to anything and user needs
   #    to handle it manually
   # CAREFUL: Other objects passed here as layer can cause problems
-  __addDomModel: (cfg, layer) ->
-    if typeof layer == 'string'
-      layer = @addLayer layer
+  # __addDomModel: (cfg, layer) ->
+  #   if typeof layer == 'string'
+  #     layer = @addLayer layer
 
-    newScene = new SceneModel cfg
-    newScene._renderer = @initDomRenderer()
-    @_models.push newScene
-    layer?.appendChild newScene.renderer.domElement
-    newScene
+  #   newScene = new SceneModel cfg
+  #   newScene._renderer = @initDomRenderer()
+  #   @_models.push newScene
+  #   layer?.appendChild newScene.renderer.domElement
+  #   newScene
 
-  addDomModel: (layer) ->
-    @__addDomModel @_modelCfg, layer
+  # addDomModel: (layer) ->
+  #   @__addDomModel @_modelCfg, layer
 
-  addDomModelWithNewCamera: (layer, camera=new Camera) ->
-    cfg = extend @_modeCfg, {camera: camera}
-    newScene = @__addDomModel cfg, layer
-    @_cameras.push camera
-    @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
-    newScene
+  # addDomModelWithNewCamera: (layer, camera=new Camera) ->
+  #   cfg = extend @_modeCfg, {camera: camera}
+  #   newScene = @__addDomModel cfg, layer
+  #   @_cameras.push camera
+  #   @onResized() # FIXME: replace @onResized(), camera.adjustToScene, @ does not work correctly here
+  #   newScene
 
   init: ->
     #TODO: make mixin initialization postponed to this moment!
     @_beginTime            = Date.now()
     @symbolModel._renderer = @initWebGLRenderer()
     @domModel._renderer    = @initDomRenderer()
-    for camera in @cameras
-      camera.adjustToScene @
+    @camera.adjustToScene @
     World.globalWorld.registerScene @
     @geometry.onResized = @onResized.bind(@)
     @geometry.onResized()
@@ -292,6 +301,7 @@ export class Scene extends Composable
       antialias : true
       alpha     : true
       canvas    : canvas
+      # preserveDrawingBuffer: true
     renderer.setPixelRatio window.devicePixelRatio
     renderer.autoClear = false
     renderer
@@ -354,8 +364,7 @@ export class Scene extends Composable
     @initSymbolPointerBuffers()
     for scene in @models
       scene . setSize @width, @height
-    for camera in @cameras
-      camera.adjustToScene @
+    @camera.adjustToScene @
 
   requestIDScreenshot: (callback) ->
     @idScreenshotRequests.push callback
@@ -379,14 +388,13 @@ export class Scene extends Composable
     @symbolRegistry.registerSymbol s
 
   update: -> @_stats.measure => 
-    for camera in @cameras
-      camera.update @
+    @camera.update @
     @symbolRegistry.materials.uniforms.zoom       = @camera.position.z
     @symbolRegistry.materials.uniforms.time       = Date.now() - @_beginTime
     @symbolRegistry.materials.uniforms.drawBuffer = DRAW_BUFFER.NORMAL
     for model in @models
       model.render()
-    if @onscreen then @handleMouse()
+    # if @onscreen then @handleMouse()
 
   handleMouse: ->
     @symbolRegistry.materials.uniforms.drawBuffer = DRAW_BUFFER.ID
