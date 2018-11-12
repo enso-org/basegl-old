@@ -23,17 +23,19 @@ export class DisplayObject extends Composable
   cons: (children) ->
     @mixin styleMixin
     @mixin eventDispatcherMixin, @, children
+    @_isDirty = true
     @origin   = mat4.create()
     @xform    = mat4.create()
-    @position = new Vector [0,0,0], @onTransformed.bind @
-    @scale    = new Vector [1,1,1], @onTransformed.bind @
-    @rotation = new Vector [0,0,0], @onTransformed.bind @
+    @position = new Vector [0,0,0], => @_onTransformed()
+    @scale    = new Vector [1,1,1], => @_onTransformed()
+    @rotation = new Vector [0,0,0], => @_onTransformed()
+    @onTransformed = (->)
 
-  setOrigin: (newOrigin) ->
+  setOrigin: (newOrigin) =>
     @origin = newOrigin
     @updateChildrenOrigin()
 
-  updateChildrenOrigin: () ->
+  updateChildrenOrigin: () =>
     @xform = mat4.create()
     mat4.scale     @xform, @xform, @scale.xyz
     mat4.rotateX   @xform, @xform, @rotation.x
@@ -45,8 +47,21 @@ export class DisplayObject extends Composable
     @children.forEach (child) =>
       child.setOrigin @xform
 
-  onTransformed: () ->
-    @updateChildrenOrigin()
+  _onTransformed: () =>
+    @_isDirty = true
+    @onTransformed()
+
+  update: () => if @isDirty
+    # TODO: handle parents
+    @xform = mat4.create()
+    mat4.scale     @xform, @xform, @scale.xyz
+    mat4.rotateX   @xform, @xform, @rotation.x
+    mat4.rotateY   @xform, @xform, @rotation.y
+    mat4.rotateZ   @xform, @xform, @rotation.z
+    mat4.translate @xform, @xform, @position.xyz
+    mat4.multiply(@xform, @origin, @xform)
+    @_isDirty = false
+    
 
 export displayObjectMixin = fieldMixin DisplayObject
 

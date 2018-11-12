@@ -31,6 +31,25 @@ export loadShader = (gl, shaderSource, shaderType, opt_errorCallback) ->
   return shader
 
 
+class Program 
+  constructor: (@context, @glProgram) ->
+
+  getAttribLocation:  (a) -> @context.getAttribLocation  @glProgram, a
+  getUniformLocation: (a) -> @context.getUniformLocation @glProgram, a
+
+  lookupVariables: (vars) ->
+    out =
+      attribute : {}
+      uniform   : {}
+
+    for a of vars.attribute
+      out.attribute[a] = @getAttribLocation a
+    
+    for a of vars.uniform
+      out.uniform[a] = @getUniformLocation a
+    
+    out
+
 # Creates a program, attaches shaders, binds attrib locations, links the
 # program and calls useProgram.
 # @param {WebGLShader[]} shaders The shaders to attach
@@ -39,29 +58,29 @@ export loadShader = (gl, shaderSource, shaderType, opt_errorCallback) ->
 # @param {module:webgl-utils.ErrorCallback} opt_errorCallback callback for errors. By default it just prints an error to the console
 #        on error. If you want something else pass an callback. It's passed an error message.
 # @memberOf module:webgl-utils
-export createProgram = (gl, shaders, opt_attribs, opt_locations, opt_errorCallback) ->
+export createProgram = (ctx, shaders, opt_attribs, opt_locations, opt_errorCallback) ->
   errFn   = opt_errorCallback || error
-  program = gl.createProgram()
+  program = ctx.createProgram()
   shaders.forEach (shader) ->
-    gl.attachShader(program, shader)
+    ctx.attachShader(program, shader)
   if opt_attribs
     opt_attribs.forEach (attrib, ndx) ->
-      gl.bindAttribLocation(
+      ctx.bindAttribLocation(
           program,
           if opt_locations then opt_locations[ndx] else ndx,
           attrib)
-  gl.linkProgram(program)
+  ctx.linkProgram(program)
 
   # Check the link status
-  linked = gl.getProgramParameter(program, gl.LINK_STATUS)
+  linked = ctx.getProgramParameter(program, ctx.LINK_STATUS)
   if (!linked)
       # something went wrong with the link
-      lastError = gl.getProgramInfoLog(program)
+      lastError = ctx.getProgramInfoLog(program)
       errFn("Error in program linking:" + lastError)
 
-      gl.deleteProgram(program)
+      ctx.deleteProgram(program)
       return null
-  return program
+  new Program ctx, program
 
 # /**
 #   * Loads a shader from a script tag.

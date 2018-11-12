@@ -1,108 +1,401 @@
 import * as matrix2 from 'gl-matrix'
 import * as utils   from 'basegl/render/webgl'
 
+import {Composable, fieldMixin} from "basegl/object/Property"
+import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
+import {mat4, vec4}                   from 'gl-matrix'
 
 
-bindVariables = (gl, program, vars) ->
-  out =
-    attributes : {}
-    uniforms   : {}
-
-  for a of vars.attributes
-    out.attributes[a] = gl.getAttribLocation program, a
-  
-  for a of vars.uniforms
-    out.uniforms[a] = gl.getUniformLocation program, a
-  
+withVAO = (gl, vao, f) -> 
+  gl.bindVertexArray(vao)
+  out = f()
+  gl.bindVertexArray(null)
   out
+
+
+withBuffer = (gl, type, buffer, f) -> 
+  gl.bindBuffer(type, buffer)
+  out = f()
+  gl.bindBuffer(type, null)
+  out
+
+withArrayBuffer = (gl, buffer, f) ->
+  withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
+  
+arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
+  withArrayBuffer gl, buffer, =>
+    gl.bufferSubData(gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length)
+      
+
+class Pool 
+  constructor: (@size) -> 
+    @free      = []
+    @nextIndex = 0
+
+  reserve: () ->
+    n = @free.shift()
+    if n != undefined      then return n
+    if @nextIndex == @size then return undefined
+    n = @nextIndex
+    @nextIndex += 1
+    n
+
+  dirtySize: () -> @nextIndex
+
+  free: (n) ->
+    @free.push(n)
+
+
+applyDef = (cfg, defCfg) ->
+  if not cfg? then return defCfg
+  for key of defCfg
+    if cfg[key] == undefined
+      cfg[key] = defCfg[key]
+
+
+class Sprite extends Composable
+  cons: (cfg) -> 
+    @mixin displayObjectMixin, [], cfg
+    @size    = {x: 100, y: 100}
+    @_id     = null
+    @_buffer = null
+    @configure cfg
+
+    @_displayObject.onTransformed = () =>
+      @_buffer.markDirty @
+
+
+  onTransformed: () -> 
+    console.log "dupa"
+
+# class Sprite extends DisplayObject
+#   cons: (cfg) -> 
+#     super []
+#     # @mixin displayObjectMixin, [], cfg
+#     @size    = {x: 100, y: 100}
+#     @_id     = null
+#     @_buffer = null
+#     # @configure cfg
+
+
+#   onTransformed: () ->
+#     console.log "!!!"
+#     super()
     
+
+
+class SpriteBuffer
+  constructor: (@_gl, @_program, @_variables) ->
+    @_SPRITE_VTX_COUNT = 6
+    @_ixPool           = new Pool 100
+    @_vao = @_gl.createVertexArray()
+
+    @_locs = @_program.lookupVariables @_variables  
+
+    @__dirty = []
+
+    @_buffers = {}
+
+    withVAO @_gl, @_vao, =>
+      positionBuffer = @_gl.createBuffer()
+      @_gl.bindBuffer(@_gl.ARRAY_BUFFER, positionBuffer)
+
+      positions = new Float32Array(@_SPRITE_VTX_COUNT * @_ixPool.size) 
+      
+      @_buffers.position = 
+        js: positions
+        gl: positionBuffer
+      
+      positions[0]  = 0
+      positions[1]  = 0
+      positions[2]  = 0
+      positions[3]  = 0
+      positions[4]  = 10
+      positions[5]  = 0
+      positions[6]  = 10
+      positions[7]  = 0
+      positions[8]  = 0
+      positions[9]  = 0
+      positions[10] = 10
+      positions[11] = 0
+      positions[12] = 10
+      positions[13] = 10
+      positions[14] = 0
+      positions[15] = 10
+      positions[16] = 0
+      positions[17] = 0
+
+      @_gl.bufferData(@_gl.ARRAY_BUFFER, positions, @_gl.DYNAMIC_DRAW)
+
+      @_gl.enableVertexAttribArray(@_locs.attribute.position)
+
+      size = 3          # 3 components per iteration
+      type = @_gl.FLOAT   # the data is 32bit floats
+      normalize = false # don't normalize the data
+      stride = 0        # 0 = move forward size * sizeof(type) each iteration to get the next position
+      offset = 0        # start at the beginning of the buffer
+      @_gl.vertexAttribPointer(
+          @_locs.attribute.position, size, type, normalize, stride, offset)
+
+
+
+      colorBuffer = @_gl.createBuffer()
+      withArrayBuffer @_gl, colorBuffer, =>
+        # @_gl.bindBuffer(@_gl.ARRAY_BUFFER, colorBuffer)
+        
+        # withArrayBuffer = (gl, buffer, f) ->
+        #   withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
+
+        #   withBuffer = (gl, type, buffer, f) -> 
+        #   gl.bindBuffer(type, buffer)
+        #   out = f()
+        #   gl.bindBuffer(type, 0)
+        #   out
+
+        @_gl.bufferData( @_gl.ARRAY_BUFFER,
+          new Uint8Array(@_SPRITE_VTX_COUNT * @_ixPool.size),
+          @_gl.DYNAMIC_DRAW)
+          #     # left column front
+          #   200,  70, 120,
+          #   200,  70, 120,
+          #   200,  70, 120,
+          #   200,  70, 120,
+          #   200,  70, 120,
+          #   200,  70, 120,
+
+          # ]),
+        
+
+        # Turn on the attribute
+        @_gl.enableVertexAttribArray(@_locs.attribute.color)
+
+        # Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
+        size = 3          # 3 components per iteration
+        type = @_gl.UNSIGNED_BYTE   # the data is 8bit unsigned bytes
+        normalize = true  # convert from 0-255 to 0.0-1.0
+        stride = 0        # 0 = move forward size * sizeof(type) each iteration to get the next color
+        offset = 0        # start at the beginning of the buffer
+        @_gl.vertexAttribPointer(
+            @_locs.attribute.color, size, type, normalize, stride, offset)
+
+      # TODO REMOVE
+      @_ixPool.reserve()
+
+  # markDirty: (ix) ->
+  #   if @__dirtyRange == null 
+  #     @__dirtyRange = {min:ix, max:ix}
+  #   else
+  #     if      ix < @__dirtyRange.min then @__dirtyRange.min = ix
+  #     else if ix > @__dirtyRange.max then @__dirtyRange.max = ix
+
+  markDirty: (sprite) ->
+    @__dirty.push(sprite)
+
+  draw: (viewProjectionMatrix) ->
+    @render() 
+    withVAO @_gl, @_vao, =>
+      @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
+      vtxCount = @_SPRITE_VTX_COUNT * @_ixPool.dirtySize()
+      if vtxCount > 0
+        console.log ">>>", vtxCount
+        @_gl.drawArrays(@_gl.TRIANGLES, 0, vtxCount)
+
+  create: (cfg = null) ->
+    cfg = applyDef cfg, 
+      size: {x:100, y:100}
+
+      
+    ix  = @_ixPool.reserve()
+    if not ix?
+      console.error "TODO: BUFFER TO SMALL"
+
+    sprite = new Sprite
+      buffer : @
+      id     : ix
+      size   : cfg.size
+    
+    @markDirty sprite
+    sprite
+
+  render: () ->
+    # TODO: check on real use case if bulk update is faster
+    USE_BULK_UPDATE = false
+
+    INT_BYTES = 4
+    VTX_DIM   = 3
+    VTX_ELEMS = @_SPRITE_VTX_COUNT * VTX_DIM
+
+    dirtyRange = null
+
+    if USE_BULK_UPDATE
+      dirtyRange =
+        min : undefined
+        max : undefined
+
+    buffer = @_buffers.position
+
+    for sprite in @__dirty
+      sprite.update()
+
+      srcOffset = sprite.id * VTX_ELEMS   
+      p = vec4.create(); p[3] = 1
+
+      p[0] = 0 
+      p[1] = 0 
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset]     = p[0]
+      buffer.js[srcOffset + 1] = p[1]
+      buffer.js[srcOffset + 2] = p[2]
+      
+      p[0] = 0 
+      p[1] = sprite.size.y
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset + 3] = p[0]
+      buffer.js[srcOffset + 4] = p[1]
+      buffer.js[srcOffset + 5] = p[2]
+      
+      p[0] = sprite.size.x
+      p[1] = 0
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset + 6] = p[0]
+      buffer.js[srcOffset + 7] = p[1]
+      buffer.js[srcOffset + 8] = p[2]
+      
+      p[0] = 0
+      p[1] = sprite.size.y
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset + 9]  = p[0]
+      buffer.js[srcOffset + 10] = p[1]
+      buffer.js[srcOffset + 11] = p[2]
+      
+      p[0] = sprite.size.x
+      p[1] = sprite.size.y
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset + 12] = p[0]
+      buffer.js[srcOffset + 13] = p[1]
+      buffer.js[srcOffset + 14] = p[2]
+      
+      p[0] = sprite.size.x
+      p[1] = 0
+      p[2] = 0
+      vec4.transformMat4 p, p, sprite.xform
+      buffer.js[srcOffset + 15] = p[0]
+      buffer.js[srcOffset + 16] = p[1]
+      buffer.js[srcOffset + 17] = p[2]
+      
+      if USE_BULK_UPDATE
+        if not (sprite.id >= dirtyRange.min) then dirtyRange.min = sprite.id
+        if not (sprite.id <= dirtyRange.max) then dirtyRange.max = sprite.id
+      else
+        dstByteOffset = INT_BYTES * srcOffset
+        length        = VTX_ELEMS
+        arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
+                           srcOffset, length 
+
+    if USE_BULK_UPDATE
+      srcOffset     = dirtyRange.min * VTX_ELEMS
+      dstByteOffset = INT_BYTES * srcOffset
+      length        = VTX_ELEMS * (dirtyRange.max - dirtyRange.min + 1)
+      arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
+                         srcOffset, length 
+
+    __dirty = []
+      
+
+
+  
+class Foo extends Composable 
+  cons: (cfg) -> 
+    @mixin displayObjectMixin, [], cfg
+    @size    = {x: 100, y: 100}
+    @configure cfg
+
+class Bar extends DisplayObject 
+  cons: (cfg = {}) -> 
+    super []
+    @size = cfg.size || {x: 100, y: 100}
+
+txxx = (cfg = {}) ->
+  dob  : new DisplayObject []
+  size : cfg.size || {x: 100, y: 100}
 
 main = () ->
   # Get A WebGL context
-  canvas = document.getElementById("canvas");
-  gl = canvas.getContext("webgl2");
+  canvas = document.getElementById("canvas")
+  gl = canvas.getContext("webgl2")
   if (!gl) 
-    return;
+    return
   
+  t1 = Date.now()
+  for i in [0 .. 10000]
+    a = new Foo
+  t2 = Date.now()
+  console.log (t2-t1)
+  
+  t1 = Date.now()
+  for i in [0 .. 10000]
+    a = new Bar
+  t2 = Date.now()
+  console.log (t2-t1)
 
+  t1 = Date.now()
+  for i in [0 .. 10000]
+    a = txxx()
+  t2 = Date.now()
+  console.log (t2-t1)
+  
   # Use our boilerplate utils to compile the shaders and link into a program
   program = utils.createProgramFromSources(gl,
-      [vertexShaderSource, fragmentShaderSource]);
+      [vertexShaderSource, fragmentShaderSource])
 
   # look up where the vertex data needs to go.
-  positionAttributeLocation = gl.getAttribLocation(program, "position");
-  colorAttributeLocation = gl.getAttribLocation(program, "color");
+  # locs.attribute.position = gl.getAttribLocation(program.glProgram, "position")
+  # locs.attribute.color = gl.getAttribLocation(program.glProgram, "color")
 
   # look up uniform locations
-  matrixLocation = gl.getUniformLocation(program, "matrix");
+  # locs.uniform.matrix = gl.getUniformLocation(program.glProgram, "matrix")
 
 
   variables =
-    attributes:
+    attribute:
       position : null
       color    : null
-    uniforms:
+    uniform:
       matrix   : null
 
-  locs = bindVariables gl, program, variables
 
 
-  # Create a buffer
-  positionBuffer = gl.createBuffer();
+  sb1 = new SpriteBuffer gl, program,variables
 
-  # Create a vertex array object (attribute state)
-  vao = gl.createVertexArray();
+  s1 = sb1.create()
+  s1.position.x = 20
 
-  # and make it the one we're currently working with
-  gl.bindVertexArray(vao);
+  console.log s1
+  # vao = gl.createVertexArray()
 
-  # Turn on the attribute
-  gl.enableVertexAttribArray(positionAttributeLocation);
+  # withVAO gl, vao, ->
+  # gl.bindVertexArray(vao)
 
-  # Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  # Set Geometry.
-  setGeometry(gl);
 
-  # Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  size = 3;          # 3 components per iteration
-  type = gl.FLOAT;   # the data is 32bit floats
-  normalize = false; # don't normalize the data
-  stride = 0;        # 0 = move forward size * sizeof(type) each iteration to get the next position
-  offset = 0;        # start at the beginning of the buffer
-  gl.vertexAttribPointer(
-      positionAttributeLocation, size, type, normalize, stride, offset);
 
-  # create the color buffer, make it the current ARRAY_BUFFER
-  # and copy in the color values
-  colorBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  setColors(gl);
-
-  # Turn on the attribute
-  gl.enableVertexAttribArray(colorAttributeLocation);
-
-  # Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
-  size = 3;          # 3 components per iteration
-  type = gl.UNSIGNED_BYTE;   # the data is 8bit unsigned bytes
-  normalize = true;  # convert from 0-255 to 0.0-1.0
-  stride = 0;        # 0 = move forward size * sizeof(type) each iteration to get the next color
-  offset = 0;        # start at the beginning of the buffer
-  gl.vertexAttribPointer(
-      colorAttributeLocation, size, type, normalize, stride, offset);
-
+    
 
   radToDeg = (r) ->
-    return r * 180 / Math.PI;
+    return r * 180 / Math.PI
   
 
   degToRad = (d) ->
-    return d * Math.PI / 180;
+    return d * Math.PI / 180
   
 
   # First let's make some variables
   # to hold the translation,
-  fieldOfViewRadians = degToRad(60);
+  fieldOfViewRadians = degToRad(60)
   cameraAngleRadians = degToRad(0);
 
 
@@ -111,7 +404,6 @@ main = () ->
 
   # Draw the scene.
   drawScene = () ->
-    numFs = 5;
     radius = 200;
 
     utils.resizeCanvasToDisplaySize(gl.canvas);
@@ -124,16 +416,16 @@ main = () ->
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     # turn on depth testing
-    gl.enable(gl.DEPTH_TEST);
+    # gl.enable(gl.DEPTH_TEST);
 
     # tell webgl to cull faces
-    gl.enable(gl.CULL_FACE);
+    # gl.enable(gl.CULL_FACE);
 
     # Tell it to use our program (pair of shaders)
-    gl.useProgram(program);
+    gl.useProgram(program.glProgram);
 
     # Bind the attribute/buffer set we want.
-    gl.bindVertexArray(vao);
+    # gl.bindVertexArray(vao);
 
     # Compute the matrix
     aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
@@ -163,29 +455,11 @@ main = () ->
     # Make a view matrix from the camera matrix.
     viewMatrix = m4.inverse(cameraMatrix);
 
-    # Make a view matrix from the camera matrix.
-    viewMatrix = m4.inverse(cameraMatrix);
-
     # create a viewProjection matrix. This will both apply perspective
     # AND move the world so that the camera is effectively the origin
     viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
-    # Draw 'F's in a circle
-    for ii in [0..numFs]
-      angle = ii * Math.PI * 2 / numFs;
-
-      x = Math.cos(angle) * radius;
-      z = Math.sin(angle) * radius;
-      matrix = m4.translate(viewProjectionMatrix, x, 0, z);
-
-      # Set the matrix.
-      gl.uniformMatrix4fv(matrixLocation, false, matrix);
-
-      # Draw the geometry.
-      primitiveType = gl.TRIANGLES;
-      offset = 0;
-      count = 16 * 6;
-      gl.drawArrays(primitiveType, offset, count);
+    sb1.draw viewProjectionMatrix
 
   
 
@@ -201,295 +475,11 @@ main = () ->
   
 
 
-# Fill the current ARRAY_BUFFER buffer
-# with the values that define a letter 'F'.
-setGeometry = (gl) ->
-  positions = new Float32Array([
-          # left column front
-          0,   0,  0,
-          0, 150,  0,
-          30,   0,  0,
-          0, 150,  0,
-          30, 150,  0,
-          30,   0,  0,
-
-          # top rung front
-          30,   0,  0,
-          30,  30,  0,
-          100,   0,  0,
-          30,  30,  0,
-          100,  30,  0,
-          100,   0,  0,
-
-          # middle rung front
-          30,  60,  0,
-          30,  90,  0,
-          67,  60,  0,
-          30,  90,  0,
-          67,  90,  0,
-          67,  60,  0,
-
-          # left column back
-            0,   0,  30,
-           30,   0,  30,
-            0, 150,  30,
-            0, 150,  30,
-           30,   0,  30,
-           30, 150,  30,
-
-          # top rung back
-           30,   0,  30,
-          100,   0,  30,
-           30,  30,  30,
-           30,  30,  30,
-          100,   0,  30,
-          100,  30,  30,
-
-          # middle rung back
-           30,  60,  30,
-           67,  60,  30,
-           30,  90,  30,
-           30,  90,  30,
-           67,  60,  30,
-           67,  90,  30,
-
-          # top
-            0,   0,   0,
-          100,   0,   0,
-          100,   0,  30,
-            0,   0,   0,
-          100,   0,  30,
-            0,   0,  30,
-
-          # top rung right
-          100,   0,   0,
-          100,  30,   0,
-          100,  30,  30,
-          100,   0,   0,
-          100,  30,  30,
-          100,   0,  30,
-
-          # under top rung
-          30,   30,   0,
-          30,   30,  30,
-          100,  30,  30,
-          30,   30,   0,
-          100,  30,  30,
-          100,  30,   0,
-
-          # between top rung and middle
-          30,   30,   0,
-          30,   60,  30,
-          30,   30,  30,
-          30,   30,   0,
-          30,   60,   0,
-          30,   60,  30,
-
-          # top of middle rung
-          30,   60,   0,
-          67,   60,  30,
-          30,   60,  30,
-          30,   60,   0,
-          67,   60,   0,
-          67,   60,  30,
-
-          # right of middle rung
-          67,   60,   0,
-          67,   90,  30,
-          67,   60,  30,
-          67,   60,   0,
-          67,   90,   0,
-          67,   90,  30,
-
-          # bottom of middle rung.
-          30,   90,   0,
-          30,   90,  30,
-          67,   90,  30,
-          30,   90,   0,
-          67,   90,  30,
-          67,   90,   0,
-
-          # right of bottom
-          30,   90,   0,
-          30,  150,  30,
-          30,   90,  30,
-          30,   90,   0,
-          30,  150,   0,
-          30,  150,  30,
-
-          # bottom
-          0,   150,   0,
-          0,   150,  30,
-          30,  150,  30,
-          0,   150,   0,
-          30,  150,  30,
-          30,  150,   0,
-
-          # left side
-          0,   0,   0,
-          0,   0,  30,
-          0, 150,  30,
-          0,   0,   0,
-          0, 150,  30,
-          0, 150,   0,
-  ])
-
-  # Center the F around the origin and Flip it around. We do this because
-  # we're in 3D now with and +Y is up where as before when we started with 2D
-  # we had +Y as down.
-
-  # We could do by changing all the values above but I'm lazy.
-  # We could also do it with a matrix at draw time but you should
-  # never do stuff at draw time if you can do it at init time.
-  matrix = m4.xRotation(Math.PI);
-  matrix = m4.translate(matrix, -50, -75, -15);
-
-  for ii in [0 .. positions.length] by 3
-    vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
-    positions[ii + 0] = vector[0];
-    positions[ii + 1] = vector[1];
-    positions[ii + 2] = vector[2];
-  
-
-  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
 
 
 
-# Fill the current ARRAY_BUFFER buffer with colors for the 'F'.
-setColors = (gl) ->
-  gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Uint8Array([
-          # left column front
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
 
-          # top rung front
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-
-          # middle rung front
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-        200,  70, 120,
-
-          # left column back
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-
-          # top rung back
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-
-          # middle rung back
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-        80, 70, 200,
-
-          # top
-        70, 200, 210,
-        70, 200, 210,
-        70, 200, 210,
-        70, 200, 210,
-        70, 200, 210,
-        70, 200, 210,
-
-          # top rung right
-        200, 200, 70,
-        200, 200, 70,
-        200, 200, 70,
-        200, 200, 70,
-        200, 200, 70,
-        200, 200, 70,
-
-          # under top rung
-        210, 100, 70,
-        210, 100, 70,
-        210, 100, 70,
-        210, 100, 70,
-        210, 100, 70,
-        210, 100, 70,
-
-          # between top rung and middle
-        210, 160, 70,
-        210, 160, 70,
-        210, 160, 70,
-        210, 160, 70,
-        210, 160, 70,
-        210, 160, 70,
-
-          # top of middle rung
-        70, 180, 210,
-        70, 180, 210,
-        70, 180, 210,
-        70, 180, 210,
-        70, 180, 210,
-        70, 180, 210,
-
-          # right of middle rung
-        100, 70, 210,
-        100, 70, 210,
-        100, 70, 210,
-        100, 70, 210,
-        100, 70, 210,
-        100, 70, 210,
-
-          # bottom of middle rung.
-        76, 210, 100,
-        76, 210, 100,
-        76, 210, 100,
-        76, 210, 100,
-        76, 210, 100,
-        76, 210, 100,
-
-          # right of bottom
-        140, 210, 80,
-        140, 210, 80,
-        140, 210, 80,
-        140, 210, 80,
-        140, 210, 80,
-        140, 210, 80,
-
-          # bottom
-        90, 130, 110,
-        90, 130, 110,
-        90, 130, 110,
-        90, 130, 110,
-        90, 130, 110,
-        90, 130, 110,
-
-          # left side
-        160, 160, 220,
-        160, 160, 220,
-        160, 160, 220,
-        160, 160, 220,
-        160, 160, 220,
-        160, 160, 220,
-      ]),
-      gl.STATIC_DRAW);
 
 
 
