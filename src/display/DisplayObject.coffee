@@ -23,7 +23,7 @@ export class DisplayObject extends Composable
   cons: (children) ->
     @mixin styleMixin
     @mixin eventDispatcherMixin, @, children
-    @_isDirty = true
+    @_isDirty = false
     @origin   = mat4.create()
     @xform    = mat4.create()
     @position = new Vector [0,0,0], => @_onTransformed()
@@ -48,8 +48,8 @@ export class DisplayObject extends Composable
       child.setOrigin @xform
 
   _onTransformed: () =>
-    @_isDirty = true
     @onTransformed()
+    @_isDirty = true
 
   update: () => if @isDirty
     # TODO: handle parents

@@ -1,10 +1,40 @@
 import * as matrix2 from 'gl-matrix'
 import * as utils   from 'basegl/render/webgl'
 
-import {Composable, fieldMixin} from "basegl/object/Property"
+import {Composable, fieldMixin}            from "basegl/object/Property"
 import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
-import {mat4, vec4}                   from 'gl-matrix'
+import {mat4, vec4}                        from 'gl-matrix'
+import {Vector}                            from "basegl/math/Vector"
+import {logger}                            from 'basegl/debug/logger'
 
+
+
+
+BufferUsage = 
+  STATIC_DRAW  : 'STATIC_DRAW'
+  DYNAMIC_DRAW : 'DYNAMIC_DRAW'
+  STREAM_DRAW  : 'STREAM_DRAW'
+  STATIC_READ  : 'STATIC_READ'
+  DYNAMIC_READ : 'DYNAMIC_READ'
+  STREAM_READ  : 'STREAM_READ'
+  STATIC_COPY  : 'STATIC_COPY'
+  DYNAMIC_COPY : 'DYNAMIC_COPY'
+  STREAM_COPY  : 'STREAM_COPY'
+
+patternFloat32Array = (iterations, pattern) ->
+  chunks = 1 << (iterations - 1)
+  length = chunks * pattern.length
+  arr = new Float32Array length
+  for i in [0 .. pattern.length - 1]
+    arr[i] = pattern[i]
+  p = pattern.length
+  for i in [1 .. iterations - 1]
+    arr.copyWithin p, 0, p
+    p <<= 1
+  arr 
+
+# xarr = patternFloat32Array 8, [1,2,3,4]
+# console.log xarr
 
 withVAO = (gl, vao, f) -> 
   gl.bindVertexArray(vao)
@@ -26,6 +56,11 @@ arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
   withArrayBuffer gl, buffer, =>
     gl.bufferSubData(gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length)
       
+
+withNewArrayBuffer = (gl, f) ->
+  buffer = gl.createBuffer()
+  withArrayBuffer gl, buffer, => f(buffer)
+  
 
 class Pool 
   constructor: (@size) -> 
@@ -54,40 +89,35 @@ applyDef = (cfg, defCfg) ->
 
 
 class Sprite extends Composable
+  @DEFAULT_SIZE = 10
   cons: (cfg) -> 
     @mixin displayObjectMixin, [], cfg
-    @size    = {x: 100, y: 100}
+    ds       = Sprite.DEFAULT_SIZE
+    @size    = new Vector [ds, ds, 0], => @onTransformed()
     @_id     = null
     @_buffer = null
     @configure cfg
 
-    @_displayObject.onTransformed = () =>
-      @_buffer.markDirty @
+    @_displayObject.onTransformed = => @onTransformed()
 
 
-  onTransformed: () -> 
-    console.log "dupa"
+  onTransformed: () => 
+    if not @isDirty then @_buffer.markDirty @
 
-# class Sprite extends DisplayObject
-#   cons: (cfg) -> 
-#     super []
-#     # @mixin displayObjectMixin, [], cfg
-#     @size    = {x: 100, y: 100}
-#     @_id     = null
-#     @_buffer = null
-#     # @configure cfg
-
-
-#   onTransformed: () ->
-#     console.log "!!!"
-#     super()
     
 
 
 class SpriteBuffer
   constructor: (@_gl, @_program, @_variables) ->
     @_SPRITE_VTX_COUNT = 6
-    @_ixPool           = new Pool 100
+    @_INT_BYTES        = 4
+    @_VTX_DIM          = 3
+    @_VTX_ELEMS        = @_SPRITE_VTX_COUNT * @_VTX_DIM
+
+    @_sizeExp          = 8 # 2^8 = 512 elems
+    @_size             = 1 << (@_sizeExp - 1)
+
+    @_ixPool           = new Pool @_size
     @_vao = @_gl.createVertexArray()
 
     @_locs = @_program.lookupVariables @_variables  
@@ -96,97 +126,38 @@ class SpriteBuffer
 
     @_buffers = {}
 
-    withVAO @_gl, @_vao, =>
-      positionBuffer = @_gl.createBuffer()
-      @_gl.bindBuffer(@_gl.ARRAY_BUFFER, positionBuffer)
+    varSpace = @_variables.attribute
+    locSpace = @_locs.attribute
 
-      positions = new Float32Array(@_SPRITE_VTX_COUNT * @_ixPool.size) 
-      
-      @_buffers.position = 
-        js: positions
-        gl: positionBuffer
-      
-      positions[0]  = 0
-      positions[1]  = 0
-      positions[2]  = 0
-      positions[3]  = 0
-      positions[4]  = 10
-      positions[5]  = 0
-      positions[6]  = 10
-      positions[7]  = 0
-      positions[8]  = 0
-      positions[9]  = 0
-      positions[10] = 10
-      positions[11] = 0
-      positions[12] = 10
-      positions[13] = 10
-      positions[14] = 0
-      positions[15] = 10
-      positions[16] = 0
-      positions[17] = 0
+    withVAO @_gl, @_vao, =>    
+      for varName of varSpace
+        variable       = varSpace[varName]
+        varLoc         = locSpace[varName]
+        defaultPattern = variable.defaultPattern
+        patternLength  = variable.size * @_SPRITE_VTX_COUNT
+        bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
 
-      @_gl.bufferData(@_gl.ARRAY_BUFFER, positions, @_gl.DYNAMIC_DRAW)
+        withNewArrayBuffer @_gl, (bufferGL) =>      
 
-      @_gl.enableVertexAttribArray(@_locs.attribute.position)
+          bufferJS = if not variable.defaultPattern?
+            new Float32Array(patternLength * @_size)
+          else patternFloat32Array @_sizeExp, defaultPattern
+          
+          @_buffers[varName] = 
+            js: bufferJS
+            gl: bufferGL
+          
+          @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferJS, @_gl[bufferUsage])
 
-      size = 3          # 3 components per iteration
-      type = @_gl.FLOAT   # the data is 32bit floats
-      normalize = false # don't normalize the data
-      stride = 0        # 0 = move forward size * sizeof(type) each iteration to get the next position
-      offset = 0        # start at the beginning of the buffer
-      @_gl.vertexAttribPointer(
-          @_locs.attribute.position, size, type, normalize, stride, offset)
+          @_gl.enableVertexAttribArray varLoc
 
+          normalize = false
+          stride    = 0
+          offset    = 0
+          type      = variable.type(@_gl)
+          @_gl.vertexAttribPointer(
+            varLoc, variable.size, type, normalize, stride, offset)
 
-
-      colorBuffer = @_gl.createBuffer()
-      withArrayBuffer @_gl, colorBuffer, =>
-        # @_gl.bindBuffer(@_gl.ARRAY_BUFFER, colorBuffer)
-        
-        # withArrayBuffer = (gl, buffer, f) ->
-        #   withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
-
-        #   withBuffer = (gl, type, buffer, f) -> 
-        #   gl.bindBuffer(type, buffer)
-        #   out = f()
-        #   gl.bindBuffer(type, 0)
-        #   out
-
-        @_gl.bufferData( @_gl.ARRAY_BUFFER,
-          new Uint8Array(@_SPRITE_VTX_COUNT * @_ixPool.size),
-          @_gl.DYNAMIC_DRAW)
-          #     # left column front
-          #   200,  70, 120,
-          #   200,  70, 120,
-          #   200,  70, 120,
-          #   200,  70, 120,
-          #   200,  70, 120,
-          #   200,  70, 120,
-
-          # ]),
-        
-
-        # Turn on the attribute
-        @_gl.enableVertexAttribArray(@_locs.attribute.color)
-
-        # Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
-        size = 3          # 3 components per iteration
-        type = @_gl.UNSIGNED_BYTE   # the data is 8bit unsigned bytes
-        normalize = true  # convert from 0-255 to 0.0-1.0
-        stride = 0        # 0 = move forward size * sizeof(type) each iteration to get the next color
-        offset = 0        # start at the beginning of the buffer
-        @_gl.vertexAttribPointer(
-            @_locs.attribute.color, size, type, normalize, stride, offset)
-
-      # TODO REMOVE
-      @_ixPool.reserve()
-
-  # markDirty: (ix) ->
-  #   if @__dirtyRange == null 
-  #     @__dirtyRange = {min:ix, max:ix}
-  #   else
-  #     if      ix < @__dirtyRange.min then @__dirtyRange.min = ix
-  #     else if ix > @__dirtyRange.max then @__dirtyRange.max = ix
 
   markDirty: (sprite) ->
     @__dirty.push(sprite)
@@ -197,33 +168,25 @@ class SpriteBuffer
       @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
       vtxCount = @_SPRITE_VTX_COUNT * @_ixPool.dirtySize()
       if vtxCount > 0
-        console.log ">>>", vtxCount
         @_gl.drawArrays(@_gl.TRIANGLES, 0, vtxCount)
 
-  create: (cfg = null) ->
-    cfg = applyDef cfg, 
-      size: {x:100, y:100}
-
-      
-    ix  = @_ixPool.reserve()
+  create: () ->      
+    ix = @_ixPool.reserve()
     if not ix?
       console.error "TODO: BUFFER TO SMALL"
 
+    logger.info "New sprite", ix
+    
     sprite = new Sprite
       buffer : @
       id     : ix
-      size   : cfg.size
     
-    @markDirty sprite
+    # @markDirty sprite
     sprite
 
   render: () ->
     # TODO: check on real use case if bulk update is faster
     USE_BULK_UPDATE = false
-
-    INT_BYTES = 4
-    VTX_DIM   = 3
-    VTX_ELEMS = @_SPRITE_VTX_COUNT * VTX_DIM
 
     dirtyRange = null
 
@@ -237,7 +200,7 @@ class SpriteBuffer
     for sprite in @__dirty
       sprite.update()
 
-      srcOffset = sprite.id * VTX_ELEMS   
+      srcOffset = sprite.id * @_VTX_ELEMS   
       p = vec4.create(); p[3] = 1
 
       p[0] = 0 
@@ -292,15 +255,15 @@ class SpriteBuffer
         if not (sprite.id >= dirtyRange.min) then dirtyRange.min = sprite.id
         if not (sprite.id <= dirtyRange.max) then dirtyRange.max = sprite.id
       else
-        dstByteOffset = INT_BYTES * srcOffset
-        length        = VTX_ELEMS
+        dstByteOffset = @_INT_BYTES * srcOffset
+        length        = @_VTX_ELEMS
         arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
                            srcOffset, length 
 
     if USE_BULK_UPDATE
-      srcOffset     = dirtyRange.min * VTX_ELEMS
-      dstByteOffset = INT_BYTES * srcOffset
-      length        = VTX_ELEMS * (dirtyRange.max - dirtyRange.min + 1)
+      srcOffset     = dirtyRange.min * @_VTX_ELEMS
+      dstByteOffset = @_INT_BYTES * srcOffset
+      length        = @_VTX_ELEMS * (dirtyRange.max - dirtyRange.min + 1)
       arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
                          srcOffset, length 
 
@@ -308,21 +271,17 @@ class SpriteBuffer
       
 
 
-  
-class Foo extends Composable 
-  cons: (cfg) -> 
-    @mixin displayObjectMixin, [], cfg
-    @size    = {x: 100, y: 100}
-    @configure cfg
+Float = 
+  glType = (gl) => gl.FLOAT
 
-class Bar extends DisplayObject 
-  cons: (cfg = {}) -> 
-    super []
-    @size = cfg.size || {x: 100, y: 100}
+dim = (n) =>
+  size: n
+  type: Float
 
-txxx = (cfg = {}) ->
-  dob  : new DisplayObject []
-  size : cfg.size || {x: 100, y: 100}
+color =
+  size: 3 
+  type: Float
+
 
 main = () ->
   # Get A WebGL context
@@ -331,24 +290,7 @@ main = () ->
   if (!gl) 
     return
   
-  t1 = Date.now()
-  for i in [0 .. 10000]
-    a = new Foo
-  t2 = Date.now()
-  console.log (t2-t1)
-  
-  t1 = Date.now()
-  for i in [0 .. 10000]
-    a = new Bar
-  t2 = Date.now()
-  console.log (t2-t1)
 
-  t1 = Date.now()
-  for i in [0 .. 10000]
-    a = txxx()
-  t2 = Date.now()
-  console.log (t2-t1)
-  
   # Use our boilerplate utils to compile the shaders and link into a program
   program = utils.createProgramFromSources(gl,
       [vertexShaderSource, fragmentShaderSource])
@@ -363,10 +305,28 @@ main = () ->
 
   variables =
     attribute:
-      position : null
-      color    : null
+      position : dim 3
+      uv       : dim 2
+      color    : color
     uniform:
       matrix   : null
+
+  ds = Sprite.DEFAULT_SIZE
+  variables.attribute.position.defaultPattern = [
+    0 , 0 , 0,
+    0 , ds, 0,
+    ds, 0 , 0,
+    0 , ds, 0,
+    ds, ds, 0,
+    ds, 0 , 0]
+
+  variables.attribute.uv.defaultPattern = [
+    0, 0,
+    0, 1,
+    1, 0,
+    0, 1,
+    1, 1,
+    1, 0]
 
 
 
@@ -374,8 +334,10 @@ main = () ->
 
   s1 = sb1.create()
   s1.position.x = 20
+  s1.size.x = 50
 
-  console.log s1
+  s2 = sb1.create()
+
   # vao = gl.createVertexArray()
 
   # withVAO gl, vao, ->
