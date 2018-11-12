@@ -8,7 +8,8 @@ import {Vector}                            from "basegl/math/Vector"
 import {logger}                            from 'basegl/debug/logger'
 
 
-
+WebGL = 
+  SIZE_OF_FLOAT: 4
 
 BufferUsage = 
   STATIC_DRAW  : 'STATIC_DRAW'
@@ -80,6 +81,9 @@ class Pool
   free: (n) ->
     @free.push(n)
 
+  resize: (newSize) -> 
+    @size = newSize
+
 
 applyDef = (cfg, defCfg) ->
   if not cfg? then return defCfg
@@ -108,55 +112,70 @@ class Sprite extends Composable
 
 
 class SpriteBuffer
-  constructor: (@_gl, @_program, @_variables) ->
+  constructor: (@name, @_gl, @_program, @_variables) ->
     @_SPRITE_VTX_COUNT = 6
     @_INT_BYTES        = 4
     @_VTX_DIM          = 3
     @_VTX_ELEMS        = @_SPRITE_VTX_COUNT * @_VTX_DIM
-
-    @_sizeExp          = 8 # 2^8 = 512 elems
+    @_sizeExp          = 1 # 2^8 = 512 elems
     @_size             = 1 << (@_sizeExp - 1)
-
     @_ixPool           = new Pool @_size
-    @_vao = @_gl.createVertexArray()
+    @_vao              = @_gl.createVertexArray()
+    @_locs             = @_program.lookupVariables @_variables  
+    @__dirty           = []
+    @_buffers          = {}
 
-    @_locs = @_program.lookupVariables @_variables  
-
-    @__dirty = []
-
-    @_buffers = {}
-
+    @initVAO()
+    
+            
+  initVAO: () => logger.group 'initializing VAO', =>
+    @resize(@_size)
     varSpace = @_variables.attribute
     locSpace = @_locs.attribute
-
-    withVAO @_gl, @_vao, =>    
+    withVAO @_gl, @_vao, =>  
       for varName of varSpace
-        variable       = varSpace[varName]
-        varLoc         = locSpace[varName]
-        defaultPattern = variable.defaultPattern
-        patternLength  = variable.size * @_SPRITE_VTX_COUNT
-        bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
-
-        withNewArrayBuffer @_gl, (bufferGL) =>      
-
-          bufferJS = if not variable.defaultPattern?
-            new Float32Array(patternLength * @_size)
-          else patternFloat32Array @_sizeExp, defaultPattern
-          
-          @_buffers[varName] = 
-            js: bufferJS
-            gl: bufferGL
-          
-          @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferJS, @_gl[bufferUsage])
-
+        @log "Enabling attribute '" + varName + "'"
+        variable = varSpace[varName]
+        varLoc   = locSpace[varName]      
+        buffer   = @_buffers[varName]
+        withArrayBuffer @_gl, buffer.gl, =>   
           @_gl.enableVertexAttribArray varLoc
-
           normalize = false
           stride    = 0
           offset    = 0
           type      = variable.type(@_gl)
           @_gl.vertexAttribPointer(
             varLoc, variable.size, type, normalize, stride, offset)
+
+  resize: (newSizeExp) =>
+    @_sizeExp = newSizeExp
+    @_size    = 1 << (@_sizeExp - 1)
+    @_ixPool.resize @_size
+    @log "resizing to 2^" + @_sizeExp + ' elements'
+
+    varSpace = @_variables.attribute   
+    for varName of varSpace
+      variable       = varSpace[varName]
+      defaultPattern = variable.defaultPattern
+      patternLength  = variable.size * @_SPRITE_VTX_COUNT
+      bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
+      
+      bufferJS = if not variable.defaultPattern?
+            new Float32Array(patternLength * @_size)
+          else patternFloat32Array @_sizeExp, defaultPattern
+      
+      buffer = @_buffers[varName]
+      if not buffer?
+        buffer =
+          js: bufferJS
+          gl: @_gl.createBuffer()
+      else
+        bufferJS.set buffer.js
+        buffer.js = bufferJS
+      @_buffers[varName] = buffer
+
+      withArrayBuffer @_gl, buffer.gl, =>
+        @_gl.bufferData(@_gl.ARRAY_BUFFER, buffer.js, @_gl[bufferUsage])
 
 
   markDirty: (sprite) ->
@@ -173,9 +192,11 @@ class SpriteBuffer
   create: () ->      
     ix = @_ixPool.reserve()
     if not ix?
-      console.error "TODO: BUFFER TO SMALL"
+      @resize(@_sizeExp * 2)
+      ix = @_ixPool.reserve()
+      # console.error "TODO: BUFFER TO SMALL"
 
-    logger.info "New sprite", ix
+    @log "new sprite", ix
     
     sprite = new Sprite
       buffer : @
@@ -183,6 +204,9 @@ class SpriteBuffer
     
     # @markDirty sprite
     sprite
+
+  log: (args...) ->
+    logger.info ("Sprite buffer '" + @name + "': "), args...
 
   render: () ->
     # TODO: check on real use case if bulk update is faster
@@ -330,7 +354,7 @@ main = () ->
 
 
 
-  sb1 = new SpriteBuffer gl, program,variables
+  sb1 = new SpriteBuffer 'Nodes', gl, program,variables
 
   s1 = sb1.create()
   s1.position.x = 20
@@ -338,6 +362,7 @@ main = () ->
 
   s2 = sb1.create()
 
+  console.log sb1
   # vao = gl.createVertexArray()
 
   # withVAO gl, vao, ->
