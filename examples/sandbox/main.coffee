@@ -64,7 +64,7 @@ withNewArrayBuffer = (gl, f) ->
   
 
 class Pool 
-  constructor: (@size) -> 
+  constructor: (@size=0) -> 
     @free      = []
     @nextIndex = 0
 
@@ -104,6 +104,10 @@ class Sprite extends Composable
 
     @_displayObject.onTransformed = => @onTransformed()
 
+    @variables = 
+      color: new Vector [0,0,0], => 
+        @_buffer.setVariable @_id, 'color', @variables.color
+
 
   onTransformed: () => 
     if not @isDirty then @_buffer.markDirty @
@@ -117,19 +121,18 @@ class SpriteBuffer
     @_INT_BYTES        = 4
     @_VTX_DIM          = 3
     @_VTX_ELEMS        = @_SPRITE_VTX_COUNT * @_VTX_DIM
-    @_sizeExp          = 1 # 2^8 = 512 elems
-    @_size             = 1 << (@_sizeExp - 1)
-    @_ixPool           = new Pool @_size
+    @_sizeExp          = 1
+
+    @_ixPool           = new Pool
     @_vao              = @_gl.createVertexArray()
     @_locs             = @_program.lookupVariables @_variables  
     @__dirty           = []
     @_buffers          = {}
 
     @initVAO()
-    
             
-  initVAO: () => logger.group 'initializing VAO', =>
-    @resize(@_size)
+  initVAO: () => @logGroup 'VAO initialization', =>
+    @resize(@_sizeExp)
     varSpace = @_variables.attribute
     locSpace = @_locs.attribute
     withVAO @_gl, @_vao, =>  
@@ -138,7 +141,9 @@ class SpriteBuffer
         variable = varSpace[varName]
         varLoc   = locSpace[varName]      
         buffer   = @_buffers[varName]
-        withArrayBuffer @_gl, buffer.gl, =>   
+        if varLoc == -1
+          @log "Attribute '" + varName + "' not used in shader"
+        else withArrayBuffer @_gl, buffer.gl, =>   
           @_gl.enableVertexAttribArray varLoc
           normalize = false
           stride    = 0
@@ -151,12 +156,12 @@ class SpriteBuffer
     @_sizeExp = newSizeExp
     @_size    = 1 << (@_sizeExp - 1)
     @_ixPool.resize @_size
-    @log "resizing to 2^" + @_sizeExp + ' elements'
+    @log "Resizing to 2^" + @_sizeExp + ' elements'
 
     varSpace = @_variables.attribute   
     for varName of varSpace
       variable       = varSpace[varName]
-      defaultPattern = variable.defaultPattern
+      defaultPattern = variable.defaultPattern #FIXME
       patternLength  = variable.size * @_SPRITE_VTX_COUNT
       bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
       
@@ -177,7 +182,6 @@ class SpriteBuffer
       withArrayBuffer @_gl, buffer.gl, =>
         @_gl.bufferData(@_gl.ARRAY_BUFFER, buffer.js, @_gl[bufferUsage])
 
-
   markDirty: (sprite) ->
     @__dirty.push(sprite)
 
@@ -194,19 +198,53 @@ class SpriteBuffer
     if not ix?
       @resize(@_sizeExp * 2)
       ix = @_ixPool.reserve()
-      # console.error "TODO: BUFFER TO SMALL"
-
-    @log "new sprite", ix
-    
-    sprite = new Sprite
+    @log "New sprite", ix
+    new Sprite
       buffer : @
       id     : ix
-    
-    # @markDirty sprite
-    sprite
 
   log: (args...) ->
-    logger.info ("Sprite buffer '" + @name + "': "), args...
+    logger.info ("[SpriteBuffer." + @name + "]"), args...
+  
+  logGroup: (s,f) ->
+    logger.group ("[SpriteBuffer." + @name + "] " + s), f
+
+
+  setVariable: (id, name, val) ->
+    buffer = @_buffers[name]
+
+    srcOffset = id * @_VTX_ELEMS   
+
+    buffer.js[srcOffset]     = val.x
+    buffer.js[srcOffset + 1] = val.y
+    buffer.js[srcOffset + 2] = val.z
+
+    buffer.js[srcOffset + 3] = val.x
+    buffer.js[srcOffset + 4] = val.y
+    buffer.js[srcOffset + 5] = val.z
+    
+    buffer.js[srcOffset + 6] = val.x
+    buffer.js[srcOffset + 7] = val.y
+    buffer.js[srcOffset + 8] = val.z
+    
+    buffer.js[srcOffset + 9]  = val.x
+    buffer.js[srcOffset + 10] = val.y
+    buffer.js[srcOffset + 11] = val.z
+
+    buffer.js[srcOffset + 12] = val.x
+    buffer.js[srcOffset + 13] = val.y
+    buffer.js[srcOffset + 14] = val.z
+
+    buffer.js[srcOffset + 15] = val.x
+    buffer.js[srcOffset + 16] = val.y
+    buffer.js[srcOffset + 17] = val.z
+
+    dstByteOffset = @_INT_BYTES * srcOffset
+    length        = @_VTX_ELEMS
+
+    arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
+                       srcOffset, length 
+                       
 
   render: () ->
     # TODO: check on real use case if bulk update is faster
@@ -361,6 +399,8 @@ main = () ->
   s1.size.x = 50
 
   s2 = sb1.create()
+
+  s2.variables.color.x = 1
 
   console.log sb1
   # vao = gl.createVertexArray()
@@ -761,3 +801,300 @@ var m4 = {
 `
 
 main()
+
+
+
+
+
+
+
+# cfg = 
+#   x : 1
+#   y : 2
+#   z : 3
+
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+# _data = {}
+
+# _data.x = () -> data['x']
+# _data.z = () -> data['y']
+# _data.y = () -> data['z']
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..1000000]
+#   for el of cfg
+#     if _data[el]() == true
+#       j += 1
+# t2 = Date.now()
+# console.log ("Proxy0 >>"), (t2-t1)
+
+
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+# _data = {}
+
+# Object.defineProperty _data, 'x',
+#     configurable: false
+#     # set: () ->
+#     get: () -> data['x']
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..1000000]
+#   for el of cfg
+#     if _data[el] == true
+#       j += 1
+# t2 = Date.now()
+# console.log ("Proxy1 >>"), (t2-t1)
+
+
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+# `function Obj(){}`
+# # _data = {}
+
+# Object.defineProperty Obj.prototype, 'x',
+#     configurable: false
+#     # set: () ->
+#     get: () -> data['x']
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..1000000]
+#   for el of cfg
+#     if Obj[el] == true
+#       j += 1
+# t2 = Date.now()
+# console.log ("Proxy2 >>"), (t2-t1)
+
+
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+# _data = new Proxy data, 
+#   get: (obj, prop) -> data[prop]
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..1000000]
+#   for el of cfg
+#     _data[el] = true
+# t2 = Date.now()
+# console.log ("Proxy3 >>"), (t2-t1)
+
+
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..1000000]
+#   for el of cfg
+#     data[el] = true
+# t2 = Date.now()
+# console.log ("0 >>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el of cfg
+#     if data[el]
+#       j += 1
+# t2 = Date.now()
+# console.log ("1 >>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el of cfg
+#     if el in data
+#       j += 1
+# t2 = Date.now()
+# console.log ("2 >>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el of cfg
+#     if data.hasOwnProperty el
+#       j += 1
+# t2 = Date.now()
+# console.log ("3 >>"), (t2-t1)
+
+# data = new Set
+# data.add 'x'
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el of cfg
+#     if data.has el
+#       j += 1
+# t2 = Date.now()
+# console.log ("4 >>"), (t2-t1)
+
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   if data.x then j += 1
+#   if data.y then j += 1
+#   if data.z then j += 1
+# t2 = Date.now()
+# console.log ("5 >>"), (t2-t1)
+
+
+
+
+
+# cfg = ['x', 'y', 'z']
+
+# data = {}
+
+# data['x'] = true
+#   # x : true
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el in cfg
+#     data[el] = true
+# t2 = Date.now()
+# console.log ("0 >>>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el in cfg
+#     if data[el]
+#       j += 1
+# t2 = Date.now()
+# console.log ("1 >>>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el in cfg
+#     if el in data
+#       j += 1
+# t2 = Date.now()
+# console.log ("2 >>>"), (t2-t1)
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el in cfg
+#     if data.hasOwnProperty el
+#       j += 1
+# t2 = Date.now()
+# console.log ("3 >>>"), (t2-t1)
+
+# data = new Set
+# data.add 'x'
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   for el in cfg
+#     if data.has el
+#       j += 1
+# t2 = Date.now()
+# console.log ("4 >>>"), (t2-t1)
+
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   if data.x then j += 1
+#   if data.y then j += 1
+#   if data.z then j += 1
+# t2 = Date.now()
+# console.log ("5 >>>"), (t2-t1)
+
+
+# data = [true]
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   ii = 3 
+#   while (ii >= 0)
+#     if data[ii] == true
+#       j += 1
+#     ii -= 1
+# t2 = Date.now()
+# console.log ("x1 >>"), (t2-t1)
+
+
+
+# data = {}
+# data[0] = true
+
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   ii = 3 
+#   while (ii >= 0)
+#     if data[ii] == true
+#       j += 1
+#     ii -= 1
+# t2 = Date.now()
+# console.log ("x2 >>"), (t2-t1)
+
+# data = new Set
+# data.add 0
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   ii = 3 
+#   while (ii >= 0)
+#     if data.has ii
+#       j += 1
+#     ii -= 1
+# t2 = Date.now()
+# console.log ("x3 >>"), (t2-t1)
+
+
+
+# data = new Uint8ClampedArray(255)
+# data[0] = 1
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   ii = 3 
+#   while (ii >= 0)
+#     if data[ii] == 1
+#       j += 1
+#     ii -= 1
+# t2 = Date.now()
+# console.log ("x4 >>"), (t2-t1)
+
+
+# data = new Uint8Array(255)
+# data[0] = 1
+# j = 0
+# t1 = Date.now()
+# for i in [1..10000000]
+#   ii = 3 
+#   while (ii >= 0)
+#     if data[ii] == 1
+#       j += 1
+#     ii -= 1
+# t2 = Date.now()
+# console.log ("x5 >>"), (t2-t1)
+
