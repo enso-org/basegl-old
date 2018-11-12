@@ -117,10 +117,11 @@ class Sprite extends Composable
 
 class SpriteBuffer
   constructor: (@name, @_gl, @_program, @_variables) ->
+    @_SPRITE_IND_COUNT = 4
     @_SPRITE_VTX_COUNT = 6
     @_INT_BYTES        = 4
     @_VTX_DIM          = 3
-    @_VTX_ELEMS        = @_SPRITE_VTX_COUNT * @_VTX_DIM
+    @_VTX_ELEMS        = @_SPRITE_IND_COUNT * @_VTX_DIM
     @_sizeExp          = 1
 
     @_ixPool           = new Pool
@@ -132,10 +133,13 @@ class SpriteBuffer
     @initVAO()
             
   initVAO: () => @logGroup 'VAO initialization', =>
+    @__indexBuffer = @_gl.createBuffer()
+
     @resize(@_sizeExp)
     varSpace = @_variables.attribute
     locSpace = @_locs.attribute
     withVAO @_gl, @_vao, =>  
+      @_gl.bindBuffer(@_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer)  
       for varName of varSpace
         @log "Enabling attribute '" + varName + "'"
         variable = varSpace[varName]
@@ -152,17 +156,40 @@ class SpriteBuffer
           @_gl.vertexAttribPointer(
             varLoc, variable.size, type, normalize, stride, offset)
 
+      
+    @_gl.bindBuffer(@_gl.ELEMENT_ARRAY_BUFFER, null)
+
+  _buildIndices: () =>
+    arr = new Uint16Array (@_size * @_SPRITE_VTX_COUNT)
+    for i in [0 ... @_size]
+      offset        = i * @_SPRITE_VTX_COUNT
+      idx           = i * @_SPRITE_IND_COUNT
+      arr[offset]   = idx
+      arr[offset+1] = idx + 1
+      arr[offset+2] = idx + 3
+      arr[offset+3] = idx + 1
+      arr[offset+4] = idx + 2
+      arr[offset+5] = idx + 3
+    arr
+
+
   resize: (newSizeExp) =>
     @_sizeExp = newSizeExp
     @_size    = 1 << (@_sizeExp - 1)
     @_ixPool.resize @_size
     @log "Resizing to 2^" + @_sizeExp + ' elements'
 
+    # Indexing geometry
+    indices = @_buildIndices()
+    withBuffer @_gl, @_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer, =>
+      @_gl.bufferData(@_gl.ELEMENT_ARRAY_BUFFER, indices, @_gl.STATIC_DRAW)
+
+    # Updating attribute buffers
     varSpace = @_variables.attribute   
     for varName of varSpace
       variable       = varSpace[varName]
-      defaultPattern = variable.defaultPattern #FIXME
-      patternLength  = variable.size * @_SPRITE_VTX_COUNT
+      defaultPattern = variable.defaultPattern #FIXME: handle patterns of wring sizes
+      patternLength  = variable.size * @_SPRITE_IND_COUNT
       bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
       
       bufferJS = if not variable.defaultPattern?
@@ -189,9 +216,10 @@ class SpriteBuffer
     @render() 
     withVAO @_gl, @_vao, =>
       @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
-      vtxCount = @_SPRITE_VTX_COUNT * @_ixPool.dirtySize()
-      if vtxCount > 0
-        @_gl.drawArrays(@_gl.TRIANGLES, 0, vtxCount)
+      elemCount = @_ixPool.dirtySize()
+      if elemCount > 0
+        offset = elemCount * @_SPRITE_VTX_COUNT
+        @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
 
   create: () ->      
     ix = @_ixPool.reserve()
@@ -230,14 +258,6 @@ class SpriteBuffer
     buffer.js[srcOffset + 9]  = val.x
     buffer.js[srcOffset + 10] = val.y
     buffer.js[srcOffset + 11] = val.z
-
-    buffer.js[srcOffset + 12] = val.x
-    buffer.js[srcOffset + 13] = val.y
-    buffer.js[srcOffset + 14] = val.z
-
-    buffer.js[srcOffset + 15] = val.x
-    buffer.js[srcOffset + 16] = val.y
-    buffer.js[srcOffset + 17] = val.z
 
     dstByteOffset = @_INT_BYTES * srcOffset
     length        = @_VTX_ELEMS
@@ -282,36 +302,20 @@ class SpriteBuffer
       buffer.js[srcOffset + 5] = p[2]
       
       p[0] = sprite.size.x
-      p[1] = 0
+      p[1] = sprite.size.y
       p[2] = 0
       vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset + 6] = p[0]
       buffer.js[srcOffset + 7] = p[1]
       buffer.js[srcOffset + 8] = p[2]
       
-      p[0] = 0
-      p[1] = sprite.size.y
+      p[0] = sprite.size.x
+      p[1] = 0
       p[2] = 0
       vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset + 9]  = p[0]
       buffer.js[srcOffset + 10] = p[1]
       buffer.js[srcOffset + 11] = p[2]
-      
-      p[0] = sprite.size.x
-      p[1] = sprite.size.y
-      p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
-      buffer.js[srcOffset + 12] = p[0]
-      buffer.js[srcOffset + 13] = p[1]
-      buffer.js[srcOffset + 14] = p[2]
-      
-      p[0] = sprite.size.x
-      p[1] = 0
-      p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
-      buffer.js[srcOffset + 15] = p[0]
-      buffer.js[srcOffset + 16] = p[1]
-      buffer.js[srcOffset + 17] = p[2]
       
       if USE_BULK_UPDATE
         if not (sprite.id >= dirtyRange.min) then dirtyRange.min = sprite.id
@@ -377,15 +381,11 @@ main = () ->
   variables.attribute.position.defaultPattern = [
     0 , 0 , 0,
     0 , ds, 0,
-    ds, 0 , 0,
-    0 , ds, 0,
     ds, ds, 0,
     ds, 0 , 0]
 
   variables.attribute.uv.defaultPattern = [
     0, 0,
-    0, 1,
-    1, 0,
     0, 1,
     1, 1,
     1, 0]
