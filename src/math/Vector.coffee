@@ -22,6 +22,8 @@ export class Vector
   Property.swizzleFieldsSTPQ @, '_arr'
   Property.addIndexFieldsStd @, '_arr'
 
+  @getter 'components', -> @_arr
+
 
   ### Utils ###
 

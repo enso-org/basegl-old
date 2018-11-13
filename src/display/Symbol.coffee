@@ -1,14 +1,16 @@
-import * as Reflect      from 'basegl/object/Reflect'
-import * as Property     from 'basegl/object/Property'
-import * as Image        from 'basegl/display/Image'
+import * as Reflect    from 'basegl/object/Reflect'
+import * as Property   from 'basegl/object/Property'
+import * as Image      from 'basegl/display/Image'
 
-import {Color}           from 'basegl/display/Color'
-import {Vector}          from "basegl/math/Vector"
-import {DisplayObject}   from "basegl/display/DisplayObject"
-import {IdxPool}         from 'basegl/lib/container/Pool'
-import {Composable}      from 'basegl/object/Property'
+import {Color}         from 'basegl/display/Color'
+import {Vector}        from "basegl/math/Vector"
+import {DisplayObject} from "basegl/display/DisplayObject"
+import {IdxPool}       from 'basegl/lib/container/Pool'
+import {Composable}    from 'basegl/object/Property'
+import {logger}        from 'basegl/debug/logger'
 
 
+THREE = null
 
 export variables =
   time        : "time"
@@ -73,6 +75,18 @@ export int   = (args...) -> typedValue 'int'   , args...
 export float = (args...) -> typedValue 'float' , args...
 
 
+
+export class RawShaderMaterial extends Composable
+  cons: (cfg) ->
+    @transparent    = false 
+    @extensions     = {}
+    @vertexShader   = null
+    @fragmentShader = null
+    @configure @cfg
+
+    @uniforms = {}
+
+
 export class Symbol
   constructor: (@shape) ->
     @bbox              = new Vector [512,512]
@@ -107,8 +121,8 @@ export class Symbol
     @globalVariables = mkVariableProxy @defineGlobalVariable, @readGlobalVariable
 
   _initMaterial: () ->
-    @material = new THREE.RawShaderMaterial
-      blending:    THREE.NormalBlending
+    @material = new RawShaderMaterial
+      # blending:    THREE.NormalBlending
       transparent: true
       extensions:
         derivatives:      true

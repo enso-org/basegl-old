@@ -6,6 +6,10 @@ import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
 import {mat4, vec4}                        from 'gl-matrix'
 import {Vector}                            from "basegl/math/Vector"
 import {logger}                            from 'basegl/debug/logger'
+import * as basegl from 'basegl'
+import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
+import * as Color     from 'basegl/display/Color'
+import * as Symbol from 'basegl/display/Symbol'
 
 
 WebGL = 
@@ -159,6 +163,17 @@ class SpriteBuffer
       
     @_gl.bindBuffer(@_gl.ELEMENT_ARRAY_BUFFER, null)
 
+
+  # Sprite buffer uses indexed geometry. This function is used to build indices
+  # pointing to specific vertexes during rendering stage. The sprite quad is
+  # indexed as follow:
+  #
+  #  1 +---+ 2
+  #    |   | 
+  #  0 +---+ 3
+  #
+  # In reality, it consist of 2 triangles: {0,1,3} and {1,2,3}. The following
+  # function creates mapping between quad indices and vertex ids.
   _buildIndices: () =>
     arr = new Uint16Array (@_size * @_SPRITE_VTX_COUNT)
     for i in [0 ... @_size]
@@ -213,7 +228,7 @@ class SpriteBuffer
     @__dirty.push(sprite)
 
   draw: (viewProjectionMatrix) ->
-    @render() 
+    @update() 
     withVAO @_gl, @_vao, =>
       @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
       elemCount = @_ixPool.dirtySize()
@@ -221,7 +236,7 @@ class SpriteBuffer
         offset = elemCount * @_SPRITE_VTX_COUNT
         @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
 
-  create: () ->      
+  create: => @logGroup "Creating sprite", =>
     ix = @_ixPool.reserve()
     if not ix?
       @resize(@_sizeExp * 2)
@@ -241,23 +256,13 @@ class SpriteBuffer
   setVariable: (id, name, val) ->
     buffer = @_buffers[name]
 
-    srcOffset = id * @_VTX_ELEMS   
+    srcOffset  = id * @_VTX_ELEMS   
+    components = val.components
 
-    buffer.js[srcOffset]     = val.x
-    buffer.js[srcOffset + 1] = val.y
-    buffer.js[srcOffset + 2] = val.z
-
-    buffer.js[srcOffset + 3] = val.x
-    buffer.js[srcOffset + 4] = val.y
-    buffer.js[srcOffset + 5] = val.z
-    
-    buffer.js[srcOffset + 6] = val.x
-    buffer.js[srcOffset + 7] = val.y
-    buffer.js[srcOffset + 8] = val.z
-    
-    buffer.js[srcOffset + 9]  = val.x
-    buffer.js[srcOffset + 10] = val.y
-    buffer.js[srcOffset + 11] = val.z
+    for vtxIx in [0 ... @_SPRITE_IND_COUNT]
+      offset = srcOffset + vtxIx * 3
+      for componentIx in [0 ... 3]
+        buffer.js[offset + componentIx] = components[componentIx]
 
     dstByteOffset = @_INT_BYTES * srcOffset
     length        = @_VTX_ELEMS
@@ -266,7 +271,7 @@ class SpriteBuffer
                        srcOffset, length 
                        
 
-  render: () ->
+  update: () ->
     # TODO: check on real use case if bulk update is faster
     USE_BULK_UPDATE = false
 
@@ -348,6 +353,17 @@ color =
   size: 3 
   type: Float
 
+
+scene = basegl.scene
+  domElement: 'scene'
+
+myShape = basegl.expr ->
+  base    = circle('myVar')
+  base.fill(Color.rgb [0,0,0,0.7]).move(200,200)
+
+mySymbol = basegl.symbol myShape
+
+console.log myShape
 
 main = () ->
   # Get A WebGL context
