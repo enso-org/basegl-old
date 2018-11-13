@@ -236,6 +236,8 @@ export symbol = (a) =>
 
 export class SymbolGeometry
   constructor: (@attributeMap=new Map, @maxElements=1000) ->
+    console.log ">> SymbolGeometry"
+    console.log "attributeMap", @attributeMap
     @_symbolIDPool = new IdxPool 1
 
     @attributeTypeMap = new Map

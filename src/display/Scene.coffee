@@ -215,11 +215,11 @@ class SceneModel extends Composable
 ### Scene ###
 #############
 
-export class Viewport extends Composable
-  cons: (cfg) ->
-    @_size   = {x: 100, y: 100}
-    @_camera = new Camera
-    @configure cfg
+# export class Viewport extends Composable
+#   cons: (cfg) ->
+#     @_size   = {x: 100, y: 100}
+#     @_camera = new Camera
+#     @configure cfg
 
 export class Scene extends Composable
 
@@ -236,7 +236,7 @@ export class Scene extends Composable
     @_symbolModel    = new SceneModel @_modelCfg
     @_domModel       = new SceneModel @_modelCfg
     @_models         = [@_symbolModel, @_domModel]
-    @_viewports      = [new Viewport ]
+    # @_viewports      = [new Viewport ]
     @_symbolRegistry = new SymbolRegistry @_symbolModel.model
     @configure cfg
     @_creationTime   = Date.now()
