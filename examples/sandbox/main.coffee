@@ -3,7 +3,6 @@ import * as utils   from 'basegl/render/webgl'
 
 import {Composable, fieldMixin}            from "basegl/object/Property"
 import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
-import {mat4, vec4}                        from 'gl-matrix'
 import {Vector}                            from "basegl/math/Vector"
 import {logger}                            from 'basegl/debug/logger'
 import * as basegl from 'basegl'
@@ -15,15 +14,26 @@ import * as Sprite from 'basegl/display/Sprite'
 
 
 Float = 
-  glType = (gl) => gl.FLOAT
+  glType: (gl) => gl.FLOAT
 
-dim = (n) =>
-  size: n
-  type: Float
 
-color =
-  size: 3 
-  type: Float
+class WebGLRepr
+  constructor: (@size, @type) ->
+
+mat4 =
+  webGLRepr: new WebGLRepr 16, Float
+  
+vec3 =
+  webGLRepr: new WebGLRepr 3, Float
+
+vec2 =
+  webGLRepr: new WebGLRepr 2, Float
+
+class Buffer
+  constructor: (@data) ->
+
+  @getter 'size', =>
+    @data.length
 
 
 scene = basegl.scene
@@ -39,13 +49,26 @@ mySymbol = basegl.symbol myShape
 
 console.log myShape
 
+class Attribute extends Composable
+  cons: (cfg) ->
+    @instanced = false
+    @value     = null
+    @initData  = null
+    @configure cfg
+
+
+attribute = (args...) -> new Attribute args...
+
 main = () ->
+
   # Get A WebGL context
   canvas = document.getElementById("canvas")
   gl = canvas.getContext("webgl2")
   if (!gl) 
     return
-  
+
+  Sprite.test(gl)
+    
 
   # Use our boilerplate utils to compile the shaders and link into a program
   program = utils.createProgramFromSources(gl,
@@ -58,27 +81,34 @@ main = () ->
   # look up uniform locations
   # locs.uniform.matrix = gl.getUniformLocation(program.glProgram, "matrix")
 
+  d = 0.5
+  positionData = [
+    -d ,  d , 0,
+    -d , -d , 0,
+     d ,  d , 0,
+     d , -d , 0]
+
+  uvData = [
+    0, 1,
+    0, 0,
+    1, 1,
+    1, 0]
 
   variables =
     attribute:
-      position : dim 3
-      uv       : dim 2
-      color    : color
+      position  : attribute {value: vec3, initData: positionData}
+      uv        : attribute {value: vec2, initData: uvData}
+      color     : attribute {value: vec3, instanced: true}
+      transform : attribute {value: mat4, instanced: true}
     uniform:
       matrix   : null
 
-  ds = Sprite.Sprite.DEFAULT_SIZE
-  variables.attribute.position.defaultPattern = [
-    0 , 0 , 0,
-    0 , ds, 0,
-    ds, ds, 0,
-    ds, 0 , 0]
 
-  variables.attribute.uv.defaultPattern = [
-    0, 0,
-    0, 1,
-    1, 1,
-    1, 0]
+
+  # variables.attribute.position.usage = BufferUsage.STATIC_DRAW
+
+
+  # variables.attribute.uv.usage = BufferUsage.STATIC_DRAW
 
 
 
@@ -86,7 +116,7 @@ main = () ->
 
   s1 = sb1.create()
   s1.position.x = 20
-  s1.size.x = 50
+  s1.scale.xy = [50,50]
 
   s2 = sb1.create()
 

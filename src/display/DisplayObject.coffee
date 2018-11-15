@@ -37,11 +37,11 @@ export class DisplayObject extends Composable
 
   updateChildrenOrigin: () =>
     @xform = mat4.create()
-    mat4.scale     @xform, @xform, @scale.xyz
+    mat4.translate @xform, @xform, @position.xyz
     mat4.rotateX   @xform, @xform, @rotation.x
     mat4.rotateY   @xform, @xform, @rotation.y
     mat4.rotateZ   @xform, @xform, @rotation.z
-    mat4.translate @xform, @xform, @position.xyz
+    mat4.scale     @xform, @xform, @scale.xyz
     mat4.multiply(@xform, @origin, @xform)
 
     @children.forEach (child) =>
@@ -54,11 +54,11 @@ export class DisplayObject extends Composable
   update: () => if @isDirty
     # TODO: handle parents
     @xform = mat4.create()
-    mat4.scale     @xform, @xform, @scale.xyz
+    mat4.translate @xform, @xform, @position.xyz
     mat4.rotateX   @xform, @xform, @rotation.x
     mat4.rotateY   @xform, @xform, @rotation.y
     mat4.rotateZ   @xform, @xform, @rotation.z
-    mat4.translate @xform, @xform, @position.xyz
+    mat4.scale     @xform, @xform, @scale.xyz
     mat4.multiply(@xform, @origin, @xform)
     @_isDirty = false
     

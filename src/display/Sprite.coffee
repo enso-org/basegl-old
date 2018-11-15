@@ -3,13 +3,29 @@ import * as utils   from 'basegl/render/webgl'
 
 import {Composable, fieldMixin}            from "basegl/object/Property"
 import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
-import {mat4, vec4}                        from 'gl-matrix'
+import * as Matrix                       from 'gl-matrix'
 import {Vector}                            from "basegl/math/Vector"
-import {logger}                            from 'basegl/debug/logger'
+import {logger}                            from 'logger'
 import * as basegl from 'basegl'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import * as Color     from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
+
+
+
+export usage = 
+  static      : WebGLRenderingContext.STATIC_DRAW
+  dynamic     : WebGLRenderingContext.DYNAMIC_DRAW
+  stream      : WebGLRenderingContext.STREAM_DRAW
+  staticRead  : WebGLRenderingContext.STATIC_READ
+  dynamicRead : WebGLRenderingContext.DYNAMIC_READ
+  streamRead  : WebGLRenderingContext.STREAM_READ
+  staticCopy  : WebGLRenderingContext.STATIC_COPY
+  dynamicCopy : WebGLRenderingContext.DYNAMIC_COPY
+  streamCopy  : WebGLRenderingContext.STREAM_COPY
+
+export itemType =
+  float : WebGLRenderingContext.FLOAT
 
 
 
@@ -103,7 +119,6 @@ export class Sprite extends Composable
   cons: (cfg) -> 
     @mixin displayObjectMixin, [], cfg
     ds       = Sprite.DEFAULT_SIZE
-    @size    = new Vector [ds, ds, 0], => @onTransformed()
     @_id     = null
     @_buffer = null
     @configure cfg
@@ -119,6 +134,297 @@ export class Sprite extends Composable
     if not @isDirty then @_buffer.markDirty @
 
     
+
+class Vec3
+  constructor: (args) ->
+    @_arr = new Float32Array (if args then args else 3)
+
+class Vec2
+  constructor: (args) ->
+    @_arr = new Float32Array (if args then args else 2)
+
+class Mat4
+  constructor: (args) ->
+    if args
+      @_arr = new Float32Array args
+    else
+      @_arr = new Float32Array 16
+      @_arr[0]  = 1
+      @_arr[5]  = 1
+      @_arr[10] = 1
+      @_arr[15] = 1
+
+
+vec3 = (args) -> new Vec3 args
+vec3.size       = 3
+vec3.bufferType = Float32Array
+vec3.itemType   = itemType.float
+
+vec2 = (args) -> new Vec2 args
+vec2.size       = 2
+vec2.bufferType = Float32Array
+vec2.itemType   = itemType.float
+
+mat4 = (args) -> new Mat4 args
+mat4.size       = 16
+mat4.bufferType = Float32Array
+mat4.itemType   = itemType.float
+
+Vec3.prototype.type = vec3
+Vec2.prototype.type = vec2
+Mat4.prototype.type = mat4
+
+
+
+
+
+
+
+export class AttributeArray 
+  constructor: (@_arr=[]) -> 
+
+export class Attribute
+  constructor: (cfg) -> 
+    @_type    = cfg.type
+    @_data    = cfg.data
+    @_default = cfg.default
+    @_usage   = cfg.usage || usage.dynamic
+
+  @getter 'type'    , -> @_type
+  @getter 'data'    , -> @_data
+  @getter 'default' , -> @_default
+
+  @from = (cfg) -> 
+    inferArrType = (arr) -> arr[0].type
+    switch cfg.constructor
+      when Object then cfg2 =
+        data  : cfg.data
+        type  : cfg.type || inferArrType cfg.data
+        usage : cfg.usage
+      when Array  then cfg2 = 
+        data: new AttributeArray cfg
+        type: inferArrType cfg
+      else cfg2 =
+        data: new AttributeArray
+        type: cfg
+    new Attribute cfg2
+    
+  @fromObject: (cfg) ->
+    attrs = {}
+    for name of cfg
+      attrs[name] = Attribute.from cfg[name]
+    attrs
+
+
+class Pool 
+  constructor: (@size=0) -> 
+    @free      = []
+    @nextIndex = 0
+
+  reserve: () ->
+    n = @free.shift()
+    if n != undefined      then return n
+    if @nextIndex == @size then return undefined
+    n = @nextIndex
+    @nextIndex += 1
+    n
+
+  dirtySize: () -> @nextIndex
+
+  free: (n) ->
+    @free.push(n)
+
+  resize: (newSize) -> 
+    @size = newSize
+
+
+
+class Pool2
+  constructor: (required=0) -> 
+    @size      = @_computeInitSize required
+    @free      = []
+    @nextIndex = 0
+
+  _computeInitSize: (required) ->
+    if required == 0 
+      size = 0
+    else 
+      size = 1
+      while true
+        if size >= required then break
+        size <<= 1
+    size
+
+  reserve: () ->
+    n = @free.shift()
+    if n != undefined      then return n
+    if @nextIndex == @size then return undefined
+    n = @nextIndex
+    @nextIndex += 1
+    n
+
+  dirtySize: () -> @nextIndex
+
+  free: (n) ->
+    @free.push(n)
+
+  resize: (newSize) -> 
+    @size = newSize
+
+
+
+##############
+### Buffer ###
+##############
+
+export class Buffer
+  constructor: (@type, @size) ->
+    @js = new @type @size
+
+  moveTo: (newJS) ->
+    newJS.set @js
+    @js = newJS
+
+
+
+#######################
+### BufferAttribute ###
+#######################
+
+export class BufferAttribute
+  constructor: (@attr, size) ->
+    @buffer = new Buffer @attr.type.bufferType, size
+
+
+export class BufferAttributeScope
+
+  ### Initialization ###
+
+  constructor: (parent, @name, cfg) ->
+    @logger = parent.logger.scoped @name
+    attrs   = Attribute.fromObject cfg       
+    @_initIndexPool   attrs
+    @_initBufferAttrs attrs
+
+  _initIndexPool: (attrs) ->
+    commonSize = @_computeCommonSize attrs
+    @pool      = new Pool2 commonSize 
+    @logger.info "Initializing for #{@pool.size} elements"
+
+  _initBufferAttrs: (attrs) ->
+    @attrs = {}
+    for name of attrs
+      @attrs[name] = new BufferAttribute attrs[name], @pool.size
+
+  _computeCommonSize: (attrs) ->
+    size = 0
+    for name of attrs
+      attr = attrs[name]
+      len  = attr.data.length
+      if len > size
+        size = len
+    size
+
+
+
+
+################
+### Geometry ###
+################
+
+export class Geometry 
+  constructor: (cfg) ->
+    @name     = cfg.name || "Unnamed"
+    @logger   = logger.scoped "Geometry.#{@name}"
+
+    @logger.group 'Initialization', =>
+
+      @_scope = 
+        point    : new BufferAttributeScope @, 'PointBuffer'    , cfg.point
+        instance : new BufferAttributeScope @, 'InstanceBuffer' , cfg.instance
+        # global   : new Scope cfg.global
+      
+      @point    = @_scope.point
+      @instance = @_scope.instance
+
+
+
+export class Mesh
+  constructor: (@geometry, @material) ->
+
+
+export class MeshInstance
+  constructor: (@_ctx, @mesh, @_program) ->
+    @logger = logger
+    @buffer = 
+      point: {}
+    @initVAO()
+            
+  initVAO: () => 
+    @logger.group 'VAO initialization', =>
+      @_vao = @_ctx.createVertexArray()
+      @_initAttrs 'point', false
+
+  _initAttrs: (spaceName, instanced) => 
+    @logger.group "Initializing  #{spaceName} attributes", =>
+      
+
+      space = @mesh.geometry.point
+
+      # @resize(@_sizeExp)
+      # varSpace = @_variables.attribute
+      # locSpace = @_locs.attribute
+      withVAO @_ctx, @_vao, =>  
+        for name of space
+          @logger.info "Enabling attribute '#{name}'"
+          attr = space[name]
+          loc  = @_program.getAttribLocation name
+          if loc == -1
+            @logger.info "Attribute '" + name + "' not used in shader"
+          else withNewArrayBuffer @_ctx, (buffer) =>  
+            @buffer.point[name] = buffer 
+            @_ctx.enableVertexAttribArray loc
+            normalize = false
+            stride    = 0
+            offset    = 0
+            type      = attr.attr.type.itemType
+            size      = attr.attr.type.size
+            @_ctx.vertexAttribPointer(loc, size, type, normalize, stride, offset)
+            # if attr.instanced
+            #   @_ctx.vertexAttribDivisor(loc, 1)
+
+
+export test = (ctx) ->
+
+  program = utils.createProgramFromSources(ctx,
+      [vertexShaderSource, fragmentShaderSource])
+
+  geo = new Geometry
+    name: "Geo1"
+    point:
+      position: 
+        usage : usage.static
+        data  : [
+          (vec3 [-0.5,  0.5, 0]),
+          (vec3 [-0.5, -0.5, 0]),
+          (vec3 [ 0.5,  0.5, 0]),
+          (vec3 [ 0.5, -0.5, 0])]
+      uv:
+        usage : usage.static
+        data  : [
+          (vec2 [0,1]),
+          (vec2 [0,0]),
+          (vec2 [1,1]),
+          (vec2 [1,0])] 
+      
+    instance:
+      color:     vec3
+      transform: mat4
+
+  mesh = new Mesh geo
+  mi = new MeshInstance ctx, mesh, program
+
+
 
 
 export class SpriteBuffer
@@ -145,7 +451,6 @@ export class SpriteBuffer
     varSpace = @_variables.attribute
     locSpace = @_locs.attribute
     withVAO @_gl, @_vao, =>  
-      @_gl.bindBuffer(@_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer)  
       for varName of varSpace
         @log "Enabling attribute '" + varName + "'"
         variable = varSpace[varName]
@@ -158,36 +463,12 @@ export class SpriteBuffer
           normalize = false
           stride    = 0
           offset    = 0
-          type      = variable.type(@_gl)
+          type      = variable.value.webGLRepr.type.glType(@_gl)
           @_gl.vertexAttribPointer(
-            varLoc, variable.size, type, normalize, stride, offset)
+            varLoc, variable.value.webGLRepr.size, type, normalize, stride, offset)
+          if variable.instanced
+            @_gl.vertexAttribDivisor(varLoc, 1)
 
-      
-    @_gl.bindBuffer(@_gl.ELEMENT_ARRAY_BUFFER, null)
-
-
-  # Sprite buffer uses indexed geometry. This function is used to build indices
-  # pointing to specific vertexes during rendering stage. The sprite quad is
-  # indexed as follow:
-  #
-  #  1 +---+ 2
-  #    |   | 
-  #  0 +---+ 3
-  #
-  # In reality, it consist of 2 triangles: {0,1,3} and {1,2,3}. The following
-  # function creates mapping between quad indices and vertex ids.
-  _buildIndices: () =>
-    arr = new Uint16Array (@_size * @_SPRITE_VTX_COUNT)
-    for i in [0 ... @_size]
-      offset        = i * @_SPRITE_VTX_COUNT
-      idx           = i * @_SPRITE_IND_COUNT
-      arr[offset]   = idx
-      arr[offset+1] = idx + 1
-      arr[offset+2] = idx + 3
-      arr[offset+3] = idx + 1
-      arr[offset+4] = idx + 2
-      arr[offset+5] = idx + 3
-    arr
 
 
   resize: (newSizeExp) =>
@@ -196,22 +477,31 @@ export class SpriteBuffer
     @_ixPool.resize @_size
     @log "Resizing to 2^" + @_sizeExp + ' elements'
 
-    # Indexing geometry
-    indices = @_buildIndices()
-    withBuffer @_gl, @_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer, =>
-      @_gl.bufferData(@_gl.ELEMENT_ARRAY_BUFFER, indices, @_gl.STATIC_DRAW)
+    # # Indexing geometry
+    # indices = @_buildIndices()
+    # withBuffer @_gl, @_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer, =>
+    #   @_gl.bufferData(@_gl.ELEMENT_ARRAY_BUFFER, indices, @_gl.STATIC_DRAW)
 
     # Updating attribute buffers
     varSpace = @_variables.attribute   
     for varName of varSpace
       variable       = varSpace[varName]
-      defaultPattern = variable.defaultPattern #FIXME: handle patterns of wring sizes
-      patternLength  = variable.size * @_SPRITE_IND_COUNT
+      # defaultPattern = variable.defaultPattern #FIXME: handle patterns of wring sizes
+      # patternLength  = variable.value.webGLRepr.size * @_SPRITE_IND_COUNT
       bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
       
-      bufferJS = if not variable.defaultPattern?
-            new Float32Array(patternLength * @_size)
-          else patternFloat32Array @_sizeExp, defaultPattern
+      bufferJS = null
+      if variable.instanced
+        bufferJS = new Float32Array(variable.value.webGLRepr.size * @_size)
+        if variable.value?
+          bufferJS.fill variable.value
+      else
+        bufferJS = new Float32Array(variable.value.webGLRepr.size * @_SPRITE_IND_COUNT)
+        bufferJS.set variable.initData
+
+      # bufferJS = if not variable.defaultPattern?
+      #       new Float32Array(patternLength * @_size)
+      #     else patternFloat32Array @_sizeExp, defaultPattern
       
       buffer = @_buffers[varName]
       if not buffer?
@@ -235,8 +525,9 @@ export class SpriteBuffer
       @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
       elemCount = @_ixPool.dirtySize()
       if elemCount > 0
-        offset = elemCount * @_SPRITE_VTX_COUNT
-        @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
+        # offset = elemCount * @_SPRITE_VTX_COUNT
+        # @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
+        @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, @_SPRITE_IND_COUNT, 1)
 
   create: => @logGroup "Creating sprite", =>
     ix = @_ixPool.reserve()
@@ -256,21 +547,37 @@ export class SpriteBuffer
 
 
   setVariable: (id, name, val) ->
+    console.log '!!!!!', name, id
     buffer = @_buffers[name]
-
-    srcOffset  = id * @_VTX_ELEMS   
     components = val.components
+    offset = id * 3
+    for componentIx in [0 ... 3]
+      buffer.js[offset + componentIx] = components[componentIx]
+      console.log "set", (offset + componentIx)
 
-    for vtxIx in [0 ... @_SPRITE_IND_COUNT]
-      offset = srcOffset + vtxIx * 3
-      for componentIx in [0 ... 3]
-        buffer.js[offset + componentIx] = components[componentIx]
-
-    dstByteOffset = @_INT_BYTES * srcOffset
-    length        = @_VTX_ELEMS
+    dstByteOffset = @_INT_BYTES * offset
+    length        = 3
 
     arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
-                       srcOffset, length 
+                       offset, length 
+
+  # setVariable: (id, name, val) ->
+  #   console.log '!!!!!', name, id
+  #   buffer = @_buffers[name]
+
+  #   srcOffset  = id * @_VTX_ELEMS   
+  #   components = val.components
+
+  #   for vtxIx in [0 ... @_SPRITE_IND_COUNT]
+  #     offset = srcOffset + vtxIx * 3
+  #     for componentIx in [0 ... 3]
+  #       buffer.js[offset + componentIx] = components[componentIx]
+
+  #   dstByteOffset = @_INT_BYTES * srcOffset
+  #   length        = @_VTX_ELEMS
+
+  #   arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
+  #                      srcOffset, length 
                        
 
   update: () ->
@@ -290,36 +597,37 @@ export class SpriteBuffer
       sprite.update()
 
       srcOffset = sprite.id * @_VTX_ELEMS   
-      p = vec4.create(); p[3] = 1
+      p = Matrix.vec4.create(); p[3] = 1
+      ds = 0.5
 
-      p[0] = 0 
-      p[1] = 0 
+      p[0] = -ds
+      p[1] = ds 
       p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
+      Matrix.vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset]     = p[0]
       buffer.js[srcOffset + 1] = p[1]
       buffer.js[srcOffset + 2] = p[2]
       
-      p[0] = 0 
-      p[1] = sprite.size.y
+      p[0] = -ds 
+      p[1] = -ds
       p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
+      Matrix.vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset + 3] = p[0]
       buffer.js[srcOffset + 4] = p[1]
       buffer.js[srcOffset + 5] = p[2]
       
-      p[0] = sprite.size.x
-      p[1] = sprite.size.y
+      p[0] = ds
+      p[1] = ds
       p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
+      Matrix.vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset + 6] = p[0]
       buffer.js[srcOffset + 7] = p[1]
       buffer.js[srcOffset + 8] = p[2]
       
-      p[0] = sprite.size.x
-      p[1] = 0
+      p[0] = ds
+      p[1] = -ds
       p[2] = 0
-      vec4.transformMat4 p, p, sprite.xform
+      Matrix.vec4.transformMat4 p, p, sprite.xform
       buffer.js[srcOffset + 9]  = p[0]
       buffer.js[srcOffset + 10] = p[1]
       buffer.js[srcOffset + 11] = p[2]
