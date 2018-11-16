@@ -180,8 +180,8 @@ Mat4.prototype.type = mat4
 
 
 
-export class AttributeArray 
-  constructor: (@_arr=[]) -> 
+# export class AttributeArray 
+#   constructor: (@_arr=[]) -> 
 
 export class Attribute
   constructor: (cfg) -> 
@@ -202,10 +202,10 @@ export class Attribute
         type  : cfg.type || inferArrType cfg.data
         usage : cfg.usage
       when Array  then cfg2 = 
-        data: new AttributeArray cfg
+        data: cfg
         type: inferArrType cfg
       else cfg2 =
-        data: new AttributeArray
+        data: []
         type: cfg
     new Attribute cfg2
     
@@ -240,12 +240,12 @@ class Pool
 
 
 class Pool2
-  constructor: (required=0) -> 
-    @size      = @_computeInitSize required
+  constructor: (required=0, @onResized) -> 
+    @size      = @_computeSquareSize required
     @free      = []
-    @nextIndex = 0
+    @nextIndex = required
 
-  _computeInitSize: (required) ->
+  _computeSquareSize: (required) ->
     if required == 0 
       size = 0
     else 
@@ -258,7 +258,7 @@ class Pool2
   reserve: () ->
     n = @free.shift()
     if n != undefined      then return n
-    if @nextIndex == @size then return undefined
+    if @nextIndex == @size then @grow()
     n = @nextIndex
     @nextIndex += 1
     n
@@ -270,6 +270,22 @@ class Pool2
 
   resize: (newSize) -> 
     @size = newSize
+
+  growTo: (required) -> 
+    size = @_computeSquareSize required
+    if size > @size 
+      @size = size
+      @onResized @size
+
+  grow: () ->
+    @size <<= 1
+    @onResized @size
+
+  reserveFromBeginning: (required) ->
+    @growTo required
+    @nextIndex = required
+
+    
 
 
 
@@ -300,23 +316,23 @@ export class BufferAttributeScope
 
   ### Initialization ###
 
-  constructor: (parent, @name, cfg) ->
-    @logger = parent.logger.scoped @name
-    attrs   = Attribute.fromObject cfg       
+  constructor: (@geometry, @id, cfg) ->
+    @logger = @geometry.logger.scoped @id
+    attrs   = Attribute.fromObject cfg 
     @_initIndexPool   attrs
     @_initBufferAttrs attrs
 
-  _initIndexPool: (attrs) ->
+  _initIndexPool: (attrs) =>
     commonSize = @_computeCommonSize attrs
-    @pool      = new Pool2 commonSize 
+    @pool      = new Pool2 commonSize, @_onResized
     @logger.info "Initializing for #{@pool.size} elements"
 
-  _initBufferAttrs: (attrs) ->
+  _initBufferAttrs: (attrs) =>
     @attrs = {}
     for name of attrs
       @attrs[name] = new BufferAttribute attrs[name], @pool.size
 
-  _computeCommonSize: (attrs) ->
+  _computeCommonSize: (attrs) =>
     size = 0
     for name of attrs
       attr = attrs[name]
@@ -325,7 +341,34 @@ export class BufferAttributeScope
         size = len
     size
 
+  add: (cfg) =>
+    id = @pool.reserve()
+    for name of cfg
+      console.log "+", id, name
+      console.log @attrs[name].attr
 
+  addAttribute: (name, cfg) =>
+    attr = Attribute.from cfg
+    @pool.reserveFromBeginning attr.data.length
+    @geometry._onAttributeAdded @id, name
+    
+
+  ### Events ###
+
+  _onResized: (s) =>
+    console.log "TODO: resize buffers"
+    @geometry._onScopeResized(@id, s)
+        
+
+
+# Geometry
+#   - js buffers
+#   - size management 
+
+# GeometryBuffers
+#   - per scene
+#   - geo -> GL buffers
+  
 
 
 ################
@@ -337,16 +380,27 @@ export class Geometry
     @name     = cfg.name || "Unnamed"
     @logger   = logger.scoped "Geometry.#{@name}"
 
+    @_models  = []
+
     @logger.group 'Initialization', =>
 
       @_scope = 
-        point    : new BufferAttributeScope @, 'PointBuffer'    , cfg.point
-        instance : new BufferAttributeScope @, 'InstanceBuffer' , cfg.instance
+        point    : new BufferAttributeScope @, 'point'    , cfg.point
+        instance : new BufferAttributeScope @, 'instance' , cfg.instance
         # global   : new Scope cfg.global
       
       @point    = @_scope.point
       @instance = @_scope.instance
 
+  _onScopeResized: (scope, size) -> 
+    console.log "_onScopeResized", scope, size
+
+  _onAttributeAdded: (scope, attr) ->
+    console.log "_onAttributeAdded", scope, attr
+
+
+export class GeometryModel
+  constructor: () ->
 
 
 export class Mesh
@@ -421,8 +475,18 @@ export test = (ctx) ->
       color:     vec3
       transform: mat4
 
-  mesh = new Mesh geo
-  mi = new MeshInstance ctx, mesh, program
+  # geo.point.addAttribute 'foo', [
+  #         (vec2 [0,1]),
+  #         (vec2 [0,0]),
+  #         (vec2 [1,1]),
+  #         (vec2 [1,1]),
+  #         (vec2 [1,0])] 
+  geo.point.add 
+    position : vec3 [1,1,1]
+    uv       : vec2 [0,0]
+
+  # mesh = new Mesh geo
+  # mi = new MeshInstance ctx, mesh, program
 
 
 
