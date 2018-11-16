@@ -51,11 +51,48 @@ export swizzleFields = (cls, ref, fields) ->
     cls.getter name, fget idxs
     cls.setter name, fset idxs
 
-export swizzleFieldsXYZW = (cls, ref) -> swizzleFields cls, ref, ['x', 'y', 'z', 'w']
-export swizzleFieldsRGBA = (cls, ref) -> swizzleFields cls, ref, ['r', 'g', 'b', 'a']
-export swizzleFieldsSTPQ = (cls, ref) -> swizzleFields cls, ref, ['s', 't', 'p', 'q']
+export swizzleFieldsXYZW = (cls, ref='array') -> swizzleFields cls, ref, ['x', 'y', 'z', 'w']
+export swizzleFieldsXYZ  = (cls, ref='array') -> swizzleFields cls, ref, ['x', 'y', 'z']
+export swizzleFieldsXY   = (cls, ref='array') -> swizzleFields cls, ref, ['x', 'y']
+export swizzleFieldsRGBA = (cls, ref='array') -> swizzleFields cls, ref, ['r', 'g', 'b', 'a']
+export swizzleFieldsRGB  = (cls, ref='array') -> swizzleFields cls, ref, ['r', 'g', 'b']
+export swizzleFieldsSTPQ = (cls, ref='array') -> swizzleFields cls, ref, ['s', 't', 'p', 'q']
+export swizzleFieldsSTP  = (cls, ref='array') -> swizzleFields cls, ref, ['s', 't', 'p']
+
+export swizzleFields2 = (cls, fields) ->
+  fieldsAssoc   = []
+  fieldsAssoNew = []
+  for els in [1..fields.length]
+    for n,i in fields
+      if els == 1 then fieldsAssoc.push [n,[i]]
+      else for [an, ai],ii in fieldsAssoc
+        fieldsAssoNew.push [an+n, ai.concat [i]]
+    fieldsAssoc   = fieldsAssoc.concat fieldsAssoNew
+    fieldsAssoNew = []
+
+  fieldsAssoc.forEach ([name,ixs]) ->
+    if ixs.length == 1
+      ix = ixs[0]
+      fget =     -> @read  ix
+      fset = (v) -> @write ix, v
+    else
+      fget =     -> @readMultiple  ixs
+      fset = (v) -> @writeMultiple ixs, v
+    cls.getter name, fget
+    cls.setter name, fset
+
+export swizzleFieldsXYZW2 = (cls) -> swizzleFields2 cls, ['x', 'y', 'z', 'w']
+export swizzleFieldsXYZ2  = (cls) -> swizzleFields2 cls, ['x', 'y', 'z']
+export swizzleFieldsXY2   = (cls) -> swizzleFields2 cls, ['x', 'y']
+export swizzleFieldsRGBA2 = (cls) -> swizzleFields2 cls, ['r', 'g', 'b', 'a']
+export swizzleFieldsRGB2  = (cls) -> swizzleFields2 cls, ['r', 'g', 'b']
+export swizzleFieldsSTPQ2 = (cls) -> swizzleFields2 cls, ['s', 't', 'p', 'q']
+export swizzleFieldsSTP2  = (cls) -> swizzleFields2 cls, ['s', 't', 'p']
+
 
 export addIndexFields = (cls, ref, num) ->
+  if ref == undefined then ref = 'array'
+  if num == undefined then num = cls.size
   fget = (i) -> ()  -> @[ref][i]
   fset = (i) -> (v) -> @[ref][i] = v; @[ref].onChanged?()
   for i in [0..num-1]
@@ -63,6 +100,16 @@ export addIndexFields = (cls, ref, num) ->
     cls.setter i, fset i
 
 export addIndexFieldsStd = (cls, ref) -> addIndexFields cls, ref, 16
+
+
+export addIndexFields2 = (cls, num) ->
+  if num == undefined then num = cls.size
+  fget = (i) -> ()  -> @read  i
+  fset = (i) -> (v) -> @write i, v
+  for i in [0..num-1]
+    cls.getter i, fget i
+    cls.setter i, fset i
+
 
 
 

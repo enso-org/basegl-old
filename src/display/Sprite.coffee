@@ -2,6 +2,7 @@ import * as matrix2 from 'gl-matrix'
 import * as utils   from 'basegl/render/webgl'
 
 import {Composable, fieldMixin}            from "basegl/object/Property"
+import * as Property           from "basegl/object/Property"
 import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
 import * as Matrix                       from 'gl-matrix'
 import {Vector}                            from "basegl/math/Vector"
@@ -10,6 +11,45 @@ import * as basegl from 'basegl'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import * as Color     from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
+
+
+
+
+Observable = (type) -> class
+
+  ### Properties ###
+
+  constructor: (args...) -> 
+    @array = new type args...
+
+  @getter 'buffer', -> @array.buffer
+
+
+  ### Read / Write ###
+
+  read: (ix) -> 
+    @array[ix]
+  
+  readMultiple: (ixs) -> 
+    @array[ix] for ix from ixs
+  
+  write: (ix, v) -> 
+    @array[ix] = v
+    @onChanged ix
+  
+  writeMultiple: (ixs, vs) -> 
+    for ix,i in ixs
+      @array[ix] = vs[i]
+    @onChangedMultiple ixs
+
+
+  ### Events ###  
+
+  onChanged: (ix) ->
+  onChangedMultiple: (ixs) ->
+    for ix in ixs
+      @onChanged ix
+
 
 
 
@@ -133,46 +173,113 @@ export class Sprite extends Composable
   onTransformed: () => 
     if not @isDirty then @_buffer.markDirty @
 
-    
 
-class Vec3
-  constructor: (args) ->
-    @_arr = new Float32Array (if args then args else 3)
 
-class Vec2
-  constructor: (args) ->
-    @_arr = new Float32Array (if args then args else 2)
 
-class Mat4
-  constructor: (args) ->
+
+
+
+
+#############
+### Types ###
+#############
+
+### Abstraction ###
+
+export class Type
+  @size       : 16
+  @bufferType : Float32Array
+  @item       : itemType.float
+
+  constructor: (@array) ->
+
+  @getter 'buffer', -> @array.buffer
+  
+  # Smart constructor performing conversions if needed.
+  @from: (args) ->
+    cfg   = if args then args else @size
+    array = new @bufferType cfg
+    new @ array
+
+  # View another buffer as desired type without copying.
+  @view: (base, offset=0) ->
+    arr = new @bufferType base.buffer, offset, @size
+    new @ arr
+
+  read: ->
+  write: ->
+
+Property.swizzleFieldsXYZW2 Type
+Property.swizzleFieldsRGBA2 Type
+Property.addIndexFields2    Type
+
+
+### Basic types ###
+
+export class Vec2 extends Type
+  @size: 2
+
+export class Vec3 extends Type
+  @size: 3 
+
+export class Vec4 extends Type
+  @size: 4 
+
+export class Mat2 extends Type
+  @size: 4
+
+  @from: (args) =>
     if args
-      @_arr = new Float32Array args
+      array = new @bufferType args
     else
-      @_arr = new Float32Array 16
-      @_arr[0]  = 1
-      @_arr[5]  = 1
-      @_arr[10] = 1
-      @_arr[15] = 1
+      array = new @bufferType @size
+      array[0] = 1
+      array[3] = 1
+    new @ array
+
+export class Mat3 extends Type
+  @size: 9
+
+  @from: (args) =>
+    if args
+      array = new @bufferType args
+    else
+      array = new @bufferType @size
+      array[0] = 1
+      array[4] = 1
+      array[8] = 1
+    new @ array
+
+export class Mat4 extends Type
+  @size: 16
+
+  @from: (args) =>
+    if args
+      array = new @bufferType args
+    else
+      array = new @bufferType @size
+      array[0]  = 1
+      array[5]  = 1
+      array[10] = 1
+      array[15] = 1
+    new @ array
 
 
-vec3 = (args) -> new Vec3 args
-vec3.size       = 3
-vec3.bufferType = Float32Array
-vec3.itemType   = itemType.float
+### Smart constructors ###
 
-vec2 = (args) -> new Vec2 args
-vec2.size       = 2
-vec2.bufferType = Float32Array
-vec2.itemType   = itemType.float
+vec2 = (a) -> Vec2.from a
+vec3 = (a) -> Vec3.from a
+vec4 = (a) -> Vec4.from a
+mat2 = (a) -> Mat2.from a
+mat3 = (a) -> Mat3.from a
+mat4 = (a) -> Mat4.from a
 
-mat4 = (args) -> new Mat4 args
-mat4.size       = 16
-mat4.bufferType = Float32Array
-mat4.itemType   = itemType.float
-
-Vec3.prototype.type = vec3
-Vec2.prototype.type = vec2
-Mat4.prototype.type = mat4
+vec2.type = Vec2
+vec3.type = Vec3
+vec4.type = Vec4
+mat2.type = Mat2
+mat3.type = Mat3
+mat4.type = Mat4
 
 
 
@@ -180,40 +287,102 @@ Mat4.prototype.type = mat4
 
 
 
-# export class AttributeArray 
-#   constructor: (@_arr=[]) -> 
+# v = vec2 [1,2,3]
+
+# Float32Array.prototype.setAt = (i,v) ->
+#   @[i] = v
+
+
+
+# t1 = Date.now()
+# x = new Foo 100
+# for i in [0 .. 10000000]
+#   x.setAt(1,i)
+# t2 = Date.now()
+# console.log "Foo", (t2-t1)
+
+
+# t1 = Date.now()
+# x = new Float32Array 100
+# for i in [0 .. 10000000]
+#   x.setAt(1,i)
+# t2 = Date.now()
+# console.log "raw-x", (t2-t1)
+
+
+inferArrType = (arr) -> arr[0].constructor
+
+
 
 export class Attribute
-  constructor: (cfg) -> 
-    @_type    = cfg.type
-    @_data    = cfg.data
+  constructor: (@_type, @_size, cfg) -> 
     @_default = cfg.default
     @_usage   = cfg.usage || usage.dynamic
+    @_data    = new (Observable @type.bufferType) (@size * @type.size)
 
   @getter 'type'    , -> @_type
+  @getter 'size'    , -> @_size
   @getter 'data'    , -> @_data
   @getter 'default' , -> @_default
 
-  @from = (cfg) -> 
-    inferArrType = (arr) -> arr[0].type
-    switch cfg.constructor
-      when Object then cfg2 =
-        data  : cfg.data
-        type  : cfg.type || inferArrType cfg.data
-        usage : cfg.usage
-      when Array  then cfg2 = 
-        data: cfg
-        type: inferArrType cfg
-      else cfg2 =
-        data: []
-        type: cfg
-    new Attribute cfg2
+
+  ### Construction ###
+
+  @from = (a) ->
+    if a.constructor == Object
+      @_from a.data, a.type, a
+    else
+      @_from a 
+
+  @_from = (a, expType, cfg={}) ->
+    if a.constructor == Array
+      type = expType || inferArrType a
+      size = a.length
+      attr = new Attribute type, size, cfg
+      attr.set a
+      attr
+    else if ArrayBuffer.isView a
+      type = expType || inferArrType a
+      size = a.length / type.size
+      attr = new Attribute type, size, cfg
+      attr.set a
+      attr
+    else new Attribute a.type, 0, cfg
     
   @fromObject: (cfg) ->
     attrs = {}
     for name of cfg
       attrs[name] = Attribute.from cfg[name]
+    console.log attrs
     attrs
+
+
+  ### Indexing ###
+
+  read: (ix) ->
+    @type.view @data, 4*ix*@type.size 
+
+  # TODO: should we trigger events here?
+  set: (data) ->
+    if data.constructor == Array
+      size = @type.size
+      for i in [0 ... data.length]
+        offset = i * size
+        @data.array.set data[i].array, offset
+
+
+a = Attribute.from [
+  (vec3 [-0.5,  0.5, 0]),
+  (vec3 [-0.5, -0.5, 0]),
+  (vec3 [ 0.5,  0.5, 0]),
+  (vec3 [ 0.5, -0.5, 0])]
+
+console.log a
+x = a.read(3)
+x[0] = 7
+console.log x
+console.log a
+console.log '-----'
 
 
 class Pool 
@@ -289,48 +458,27 @@ class Pool2
 
 
 
-##############
-### Buffer ###
-##############
-
-export class Buffer
-  constructor: (@type, @size) ->
-    @js = new @type @size
-
-  moveTo: (newJS) ->
-    newJS.set @js
-    @js = newJS
-
 
 
 #######################
-### BufferAttribute ###
+### Attribute Scope ###
 #######################
 
-export class BufferAttribute
-  constructor: (@attr, size) ->
-    @buffer = new Buffer @attr.type.bufferType, size
 
 
-export class BufferAttributeScope
+export class Scope
 
   ### Initialization ###
 
   constructor: (@geometry, @id, cfg) ->
     @logger = @geometry.logger.scoped @id
-    attrs   = Attribute.fromObject cfg 
-    @_initIndexPool   attrs
-    @_initBufferAttrs attrs
+    @attrs  = Attribute.fromObject cfg 
+    @_initIndexPool()
 
-  _initIndexPool: (attrs) =>
-    commonSize = @_computeCommonSize attrs
+  _initIndexPool: () =>
+    commonSize = @_computeCommonSize @attrs
     @pool      = new Pool2 commonSize, @_onResized
     @logger.info "Initializing for #{@pool.size} elements"
-
-  _initBufferAttrs: (attrs) =>
-    @attrs = {}
-    for name of attrs
-      @attrs[name] = new BufferAttribute attrs[name], @pool.size
 
   _computeCommonSize: (attrs) =>
     size = 0
@@ -385,8 +533,8 @@ export class Geometry
     @logger.group 'Initialization', =>
 
       @_scope = 
-        point    : new BufferAttributeScope @, 'point'    , cfg.point
-        instance : new BufferAttributeScope @, 'instance' , cfg.instance
+        point    : new Scope @, 'point'    , cfg.point
+        instance : new Scope @, 'instance' , cfg.instance
         # global   : new Scope cfg.global
       
       @point    = @_scope.point
@@ -441,7 +589,7 @@ export class MeshInstance
             normalize = false
             stride    = 0
             offset    = 0
-            type      = attr.attr.type.itemType
+            type      = attr.attr.type.item
             size      = attr.attr.type.size
             @_ctx.vertexAttribPointer(loc, size, type, normalize, stride, offset)
             # if attr.instanced
@@ -463,9 +611,9 @@ export test = (ctx) ->
           (vec3 [-0.5, -0.5, 0]),
           (vec3 [ 0.5,  0.5, 0]),
           (vec3 [ 0.5, -0.5, 0])]
-      uv:
-        usage : usage.static
-        data  : [
+      uv:[
+        # usage : usage.static
+        # data  : [
           (vec2 [0,1]),
           (vec2 [0,0]),
           (vec2 [1,1]),
@@ -475,15 +623,27 @@ export test = (ctx) ->
       color:     vec3
       transform: mat4
 
+  # geo = new Geometry
+  #   name: "Geo1"
+  #   point: [
+  #     { position: (vec3 -0.5,  0.5, 0), uv: (vec2 0, 1) } ,
+  #     { position: (vec3 -0.5, -0.5, 0), uv: (vec2 0, 0) } ,
+  #     { position: (vec3  0.5,  0.5, 0), uv: (vec2 1, 1) } ,
+  #     { position: (vec3  0.5, -0.5, 0), uv: (vec2 1, 0) } ]
+      
+  #   instance:
+  #     color:     vec3
+  #     transform: mat4
+
   # geo.point.addAttribute 'foo', [
   #         (vec2 [0,1]),
   #         (vec2 [0,0]),
   #         (vec2 [1,1]),
   #         (vec2 [1,1]),
   #         (vec2 [1,0])] 
-  geo.point.add 
-    position : vec3 [1,1,1]
-    uv       : vec2 [0,0]
+  # geo.point.add 
+  #   position : vec3 [1,1,1]
+  #   uv       : vec2 [0,0]
 
   # mesh = new Mesh geo
   # mi = new MeshInstance ctx, mesh, program
