@@ -49,6 +49,9 @@ module.exports =
     }
   , module:
     { strictExportPresence: true
+    , noParse:
+      [ path.resolve(__dirname, '../node_modules/benchmark/benchmark.js')
+      ] 
     , rules:
       [ { use: [{loader: path.resolve('./basegl-loader.js')}, 'coffee-loader']  , test: /\.(coffee)$/                                   }
       , { use: 'raw-loader'     , test: /\.(glsl|vert|frag)$/ , exclude: /node_modules/ }

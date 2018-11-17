@@ -12,7 +12,73 @@ import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plan
 import * as Color     from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
 
+# import * as Benchmark from 'benchmark'
 
+import _ from 'lodash';
+import process from 'process';
+
+benchmark = require('benchmark');
+Benchmark = benchmark.runInContext({ _, process });
+window.Benchmark = Benchmark;
+
+
+
+### BENCHMARKS ###
+
+# bench = ->
+#   typedArrayRW = ->
+#     arr = new Float32Array 1000
+#     return
+#       name: 'typedArrayRW'
+#       fn: ->
+#         for i in [1...1000]
+#           arr[i] = arr[i-1]+1
+
+
+#   bufferRW = ->
+#     arr = new Float32Array 1000
+#     arr = new Buffer arr
+#     return
+#       name: 'bufferRW'
+#       fn: ->
+#         for i in [1...1000]
+#           arr.write i, (arr.read(i-1)+1)
+
+#   suite = new Benchmark.Suite
+
+#   suite
+#     .add typedArrayRW()
+#     .add bufferRW()
+      
+#     .on  'cycle', (event)  -> console.log(String(event.target))
+#     .on  'complete',       -> console.log('Fastest is ' + this.filter('fastest').map('name'))
+#     .run({ 'async': false })
+
+# arr = new Float32Array 10
+# for i in [1...10]
+#   arr[i] = arr[i-1]+1
+# console.log arr
+
+
+# arr = new Float32Array 10
+# arr = new Buffer arr
+# for i in [1...10]
+#   arr.write i, (arr.read(i-1)+1)
+# console.log arr
+
+
+# bench()
+
+
+
+
+##############
+### Buffer ###
+##############
+
+# Buffer is a wrapper over any array-like object and exposes element read /
+# write functions that can be overriden instead of inflexible index-based
+# interface.
 
 export class Buffer
 
@@ -32,6 +98,12 @@ export class Buffer
   
 
 
+##################
+### Observable ###
+##################
+
+# Observable is a wrapper over any buffer-like object allowing to subscribe to
+# changes by monkey-patching its methods.
 
 export class Observable
 
@@ -67,16 +139,20 @@ export class Observable
 
 
 
+############
+### View ###
+############
+
+# View is a wrapper over any buffer-like object allowing to view the array with
+# a defined elements shift.
+
 class View
 
   ### Properties ###
-
   constructor: (@array, @offset=0, @length=0) ->
   @getter 'buffer', -> @array.buffer
 
-
   ### Read / Write ###
-
   read:          (x)     -> @array.read          (x + @offset)
   readMultiple:  (xs)    -> @array.readMultiple  (x + @offset for x from xs)
   write:         (x , v) -> @array.write         (x + @offset), v
@@ -84,6 +160,11 @@ class View
 
 
 
+
+
+#######################
+### WebGL constants ###
+#######################
 
 export usage = 
   static      : WebGLRenderingContext.STATIC_DRAW
@@ -101,6 +182,10 @@ export itemType =
 
 
 
+
+###############################################################################
+### OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE ###
+###############################################################################
 
 WebGL = 
   SIZE_OF_FLOAT: 4
@@ -210,35 +295,12 @@ export class Sprite extends Composable
 
 
 
-class Float32ArrayEx extends Float32Array
-  read:          (ix)      -> @[ix]
-  write:         (ix,v)    -> @[ix] = v
-  readMultiple:  (ixs)     -> @[ix] for ix from ixs
-  writeMultiple: (ixs, vs) -> @[ix] = vs[i] for ix,i in ixs
-      
 
+############
+### Type ###
+############
 
-# t1 = performance.now()
-# x = new Float32ArrayEx 100
-# x = new View x, 1, 99
-# for i in [0 .. 10000000]
-#   x.write (i%10), i
-# t2 = performance.now()
-# console.log "TEST1", (t2-t1)
-# console.log x
-
-# t1 = performance.now()
-# x = new Float32Array 100
-# for i in [0 .. 10000000]
-#   x[i%10] = i
-# t2 = performance.now()
-# console.log "TEST2", (t2-t1)
-# console.log x
-
-
-#############
-### Types ###
-#############
+# Type is a base-class for attribute types.
 
 ### Abstraction ###
 
@@ -343,46 +405,18 @@ mat4.type = Mat4
 
 
 
-# v = vec3 [1,2,3]
-# console.log v
-# v.x = 7
-# v.xy = [3,4]
-# console.log v.xy
 
 
 
-# v = vec2 [1,2,3]
-
-# Float32Array.prototype.setAt = (i,v) ->
-#   @[i] = v
 
 
-# min = 0 
-# max = 0
-# t1 = performance.now()
-# x = new (Observable Float32Array) 100
-# x.onChanged = (i) -> 
-#   if i < min then min = i
-#   if i > max then max = i
-# for i in [0 .. 10000000]
-#   x.write(i%10,i)
-# t2 = performance.now()
-# console.log "TEST 1", (t2-t1)
-# console.log min, max
-
-# t1 = performance.now()
-# x = new Float32Array 100
-# for i in [0 .. 10000000]
-#   x[i%10] = i
-# t2 = performance.now()
-# console.log "TEST 2", (t2-t1)
-
-
-inferArrType = (arr) -> arr[0].constructor
 
 
 
 export class Attribute
+
+  ### Properties ###
+
   constructor: (@_name, @_type, @_size, cfg) -> 
     @_default    = cfg.default
     @_usage      = cfg.usage || usage.dynamic
@@ -402,9 +436,6 @@ export class Attribute
         @_dirtyRange.max = ix
         @onDirty @_name
 
-  onDirty: (name) ->
-
-
   @getter 'type'    , -> @_type
   @getter 'size'    , -> @_size
   @getter 'data'    , -> @_data
@@ -419,15 +450,16 @@ export class Attribute
     else
       @_from name, a 
 
+  @_inferArrType = (arr) -> arr[0].constructor
   @_from = (name, a, expType, cfg={}) ->
     if a.constructor == Array
-      type = expType || inferArrType a
+      type = expType || @_inferArrType a
       size = a.length
       attr = new Attribute name, type, size, cfg
       attr.set a
       attr
     else if ArrayBuffer.isView a
-      type = expType || inferArrType a
+      type = expType || @_inferArrType a
       size = a.length / type.size
       attr = new Attribute name, type, size, cfg
       attr.set a
@@ -454,6 +486,12 @@ export class Attribute
       for i in [0 ... data.length]
         offset = i * size
         @data.array.set data[i].rawArray, offset
+
+    
+  ### Events ###
+
+  onDirty: (name) ->
+  
 
 
 a = Attribute.from 'attr1', [
