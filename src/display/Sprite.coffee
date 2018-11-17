@@ -84,7 +84,9 @@ export class Buffer
 
   ### Properties ###
   constructor: (@array) ->
-  @getter 'rawArray', -> @array
+  @getter 'buffer'   , -> @array.buffer
+  @getter 'length'   , -> @array.length
+  @getter 'rawArray' , -> @array
 
   ### Read / Write ###
   read:          (ix)      -> @array[ix]
@@ -410,14 +412,16 @@ mat4.type = Mat4
 
 
 
-
+#################
+### Attribute ###
+#################
 
 
 export class Attribute
 
   ### Properties ###
 
-  constructor: (@_name, @_type, @_size, cfg) -> 
+  constructor: (@_type, @_size, cfg) -> 
     @_default    = cfg.default
     @_usage      = cfg.usage || usage.dynamic
     @_data       = new Observable (@type.bufferCons (@size * @type.size))
@@ -426,15 +430,7 @@ export class Attribute
       min: null
       max: null
 
-    @_data.onChanged = (ix) =>
-      if @_dirty
-        if      ix > @_dirtyRange.max then @_dirtyRange.max = ix
-        else if ix < @_dirtyRange.min then @_dirtyRange.min = ix
-      else
-        @_dirty = true
-        @_dirtyRange.min = ix
-        @_dirtyRange.max = ix
-        @onDirty @_name
+    @_data.onChanged = @_onChanged
 
   @getter 'type'    , -> @_type
   @getter 'size'    , -> @_size
@@ -444,32 +440,32 @@ export class Attribute
 
   ### Construction ###
 
-  @from = (name, a) ->
+  @from = (a) ->
     if a.constructor == Object
-      @_from name, a.data, a.type, a
+      @_from a.data, a.type, a
     else
-      @_from name, a 
+      @_from a 
 
   @_inferArrType = (arr) -> arr[0].constructor
-  @_from = (name, a, expType, cfg={}) ->
+  @_from = (a, expType, cfg={}) ->
     if a.constructor == Array
       type = expType || @_inferArrType a
       size = a.length
-      attr = new Attribute name, type, size, cfg
+      attr = new Attribute type, size, cfg
       attr.set a
       attr
     else if ArrayBuffer.isView a
       type = expType || @_inferArrType a
       size = a.length / type.size
-      attr = new Attribute name, type, size, cfg
+      attr = new Attribute type, size, cfg
       attr.set a
       attr
-    else new Attribute name, a.type, 0, cfg
+    else new Attribute a.type, 0, cfg
     
   @fromObject: (cfg) ->
     attrs = {}
     for name of cfg
-      attrs[name] = Attribute.from name, cfg[name]
+      attrs[name] = Attribute.from cfg[name]
     attrs
 
 
@@ -480,37 +476,49 @@ export class Attribute
 
   # TODO: should we trigger events here?
   set: (data) ->
-    console.log "> SET"
     if data.constructor == Array
       size = @type.size
       for i in [0 ... data.length]
         offset = i * size
         @data.array.set data[i].rawArray, offset
 
+
+  ### Event handling ###
+
+  _onChanged: (ix) =>
+    if @_dirty
+      if      ix > @_dirtyRange.max then @_dirtyRange.max = ix
+      else if ix < @_dirtyRange.min then @_dirtyRange.min = ix
+    else
+      @_dirty = true
+      @_dirtyRange.min = ix
+      @_dirtyRange.max = ix
+      @onDirty @_name
     
+
   ### Events ###
 
   onDirty: (name) ->
   
 
 
-a = Attribute.from 'attr1', [
-  (vec3 [-0.5,  0.5, 0]),
-  (vec3 [-0.5, -0.5, 0]),
-  (vec3 [ 0.5,  0.5, 0]),
-  (vec3 [ 0.5, -0.5, 0])]
+# a = Attribute.from [
+#   (vec3 [-0.5,  0.5, 0]),
+#   (vec3 [-0.5, -0.5, 0]),
+#   (vec3 [ 0.5,  0.5, 0]),
+#   (vec3 [ 0.5, -0.5, 0])]
 
-a.onDirty = (i) ->
-  console.log "DIRTY", i
-console.log '-----'
-console.log a
-t = a.read(3)
-console.log t
-console.log t.xyz
-t[0] = 7
-t[1] = 7
-console.log a
-console.log '-----'
+# a.onDirty = (i) ->
+#   console.log "DIRTY", i
+# console.log '-----'
+# console.log a
+# t = a.read(3)
+# console.log t
+# console.log t.xyz
+# t[0] = 7
+# t[1] = 7
+# console.log a
+# console.log '-----'
 
 
 class Pool 
@@ -537,7 +545,7 @@ class Pool
 
 
 class Pool2
-  constructor: (required=0, @onResized) -> 
+  constructor: (required=0) -> 
     @size      = @_computeSquareSize required
     @free      = []
     @nextIndex = required
@@ -548,8 +556,9 @@ class Pool2
     else 
       size = 1
       while true
-        if size >= required then break
-        size <<= 1
+        if size < required
+          size <<= 1
+        else break
     size
 
   reserve: () ->
@@ -582,6 +591,8 @@ class Pool2
     @growTo required
     @nextIndex = required
 
+  ### Events ###
+  onResized: (size) ->
     
 
 
@@ -603,27 +614,30 @@ export class Scope
     @attrs       = Attribute.fromObject cfg 
     @_dirtyAttrs = []
 
-    for attr of @attrs
-      @attrs[attr].onDirty = (name) ->
-        console.log "DIRTY!", name
-        @_dirtyAttrs.push name
+    for name,attr of @attrs 
+      do (name,attr) =>
+        attr.onDirty = =>
+          console.log "DIRTY!!!", name
+          @_dirtyAttrs.push name
         
-
     @_initIndexPool()
 
   _initIndexPool: () =>
     commonSize = @_computeCommonSize @attrs
-    @pool      = new Pool2 commonSize, @_onResized
+    console.log "###", commonSize
+    @pool      = new Pool2 commonSize
     @logger.info "Initializing for #{@pool.size} elements"
 
+    @pool.onResized = @_onResized
+
   _computeCommonSize: (attrs) =>
-    size = 0
+    commonSize = 0
     for name of attrs
       attr = attrs[name]
-      len  = attr.data.length
-      if len > size
-        size = len
-    size
+      size = attr.size
+      if size > commonSize
+        commonSize = size
+    commonSize
 
   add: (cfg) =>
     id = @pool.reserve()
@@ -632,9 +646,11 @@ export class Scope
       console.log @attrs[name].attr
 
   addAttribute: (name, cfg) =>
+    console.log "!!!", name, cfg
     attr = Attribute.from cfg
+    console.log attr
     @pool.reserveFromBeginning attr.data.length
-    @geometry._onAttributeAdded @id, name
+    # @geometry._onAttributeAdded @id, name
     
 
   ### Events ###
@@ -812,6 +828,11 @@ export test = (ctx) ->
       color:     vec3
       transform: mat4
 
+  # console.log geo.point.attrs
+  geo.point.attrs.position.read(0)[0] = 7
+  geo.point.attrs.position.read(0)[0] = 7
+  geo.point.attrs.position.read(0)[1] = 7
+
   # geo = new Geometry
   #   name: "Geo1"
   #   point: [
@@ -824,12 +845,12 @@ export test = (ctx) ->
   #     color:     vec3
   #     transform: mat4
 
-  # geo.point.addAttribute 'foo', [
-  #         (vec2 [0,1]),
-  #         (vec2 [0,0]),
-  #         (vec2 [1,1]),
-  #         (vec2 [1,1]),
-  #         (vec2 [1,0])] 
+  geo.point.addAttribute 'foo', [
+          (vec2 [0,1]),
+          (vec2 [0,0]),
+          (vec2 [1,1]),
+          (vec2 [1,1]),
+          (vec2 [1,0])] 
   # geo.point.add 
   #   position : vec3 [1,1,1]
   #   uv       : vec2 [0,0]
