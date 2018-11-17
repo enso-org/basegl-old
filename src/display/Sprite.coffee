@@ -14,32 +14,47 @@ import * as Symbol from 'basegl/display/Symbol'
 
 
 
+export class Buffer
 
-Observable = (type) -> class
+  ### Properties ###
+  constructor: (@array) ->
+  @getter 'rawArray', -> @array
+
+  ### Read / Write ###
+  read:          (ix)      -> @array[ix]
+  write:         (ix, v)   -> @array[ix] = v 
+  readMultiple:  (ixs)     -> @array[ix] for ix from ixs
+  writeMultiple: (ixs, vs) -> @array[ix] = vs[i] for ix,i in ixs
+  
+
+  ### Redirect ###
+  set: (args...) -> @array.set args...
+  
+
+
+
+export class Observable
 
   ### Properties ###
 
-  constructor: (args...) -> 
-    @array = new type args...
-
-  @getter 'buffer', -> @array.buffer
+  constructor: (@array) -> 
+  @getter 'buffer'   , -> @array.buffer
+  @getter 'length'   , -> @array.length
+  @getter 'rawArray' , -> @array.rawArray
 
 
   ### Read / Write ###
 
-  read: (ix) -> 
-    @array[ix]
+  read: (ix) -> @array.read ix
   
-  readMultiple: (ixs) -> 
-    @array[ix] for ix from ixs
+  readMultiple: (ixs) -> @array.readMultiple ixs 
   
   write: (ix, v) -> 
-    @array[ix] = v
+    @array.write ix, v
     @onChanged ix
   
-  writeMultiple: (ixs, vs) -> 
-    for ix,i in ixs
-      @array[ix] = vs[i]
+  writeMultiple: (ixs, vs) ->
+    @array.writeMultiple ixs, vs 
     @onChangedMultiple ixs
 
 
@@ -49,6 +64,23 @@ Observable = (type) -> class
   onChangedMultiple: (ixs) ->
     for ix in ixs
       @onChanged ix
+
+
+
+class View
+
+  ### Properties ###
+
+  constructor: (@array, @offset=0, @length=0) ->
+  @getter 'buffer', -> @array.buffer
+
+
+  ### Read / Write ###
+
+  read:          (x)     -> @array.read          (x + @offset)
+  readMultiple:  (xs)    -> @array.readMultiple  (x + @offset for x from xs)
+  write:         (x , v) -> @array.write         (x + @offset), v
+  writeMultiple: (xs, v) -> @array.writeMultiple (x + @offset for x from xs), v
 
 
 
@@ -178,6 +210,30 @@ export class Sprite extends Composable
 
 
 
+class Float32ArrayEx extends Float32Array
+  read:          (ix)      -> @[ix]
+  write:         (ix,v)    -> @[ix] = v
+  readMultiple:  (ixs)     -> @[ix] for ix from ixs
+  writeMultiple: (ixs, vs) -> @[ix] = vs[i] for ix,i in ixs
+      
+
+
+# t1 = performance.now()
+# x = new Float32ArrayEx 100
+# x = new View x, 1, 99
+# for i in [0 .. 10000000]
+#   x.write (i%10), i
+# t2 = performance.now()
+# console.log "TEST1", (t2-t1)
+# console.log x
+
+# t1 = performance.now()
+# x = new Float32Array 100
+# for i in [0 .. 10000000]
+#   x[i%10] = i
+# t2 = performance.now()
+# console.log "TEST2", (t2-t1)
+# console.log x
 
 
 #############
@@ -188,26 +244,30 @@ export class Sprite extends Composable
 
 export class Type
   @size       : 16
-  @bufferType : Float32Array
+  @bufferCons : (args...) -> new Buffer (new Float32Array args...)
   @item       : itemType.float
 
   constructor: (@array) ->
 
-  @getter 'buffer', -> @array.buffer
+  @getter 'buffer'   , -> @array.buffer
+  @getter 'rawArray' , -> @array.rawArray
   
   # Smart constructor performing conversions if needed.
   @from: (args) ->
     cfg   = if args then args else @size
-    array = new @bufferType cfg
+    array = @bufferCons cfg
     new @ array
 
   # View another buffer as desired type without copying.
   @view: (base, offset=0) ->
-    arr = new @bufferType base.buffer, offset, @size
+    arr = new View base, offset, @size
     new @ arr
 
-  read: ->
-  write: ->
+  read:          (ix)      -> @array.read          ix
+  write:         (ix,v)    -> @array.write         ix, v
+  readMultiple:  (ixs)     -> @array.readMultiple  ixs
+  writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
+
 
 Property.swizzleFieldsXYZW2 Type
 Property.swizzleFieldsRGBA2 Type
@@ -230,9 +290,9 @@ export class Mat2 extends Type
 
   @from: (args) =>
     if args
-      array = new @bufferType args
+      array = @bufferCons args
     else
-      array = new @bufferType @size
+      array = @bufferCons @size
       array[0] = 1
       array[3] = 1
     new @ array
@@ -242,9 +302,9 @@ export class Mat3 extends Type
 
   @from: (args) =>
     if args
-      array = new @bufferType args
+      array = @bufferCons args
     else
-      array = new @bufferType @size
+      array = @bufferCons @size
       array[0] = 1
       array[4] = 1
       array[8] = 1
@@ -255,9 +315,9 @@ export class Mat4 extends Type
 
   @from: (args) =>
     if args
-      array = new @bufferType args
+      array = @bufferCons args
     else
-      array = new @bufferType @size
+      array = @bufferCons @size
       array[0]  = 1
       array[5]  = 1
       array[10] = 1
@@ -283,7 +343,11 @@ mat4.type = Mat4
 
 
 
-
+# v = vec3 [1,2,3]
+# console.log v
+# v.x = 7
+# v.xy = [3,4]
+# console.log v.xy
 
 
 
@@ -293,21 +357,25 @@ mat4.type = Mat4
 #   @[i] = v
 
 
-
-# t1 = Date.now()
-# x = new Foo 100
+# min = 0 
+# max = 0
+# t1 = performance.now()
+# x = new (Observable Float32Array) 100
+# x.onChanged = (i) -> 
+#   if i < min then min = i
+#   if i > max then max = i
 # for i in [0 .. 10000000]
-#   x.setAt(1,i)
-# t2 = Date.now()
-# console.log "Foo", (t2-t1)
+#   x.write(i%10,i)
+# t2 = performance.now()
+# console.log "TEST 1", (t2-t1)
+# console.log min, max
 
-
-# t1 = Date.now()
+# t1 = performance.now()
 # x = new Float32Array 100
 # for i in [0 .. 10000000]
-#   x.setAt(1,i)
-# t2 = Date.now()
-# console.log "raw-x", (t2-t1)
+#   x[i%10] = i
+# t2 = performance.now()
+# console.log "TEST 2", (t2-t1)
 
 
 inferArrType = (arr) -> arr[0].constructor
@@ -315,10 +383,27 @@ inferArrType = (arr) -> arr[0].constructor
 
 
 export class Attribute
-  constructor: (@_type, @_size, cfg) -> 
-    @_default = cfg.default
-    @_usage   = cfg.usage || usage.dynamic
-    @_data    = new (Observable @type.bufferType) (@size * @type.size)
+  constructor: (@_name, @_type, @_size, cfg) -> 
+    @_default    = cfg.default
+    @_usage      = cfg.usage || usage.dynamic
+    @_data       = new Observable (@type.bufferCons (@size * @type.size))
+    @_dirty      = false
+    @_dirtyRange = 
+      min: null
+      max: null
+
+    @_data.onChanged = (ix) =>
+      if @_dirty
+        if      ix > @_dirtyRange.max then @_dirtyRange.max = ix
+        else if ix < @_dirtyRange.min then @_dirtyRange.min = ix
+      else
+        @_dirty = true
+        @_dirtyRange.min = ix
+        @_dirtyRange.max = ix
+        @onDirty @_name
+
+  onDirty: (name) ->
+
 
   @getter 'type'    , -> @_type
   @getter 'size'    , -> @_size
@@ -328,59 +413,64 @@ export class Attribute
 
   ### Construction ###
 
-  @from = (a) ->
+  @from = (name, a) ->
     if a.constructor == Object
-      @_from a.data, a.type, a
+      @_from name, a.data, a.type, a
     else
-      @_from a 
+      @_from name, a 
 
-  @_from = (a, expType, cfg={}) ->
+  @_from = (name, a, expType, cfg={}) ->
     if a.constructor == Array
       type = expType || inferArrType a
       size = a.length
-      attr = new Attribute type, size, cfg
+      attr = new Attribute name, type, size, cfg
       attr.set a
       attr
     else if ArrayBuffer.isView a
       type = expType || inferArrType a
       size = a.length / type.size
-      attr = new Attribute type, size, cfg
+      attr = new Attribute name, type, size, cfg
       attr.set a
       attr
-    else new Attribute a.type, 0, cfg
+    else new Attribute name, a.type, 0, cfg
     
   @fromObject: (cfg) ->
     attrs = {}
     for name of cfg
-      attrs[name] = Attribute.from cfg[name]
-    console.log attrs
+      attrs[name] = Attribute.from name, cfg[name]
     attrs
 
 
   ### Indexing ###
 
   read: (ix) ->
-    @type.view @data, 4*ix*@type.size 
+    @type.view @data, ix*@type.size 
 
   # TODO: should we trigger events here?
   set: (data) ->
+    console.log "> SET"
     if data.constructor == Array
       size = @type.size
       for i in [0 ... data.length]
         offset = i * size
-        @data.array.set data[i].array, offset
+        @data.array.set data[i].rawArray, offset
 
 
-a = Attribute.from [
+a = Attribute.from 'attr1', [
   (vec3 [-0.5,  0.5, 0]),
   (vec3 [-0.5, -0.5, 0]),
   (vec3 [ 0.5,  0.5, 0]),
   (vec3 [ 0.5, -0.5, 0])]
 
+a.onDirty = (i) ->
+  console.log "DIRTY", i
+console.log '-----'
 console.log a
-x = a.read(3)
-x[0] = 7
-console.log x
+t = a.read(3)
+console.log t
+console.log t.xyz
+t[0] = 7
+t[1] = 7
 console.log a
 console.log '-----'
 
@@ -471,8 +561,16 @@ export class Scope
   ### Initialization ###
 
   constructor: (@geometry, @id, cfg) ->
-    @logger = @geometry.logger.scoped @id
-    @attrs  = Attribute.fromObject cfg 
+    @logger      = @geometry.logger.scoped @id
+    @attrs       = Attribute.fromObject cfg 
+    @_dirtyAttrs = []
+
+    for attr of @attrs
+      @attrs[attr].onDirty = (name) ->
+        console.log "DIRTY!", name
+        @_dirtyAttrs.push name
+        
+
     @_initIndexPool()
 
   _initIndexPool: () =>
@@ -597,6 +695,59 @@ export class MeshInstance
 
 
 export test = (ctx) ->
+
+  # buff = ctx.createBuffer()
+
+  # steps = 20
+  # max   = 100000000
+  # step  = max / steps
+
+  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #   for i in [step .. max] by step
+  #     arr = new Float32Array i
+  #     t1 = performance.now()
+  #     ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
+  #     t2 = performance.now()
+  #     console.log (t2-t1)
+
+  # arr = new Float32Array max
+  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #   ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
+  
+  # steps = 20
+  # max   = 1000000
+  # step  = max / steps
+  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #   for i in [step .. max] by step
+  #     t1 = performance.now()
+  #     for j in [0 ... i]
+  #       ctx.bufferSubData(ctx.ARRAY_BUFFER, j, arr, j, 1)
+  #     t2 = performance.now()
+  #     console.log (t2-t1)
+
+  # steps = 20
+  # max   = 100000000
+  # step  = max / steps
+  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #   for i in [step .. max] by step
+  #     t1 = performance.now()
+  #     ctx.bufferSubData(ctx.ARRAY_BUFFER, 0, arr, 0, i)
+  #     t2 = performance.now()
+  #     console.log (t2-t1)
+
+
+  # for i in [0 .. 0]
+  #   withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #       ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
+  # t2 = performance.now()
+  # console.log "bufferData", (t2-t1)
+
+  # t1 = performance.now()
+  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
+  #   for i in [0 .. 1000]
+  #     ctx.bufferSubData(ctx.ARRAY_BUFFER, 0, arr, 0, 1)
+  # t2 = performance.now()
+  # console.log "bufferSubData", (t2-t1)
 
   program = utils.createProgramFromSources(ctx,
       [vertexShaderSource, fragmentShaderSource])
@@ -771,13 +922,13 @@ export class SpriteBuffer
 
 
   setVariable: (id, name, val) ->
-    console.log '!!!!!', name, id
+    # console.log '!!!!!', name, id
     buffer = @_buffers[name]
     components = val.components
     offset = id * 3
     for componentIx in [0 ... 3]
       buffer.js[offset + componentIx] = components[componentIx]
-      console.log "set", (offset + componentIx)
+      # console.log "set", (offset + componentIx)
 
     dstByteOffset = @_INT_BYTES * offset
     length        = 3
