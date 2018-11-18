@@ -111,21 +111,21 @@ main = () ->
 
 
 
-  sb1 = new Sprite.SpriteBuffer 'Nodes', gl, program,variables
+  # sb1 = new Sprite.SpriteBuffer 'Nodes', gl, program,variables
 
-  s1 = sb1.create()
-  # s1.position.x = 20
-  s1.scale.xy = [100,100]
+  # s1 = sb1.create()
+  # # s1.position.x = 20
+  # s1.scale.xy = [100,100]
 
-  s2 = sb1.create()
+  # s2 = sb1.create()
 
-  s2.variables.color.x = 1
+  # s2.variables.color.x = 1
 
-  console.log sb1
-  # vao = gl.createVertexArray()
+  # console.log sb1
+  # # vao = gl.createVertexArray()
 
-  # withVAO gl, vao, ->
-  # gl.bindVertexArray(vao)
+  # # withVAO gl, vao, ->
+  # # gl.bindVertexArray(vao)
 
 
 
