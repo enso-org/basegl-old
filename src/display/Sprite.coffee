@@ -399,6 +399,44 @@ class RangedDirtyManager
 ### Attribute ###
 #################
 
+# Attribute is a data associated with geometry. It is stored as typed array
+# buffer under the hood. There are several ways to initialize an Attribute when
+# using the Attribute.from smart constructor.
+
+# ### Initialization ###
+#
+# 1. Simple initialization. In its shortest form it takes only a list of values
+#    and automatically infers the needed type.
+#
+#        position: [
+#         (vec3 [-0.5,  0.5, 0]) ,
+#         (vec3 [-0.5, -0.5, 0]) ,
+#         (vec3 [ 0.5,  0.5, 0]) ,
+#         (vec3 [ 0.5, -0.5, 0]) ]
+#
+# 2. Explicite initialization. This form allows providing additional parameters.
+#
+#        position: 
+#          usage : usage.static
+#          data  : [
+#            (vec3 [-0.5,  0.5, 0]) ,
+#            (vec3 [-0.5, -0.5, 0]) ,
+#            (vec3 [ 0.5,  0.5, 0]) ,
+#            (vec3 [ 0.5, -0.5, 0]) ]
+#
+# 3. Typed array initialization. This form has the best performance, but is less
+#    readable than previous ones. Unless you are providing very big chunks of
+#    data you will not see any performance difference here. Using this form you
+#    have to provide the type explicitly.
+#
+#        position: 
+#          usage : usage.static
+#          type  : vec3
+#          data  : new Float32Array [
+#            -0.5,  0.5, 0 ,
+#            -0.5, -0.5, 0 ,
+#             0.5,  0.5, 0 ,
+#             0.5, -0.5, 0 ]
 
 export class Attribute
 
@@ -457,7 +495,10 @@ export class Attribute
       attr.set a
       attr
     else if ArrayBuffer.isView a
-      type = expType || @_inferArrType a
+      type = expType?.type
+      if not type?
+        throw "You have to provide explicit type when using TypedArray
+              initializator for '#{id}' attribute."
       size = a.length / type.size
       attr = new Attribute parent, id, type, size, cfg
       attr.set a
@@ -489,8 +530,10 @@ export class Attribute
         offset = i * typeSize
         buffer.set data[i].rawArray, offset
       @data.set buffer.rawArray
+    else if ArrayBuffer.isView data
+      @data.set data
     else
-      throw "Unsupported type"
+      throw "Unsupported attribute initializer '#{data.constructor.name}'"
 
 
   ### Events ###
@@ -763,14 +806,14 @@ export test = (ctx) ->
         usage : usage.static
         data  : [
           (vec3 [-0.5,  0.5, 0]),
-          # (vec3 [-0.5, -0.5, 0]),
+          (vec3 [-0.5, -0.5, 0]),
           (vec3 [ 0.5,  0.5, 0]),
           (vec3 [ 0.5, -0.5, 0])]
-      uv:[
+      uv: [
         # usage : usage.static
         # data  : [
           (vec2 [0,1]),
-          # (vec2 [0,0]),
+          (vec2 [0,0]),
           (vec2 [1,1]),
           (vec2 [1,0])] 
       
