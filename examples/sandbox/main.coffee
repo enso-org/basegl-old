@@ -67,7 +67,6 @@ main = () ->
   if (!gl) 
     return
 
-  Sprite.test(gl)
     
 
   # Use our boilerplate utils to compile the shaders and link into a program
@@ -81,7 +80,7 @@ main = () ->
   # look up uniform locations
   # locs.uniform.matrix = gl.getUniformLocation(program.glProgram, "matrix")
 
-  d = 0.5
+  d = 100
   positionData = [
     -d ,  d , 0,
     -d , -d , 0,
@@ -115,8 +114,8 @@ main = () ->
   sb1 = new Sprite.SpriteBuffer 'Nodes', gl, program,variables
 
   s1 = sb1.create()
-  s1.position.x = 20
-  s1.scale.xy = [50,50]
+  # s1.position.x = 20
+  s1.scale.xy = [100,100]
 
   s2 = sb1.create()
 
@@ -206,7 +205,10 @@ main = () ->
     # AND move the world so that the camera is effectively the origin
     viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
-    sb1.draw viewProjectionMatrix
+    # sb1.draw viewProjectionMatrix
+
+    Sprite.test(gl, program, viewProjectionMatrix)
+    
 
   
 

@@ -455,6 +455,7 @@ export class Attribute
   @getter 'type'         , -> @_type
   @getter 'size'         , -> @_size
   @getter 'data'         , -> @_data
+  @getter 'usage'        , -> @_usage
   @getter 'default'      , -> @_default
   @getter 'isDirty'      , -> @_dirtyManager.isDirty
   @getter 'dirtyManager' , -> @_dirtyManager
@@ -604,21 +605,21 @@ class Pool
     
 
 
-#######################
-### Attribute Scope ###
-#######################
+######################
+### AttributeScope ###
+######################
 
-export class Scope
+export class AttributeScope
 
   ### Initialization ###
 
-  constructor: (@geometry, @id, cfg) ->
-    @logger      = @geometry.logger.scoped @id
-    @attrs       = {}
+  constructor: (@parent, @id, cfg) ->
+    @logger      = @parent.logger.scoped @id
+    @data        = {}
     @_dirtyAttrs = []
 
     @_initIndexPool()
-    @_initAttrs cfg
+    @_initValues cfg
     
   @getter 'size'       , -> @_indexPool.size
   @getter 'dirtyAttrs' , -> @_dirtyAttrs
@@ -627,7 +628,7 @@ export class Scope
     @_indexPool = new Pool
     @_indexPool.onResized = @_handlePoolResized
   
-  _initAttrs: (cfg) -> 
+  _initValues: (cfg) -> 
     for name,attrCfg of cfg
       @addAttribute name, attrCfg
 
@@ -637,23 +638,23 @@ export class Scope
   add: (cfg) =>
     ix = @_indexPool.reserve()
     for name, val of cfg
-      @attrs[name].write(ix,val)
+      @data[name].write(ix,val)
 
   addAttribute: (name, cfg) =>
     attr = Attribute.from @, name, cfg
     @_indexPool.reserveFromBeginning attr.size
     @onAttributeAdded name
     attr.resize @size
-    @attrs[name] = attr
+    @data[name] = attr
 
 
   ### Handlers ###
 
   _handlePoolResized: (oldSize, newSize) =>
-    @logger.group "Resizing to handle up to #{newSize} elements", =>
-      for name,attr of @attrs
-        attr.resize newSize
-      @onResized oldSize, newSize
+    @logger.info "Resizing to handle up to #{newSize} elements"
+    for name,attr of @data
+      attr.resize newSize
+    @onResized oldSize, newSize
       
 
   ### Events ###
@@ -661,6 +662,23 @@ export class Scope
   onAttributeAdded : (name) =>
   onResized        : (oldSize, newSize) =>
   
+
+####################
+### UniformScope ###
+####################
+
+class UniformScope
+  constructor: (@parent, @id, cfg) ->
+    @logger = @parent.logger.scoped @id
+    @data   = {}
+    @_initValues cfg
+
+  _initValues: (cfg) ->
+    for name,val of cfg
+      @logger.info "Initializing '#{name}' variable"
+      @data[name] = val
+      
+
 
 
 ################
@@ -672,131 +690,134 @@ export class Geometry
     @name     = cfg.name || "Unnamed"
     @logger   = logger.scoped "Geometry.#{@name}"
 
-    @_models  = []
-
     @logger.group 'Initialization', =>
+      @_initScopes cfg
 
-      @_scope = 
-        point    : new Scope @, 'point'    , cfg.point
-        instance : new Scope @, 'instance' , cfg.instance
-        # global   : new Scope cfg.global
-      
-      @point    = @_scope.point
-      @instance = @_scope.instance
+  _initScopes: (cfg) -> 
+    @_scope = {}
+    scopes  = 
+      point    : AttributeScope
+      instance : AttributeScope
+      global   : UniformScope
 
-  _onScopeResized: (scope, size) -> 
-    console.log "_onScopeResized", scope, size
+    for name,cons of scopes
+      scopeCfg = cfg[name]
+      @logger.group "Initializing #{name} scope", =>
+        scope         = new cons @, name, scopeCfg
+        @_scope[name] = scope
+        @[name]       = scope 
 
-  _onAttributeAdded: (scope, attr) ->
-    console.log "_onAttributeAdded", scope, attr
+
+
+
+export class Mesh
+  constructor: (@geometry, @material) ->
+  @getter 'name', -> @geometry.name
+
 
 
 export class GeometryModel
   constructor: () ->
 
 
-export class Mesh
-  constructor: (@geometry, @material) ->
+
 
 
 export class MeshInstance
   constructor: (@_ctx, @mesh, @_program) ->
-    @logger = logger
-    @buffer = 
-      point: {}
-    @initVAO()
+    @logger      = logger.scoped "MeshInstance.#{@name}.0"
+    @varLocation = {}
+    @buffer      = {}
+    @_initVarLocations()
+    @_initVAO()
+    @_initBuffers()
+    console.log ">>>", @varLocation
+
+  @getter 'name', -> @mesh.name
             
-  initVAO: () => 
-    @logger.group 'VAO initialization', =>
+
+  _initVarLocations: () ->
+    @logger.group "Binding variables to shader", =>
+      @_initSpaceVarLocations ["point", "instance"], false
+      @_initSpaceVarLocations ["global"], true
+
+  _initSpaceVarLocations: (spaceNames, isUniform) ->
+    for spaceName in spaceNames
+      @logger.group "Binding #{spaceName} variables", =>
+        spaceLoc = {}
+        @varLocation[spaceName] = spaceLoc
+        space = @mesh.geometry[spaceName].data
+        for name of space
+          if isUniform
+             loc = @_program.getUniformLocation name
+          else 
+            loc = @_program.getAttribLocation name
+          if loc == -1
+            @logger.info "Variable '" + name + "' not used in shader"
+          else
+            @logger.info "Variable '" + name + "' bound successfully"
+            spaceLoc[name] = loc
+              
+
+  _initVAO: () ->
+    @logger.group 'Initializing Vertex Array Object (VAO)', =>
       @_vao = @_ctx.createVertexArray()
-      @_initAttrs 'point', false
+      @_initAttrs 'point'    , false
+      @_initAttrs 'instance' , true
 
-  _initAttrs: (spaceName, instanced) => 
-    @logger.group "Initializing  #{spaceName} attributes", =>
-      
-
-      space = @mesh.geometry.point
-
-      # @resize(@_sizeExp)
-      # varSpace = @_variables.attribute
-      # locSpace = @_locs.attribute
+  _initAttrs: (spaceName, instanced) ->
+    @logger.group "Initializing #{spaceName} variables", =>
+      space = @mesh.geometry[spaceName].data
+      @buffer[spaceName] = {}
       withVAO @_ctx, @_vao, =>  
         for name of space
-          @logger.info "Enabling attribute '#{name}'"
-          attr = space[name]
-          loc  = @_program.getAttribLocation name
+          @logger.info "Enabling variable '#{name}'"
+          val = space[name]
+          loc = @_program.getAttribLocation name
           if loc == -1
-            @logger.info "Attribute '" + name + "' not used in shader"
+            @logger.info "Variable '" + name + "' not used in shader"
           else withNewArrayBuffer @_ctx, (buffer) =>  
-            @buffer.point[name] = buffer 
+            @buffer[spaceName][name] = buffer 
             @_ctx.enableVertexAttribArray loc
-            normalize = false
-            stride    = 0
-            offset    = 0
-            type      = attr.attr.type.item
-            size      = attr.attr.type.size
-            @_ctx.vertexAttribPointer(loc, size, type, normalize, stride, offset)
-            # if attr.instanced
-            #   @_ctx.vertexAttribDivisor(loc, 1)
+            norm   = false
+            stride = 0
+            offset = 0
+            type   = val.type.item
+            size   = val.type.size
+            @_ctx.vertexAttribPointer(loc, size, type, norm, stride, offset)
+            if instanced
+              @_ctx.vertexAttribDivisor(loc, 1)
+        
+  _initBuffers: () ->
+    @logger.group "Initializing buffers", =>
+      for spaceName,cfg of @buffer
+        space = bufferJS = @mesh.geometry[spaceName]
+        @logger.group "Initializing #{spaceName} buffers", =>     
+          for varName,bufferGL of cfg
+            variable = space.data[varName]
+            bufferJS = variable.data.rawArray
+            usage    = variable.usage
+            @logger.info "Initializing #{varName} buffer"  
+            withArrayBuffer @_ctx, bufferGL, =>
+              @_ctx.bufferData(@_ctx.ARRAY_BUFFER, bufferJS, usage)
+
+  draw: (viewProjectionMatrix) ->
+    # @update() 
+    withVAO @_ctx, @_vao, =>
+      @_ctx.uniformMatrix4fv(@varLocation.global.matrix, false, viewProjectionMatrix)
+      elemCount = 1 # @_ixPool.dirtySize()
+      if elemCount > 0
+        # offset = elemCount * @_SPRITE_VTX_COUNT
+        # @_ctx.drawElements(@_ctx.TRIANGLES, offset, @_ctx.UNSIGNED_SHORT, 0)
+        SPRITE_IND_COUNT = 4
+        @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, SPRITE_IND_COUNT, 1)
 
 
-export test = (ctx) ->
-
-  # buff = ctx.createBuffer()
-
-  # steps = 20
-  # max   = 100000000
-  # step  = max / steps
-
-  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #   for i in [step .. max] by step
-  #     arr = new Float32Array i
-  #     t1 = performance.now()
-  #     ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
-  #     t2 = performance.now()
-  #     console.log (t2-t1)
-
-  # arr = new Float32Array max
-  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #   ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
-  
-  # steps = 20
-  # max   = 1000000
-  # step  = max / steps
-  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #   for i in [step .. max] by step
-  #     t1 = performance.now()
-  #     for j in [0 ... i]
-  #       ctx.bufferSubData(ctx.ARRAY_BUFFER, j, arr, j, 1)
-  #     t2 = performance.now()
-  #     console.log (t2-t1)
-
-  # steps = 20
-  # max   = 100000000
-  # step  = max / steps
-  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #   for i in [step .. max] by step
-  #     t1 = performance.now()
-  #     ctx.bufferSubData(ctx.ARRAY_BUFFER, 0, arr, 0, i)
-  #     t2 = performance.now()
-  #     console.log (t2-t1)
+export test = (ctx, program, viewProjectionMatrix) ->
 
 
-  # for i in [0 .. 0]
-  #   withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #       ctx.bufferData(ctx.ARRAY_BUFFER, arr, ctx.STATIC_DRAW)
-  # t2 = performance.now()
-  # console.log "bufferData", (t2-t1)
-
-  # t1 = performance.now()
-  # withBuffer ctx, ctx.ARRAY_BUFFER, buff, =>
-  #   for i in [0 .. 1000]
-  #     ctx.bufferSubData(ctx.ARRAY_BUFFER, 0, arr, 0, 1)
-  # t2 = performance.now()
-  # console.log "bufferSubData", (t2-t1)
-
-  program = utils.createProgramFromSources(ctx,
-      [vertexShaderSource, fragmentShaderSource])
+  # program = utils.createProgramFromSources(ctx,
+  #     [vertexShaderSource, fragmentShaderSource])
 
   console.warn "Creating geometry"
   geo = new Geometry
@@ -805,10 +826,10 @@ export test = (ctx) ->
       position: 
         usage : usage.static
         data  : [
-          (vec3 [-0.5,  0.5, 0]),
-          (vec3 [-0.5, -0.5, 0]),
-          (vec3 [ 0.5,  0.5, 0]),
-          (vec3 [ 0.5, -0.5, 0])]
+          (vec3 [-100,  100, 0]),
+          (vec3 [-100, -100, 0]),
+          (vec3 [ 100,  100, 0]),
+          (vec3 [ 100, -100, 0])]
       uv: [
         # usage : usage.static
         # data  : [
@@ -821,47 +842,31 @@ export test = (ctx) ->
       color:     vec3
       transform: mat4
 
+    global:
+      matrix: mat4
+
   console.warn "Position modification"  
-  # console.log geo.point.attrs
-  geo.point.attrs.position.read(1)[0] = 7
-  geo.point.attrs.position.read(1)[0] = 7
-  geo.point.attrs.position.read(1)[1] = 7
+  # console.log geo.point.data
+  # geo.point.data.position.read(1)[0] = 7
+  # geo.point.data.position.read(1)[0] = 7
+  # geo.point.data.position.read(1)[1] = 7
 
   console.log "---"
-  console.log geo.point.attrs.position.read(1)
-  console.log geo.point.attrs.uv.read(1)
+  console.log geo.point.data.position.read(1)
+  console.log geo.point.data.uv.read(1)
 
-  console.log geo.point.attrs.position.read(3)
-  console.log geo.point.attrs.uv.read(3)
-  console.log geo.point.attrs.uv.read(3).xy
+  console.log geo.point.data.position.read(3)
+  console.log geo.point.data.uv.read(3)
+  console.log geo.point.data.uv.read(3).xy
 
-  # geo = new Geometry
-  #   name: "Geo1"
-  #   point: [
-  #     { position: (vec3 -0.5,  0.5, 0), uv: (vec2 0, 1) } ,
-  #     { position: (vec3 -0.5, -0.5, 0), uv: (vec2 0, 0) } ,
-  #     { position: (vec3  0.5,  0.5, 0), uv: (vec2 1, 1) } ,
-  #     { position: (vec3  0.5, -0.5, 0), uv: (vec2 1, 0) } ]
-      
-  #   instance:
-  #     color:     vec3
-  #     transform: mat4
+  mesh = new Mesh geo
+  mi = new MeshInstance ctx, mesh, program
 
-    # console.warn "Adding attribute"    
-    # # geo.point.addAttribute 'foo', [
-    # #         (vec2 [0,1]),
-    # #         (vec2 [0,0]),
-    # #         (vec2 [1,1]),
-    # #         (vec2 [1,1]),
-    # #         (vec2 [1,0])] 
+  console.warn "END"  
 
-    # console.warn "Adding point"      
-    # geo.point.add 
-    #   position : vec3 [7,8,9]
-    #   uv       : vec2 [7,8]
+  mi.draw(viewProjectionMatrix)
+  
 
-    # # mesh = new Mesh geo
-    # # mi = new MeshInstance ctx, mesh, program
     # console.log "Dirty:", geo.point.dirtyAttrs
     # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.dirtyRange
     # # console.log ">>>", geo.point.attrs.position.size
@@ -871,8 +876,6 @@ export test = (ctx) ->
 
     # console.warn "END"    
     
-
-
 
 
 
@@ -1213,6 +1216,8 @@ export class SpriteBuffer
       buffer.js[srcOffset + 9]  = p[0]
       buffer.js[srcOffset + 10] = p[1]
       buffer.js[srcOffset + 11] = p[2]
+
+      console.log ">>>", buffer.js
       
       if USE_BULK_UPDATE
         if not (sprite.id >= dirtyRange.min) then dirtyRange.min = sprite.id
