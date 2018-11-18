@@ -22,7 +22,6 @@ Benchmark = benchmark.runInContext({ _, process });
 window.Benchmark = Benchmark;
 
 
-
 ### BENCHMARKS ###
 
 # bench = ->
@@ -71,99 +70,6 @@ window.Benchmark = Benchmark;
 
 
 
-
-##############
-### Buffer ###
-##############
-
-# Buffer is a wrapper over any array-like object and exposes element read /
-# write functions that can be overriden instead of inflexible index-based
-# interface.
-
-export class Buffer
-
-  ### Properties ###
-  constructor: (@array) ->
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'length'   , -> @array.length
-  @getter 'rawArray' , -> @array
-
-  ### Read / Write ###
-  read:          (ix)      -> @array[ix]
-  write:         (ix, v)   -> @array[ix] = v 
-  readMultiple:  (ixs)     -> @array[ix] for ix from ixs
-  writeMultiple: (ixs, vs) -> @array[ix] = vs[i] for ix,i in ixs
-  
-
-  ### Redirect ###
-  set: (args...) -> @array.set args...
-  
-
-
-##################
-### Observable ###
-##################
-
-# Observable is a wrapper over any buffer-like object allowing to subscribe to
-# changes by monkey-patching its methods.
-
-export class Observable
-
-  ### Properties ###
-
-  constructor: (@array) -> 
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'length'   , -> @array.length
-  @getter 'rawArray' , -> @array.rawArray
-
-
-  ### Read / Write ###
-
-  read: (ix) -> @array.read ix
-  
-  readMultiple: (ixs) -> @array.readMultiple ixs 
-  
-  write: (ix, v) -> 
-    @array.write ix, v
-    @onChanged ix
-  
-  writeMultiple: (ixs, vs) ->
-    @array.writeMultiple ixs, vs 
-    @onChangedMultiple ixs
-
-
-  ### Events ###  
-
-  onChanged: (ix) ->
-  onChangedMultiple: (ixs) ->
-    for ix in ixs
-      @onChanged ix
-
-
-
-############
-### View ###
-############
-
-# View is a wrapper over any buffer-like object allowing to view the array with
-# a defined elements shift.
-
-class View
-
-  ### Properties ###
-  constructor: (@array, @offset=0, @length=0) ->
-  @getter 'buffer', -> @array.buffer
-
-  ### Read / Write ###
-  read:          (x)     -> @array.read          (x + @offset)
-  readMultiple:  (xs)    -> @array.readMultiple  (x + @offset for x from xs)
-  write:         (x , v) -> @array.write         (x + @offset), v
-  writeMultiple: (xs, v) -> @array.writeMultiple (x + @offset for x from xs), v
-
-
-
-
-
 #######################
 ### WebGL constants ###
 #######################
@@ -184,117 +90,138 @@ export itemType =
 
 
 
-
-###############################################################################
-### OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE ###
-###############################################################################
-
-WebGL = 
-  SIZE_OF_FLOAT: 4
-
-BufferUsage = 
-  STATIC_DRAW  : 'STATIC_DRAW'
-  DYNAMIC_DRAW : 'DYNAMIC_DRAW'
-  STREAM_DRAW  : 'STREAM_DRAW'
-  STATIC_READ  : 'STATIC_READ'
-  DYNAMIC_READ : 'DYNAMIC_READ'
-  STREAM_READ  : 'STREAM_READ'
-  STATIC_COPY  : 'STATIC_COPY'
-  DYNAMIC_COPY : 'DYNAMIC_COPY'
-  STREAM_COPY  : 'STREAM_COPY'
-
-patternFloat32Array = (iterations, pattern) ->
-  chunks = 1 << (iterations - 1)
-  length = chunks * pattern.length
-  arr = new Float32Array length
-  for i in [0 .. pattern.length - 1]
-    arr[i] = pattern[i]
-  p = pattern.length
-  for i in [1 .. iterations - 1]
-    arr.copyWithin p, 0, p
-    p <<= 1
-  arr 
-
-# xarr = patternFloat32Array 8, [1,2,3,4]
-# console.log xarr
-
-withVAO = (gl, vao, f) -> 
-  gl.bindVertexArray(vao)
-  out = f()
-  gl.bindVertexArray(null)
-  out
+################################################################################
+################################################################################
+################################################################################
 
 
-withBuffer = (gl, type, buffer, f) -> 
-  gl.bindBuffer(type, buffer)
-  out = f()
-  gl.bindBuffer(type, null)
-  out
 
-withArrayBuffer = (gl, buffer, f) ->
-  withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
+##############
+### Buffer ###
+##############
+
+# Buffer is a wrapper over any array-like object and exposes element read /
+# write functions that can be overriden instead of inflexible index-based
+# interface.
+
+export class Buffer
+
+  ### Properties ###
+  constructor: (@type, args...) ->
+    @_array = new @type args...
+
+  @getter 'array'    , -> @_array
+  @getter 'buffer'   , -> @_array.buffer
+  @getter 'length'   , -> @_array.length
+  @getter 'rawArray' , -> @_array
+
+  ### Read / Write ###
+  read:          (ix)      -> @_array[ix]
+  write:         (ix, v)   -> @_array[ix] = v 
+  readMultiple:  (ixs)     -> @_array[ix] for ix from ixs
+  writeMultiple: (ixs, vs) -> @_array[ix] = vs[i] for ix,i in ixs
+
+  ### Size Management ###
+  resize: (newLength) ->
+    newArray  = new @type newLength
+    arrayView = if @length <= newLength then @_array else
+      new @type @_array.buffer, 0, newLength
+    newArray.set arrayView
+    @_array = newArray
+
+  ### Redirect ###
+  set: (args...) -> @_array.set args...
+
+
+
+############
+### View ###
+############
+
+# View is a wrapper over any buffer-like object allowing to view the array with
+# a defined elements shift.
+
+class View
+
+  ### Properties ###
+  constructor: (@_array, @_offset=0, @_length=0) ->
+  @getter 'array'  , -> @_array
+  @getter 'buffer' , -> @_array.buffer
+  @getter 'length' , -> @_length
+  @getter 'offset' , -> @_offset
+
+  ### Read / Write ###
+  read:          (x)    -> @_array.read          (x + @_offset)
+  write:         (x, v) -> @_array.write         (x + @_offset), v
+  readMultiple:  (x)    -> @_array.readMultiple  (x + @_offset for x from x)
+  writeMultiple: (x, v) -> @_array.writeMultiple (x + @_offset for x from x), v
+
   
-arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
-  withArrayBuffer gl, buffer, =>
-    gl.bufferSubData(gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length)
-      
 
-withNewArrayBuffer = (gl, f) ->
-  buffer = gl.createBuffer()
-  withArrayBuffer gl, buffer, => f(buffer)
+
+##################
+### Observable ###
+##################
+
+# Observable is a wrapper over any buffer-like object allowing to subscribe to
+# changes by monkey-patching its methods.
+
+export class Observable
+
+  ### Properties ###
+
+  constructor: (@_array) -> 
+  @getter 'array'    , -> @_array
+  @getter 'buffer'   , -> @_array.buffer
+  @getter 'length'   , -> @_array.length
+  @getter 'rawArray' , -> @_array.rawArray
+
+
+  ### Read / Write ###
+
+  read:         (ix)  -> @_array.read         ix
+  readMultiple: (ixs) -> @_array.readMultiple ixs 
   
+  write: (ix, v) -> 
+    @_array.write ix, v
+    @onChanged ix
+  
+  writeMultiple: (ixs, vs) ->
+    @_array.writeMultiple ixs, vs 
+    @onChangedMultiple ixs
 
-class Pool 
-  constructor: (@size=0) -> 
-    @free      = []
-    @nextIndex = 0
-
-  reserve: () ->
-    n = @free.shift()
-    if n != undefined      then return n
-    if @nextIndex == @size then return undefined
-    n = @nextIndex
-    @nextIndex += 1
-    n
-
-  dirtySize: () -> @nextIndex
-
-  free: (n) ->
-    @free.push(n)
-
-  resize: (newSize) -> 
-    @size = newSize
+  set: (array, offset=0) ->
+    @_array.set array, offset
+    @onChangedRange offset, array.length
 
 
-applyDef = (cfg, defCfg) ->
-  if not cfg? then return defCfg
-  for key of defCfg
-    if cfg[key] == undefined
-      cfg[key] = defCfg[key]
+  ### Size Management ###
+
+  resize: (newLength) ->
+    oldLength = @_length
+    if oldLength != newLength
+      @_array.resize newLength
+      @onResized oldLength, newLength
 
 
-export class Sprite extends Composable
-  @DEFAULT_SIZE = 10
-  cons: (cfg) -> 
-    @mixin displayObjectMixin, [], cfg
-    ds       = Sprite.DEFAULT_SIZE
-    @_id     = null
-    @_buffer = null
-    @configure cfg
+  ### Events ###  
 
-    @_displayObject.onTransformed = => @onTransformed()
+  onResized: (oldSize, newSize) ->
+  onChanged: (ix) ->
 
-    @variables = 
-      color: new Vector [0,0,0], => 
-        @_buffer.setVariable @_id, 'color', @variables.color
-
-
-  onTransformed: () => 
-    if not @isDirty then @_buffer.markDirty @
+  onChangedMultiple: (ixs) ->
+    for ix in ixs
+      @onChanged ix
+  
+  onChangedRange: (offset, length) ->
+    for ix in [offset ... offset + length]
+      @onChanged ix
 
 
 
-
+################################################################################
+################################################################################
+################################################################################
 
 
 
@@ -308,11 +235,12 @@ export class Sprite extends Composable
 
 export class Type
   @size       : 16
-  @bufferCons : (args...) -> new Buffer (new Float32Array args...)
+  @bufferCons : (args...) -> new Buffer Float32Array, args...
   @item       : itemType.float
 
   constructor: (@array) ->
 
+  @getter 'length'   , -> @constructor.size
   @getter 'buffer'   , -> @array.buffer
   @getter 'rawArray' , -> @array.rawArray
   
@@ -332,7 +260,10 @@ export class Type
   readMultiple:  (ixs)     -> @array.readMultiple  ixs
   writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
 
-
+  set: (src) ->
+    for i in [0 ... @constructor.size]
+      @write i, (src.read i)
+    
 Property.swizzleFieldsXYZW2 Type
 Property.swizzleFieldsRGBA2 Type
 Property.addIndexFields2    Type
@@ -352,7 +283,7 @@ export class Vec4 extends Type
 export class Mat2 extends Type
   @size: 4
 
-  @from: (args) =>
+  @from: (args) ->
     if args
       array = @bufferCons args
     else
@@ -364,7 +295,7 @@ export class Mat2 extends Type
 export class Mat3 extends Type
   @size: 9
 
-  @from: (args) =>
+  @from: (args) ->
     if args
       array = @bufferCons args
     else
@@ -377,7 +308,7 @@ export class Mat3 extends Type
 export class Mat4 extends Type
   @size: 16
 
-  @from: (args) =>
+  @from: (args) ->
     if args
       array = @bufferCons args
     else
@@ -391,12 +322,12 @@ export class Mat4 extends Type
 
 ### Smart constructors ###
 
-vec2 = (a) -> Vec2.from a
-vec3 = (a) -> Vec3.from a
-vec4 = (a) -> Vec4.from a
-mat2 = (a) -> Mat2.from a
-mat3 = (a) -> Mat3.from a
-mat4 = (a) -> Mat4.from a
+vec2 = (a) => Vec2.from a
+vec3 = (a) => Vec3.from a
+vec4 = (a) => Vec4.from a
+mat2 = (a) => Mat2.from a
+mat3 = (a) => Mat3.from a
+mat4 = (a) => Mat4.from a
 
 vec2.type = Vec2
 vec3.type = Vec3
@@ -407,8 +338,60 @@ mat4.type = Mat4
 
 
 
+################################################################################
+################################################################################
+################################################################################
 
 
+
+####################
+### DirtyManager ###
+####################
+
+class RangedDirtyManager
+
+  ### Initialization ###
+
+  constructor: ->
+    @reset()
+
+  reset: ->
+    @isDirty = false
+    @dirtyRange = 
+      min: null
+      max: null
+
+
+  ### Handlers ###
+
+  handleChanged: (ix) ->
+    if @dirty
+      if      ix > @dirtyRange.max then @dirtyRange.max = ix
+      else if ix < @dirtyRange.min then @dirtyRange.min = ix
+    else
+      @dirty          = true
+      @dirtyRange.min = ix
+      @dirtyRange.max = ix
+      @onDirty()
+
+  handleChangedRange: (offset, length) ->
+    min = offset
+    max = min + length - 1
+    if @dirty
+      if max > @dirtyRange.max then @dirtyRange.max = max
+      if min < @dirtyRange.min then @dirtyRange.min = min
+    else
+      @dirty          = true
+      @dirtyRange.min = min
+      @dirtyRange.max = max
+      @onDirty()
+
+  handleResized: (oldSize, newSize) ->
+
+
+  ### Events ###
+  
+  onDirty: ->
 
 
 
@@ -421,136 +404,115 @@ export class Attribute
 
   ### Properties ###
 
-  constructor: (@_type, @_size, cfg) -> 
-    @_default    = cfg.default
-    @_usage      = cfg.usage || usage.dynamic
-    @_data       = new Observable (@type.bufferCons (@size * @type.size))
-    @_dirty      = false
-    @_dirtyRange = 
-      min: null
-      max: null
+  constructor: (parent, @id, @_type, @_size, cfg) -> 
+    @logger = parent.logger.scoped @id
+    @logger.info "Initializing with #{@_size} elements"
 
-    @_data.onChanged = @_onChanged
+    @_default      = cfg.default
+    @_usage        = cfg.usage || usage.dynamic
+    @_data         = new Observable (@type.bufferCons (@size * @type.size))
+    @_dirtyManager = cfg.dirtyManager || new RangedDirtyManager 
+    @_initEventHandlers()
 
-  @getter 'type'    , -> @_type
-  @getter 'size'    , -> @_size
-  @getter 'data'    , -> @_data
-  @getter 'default' , -> @_default
+  @getter 'type'         , -> @_type
+  @getter 'size'         , -> @_size
+  @getter 'data'         , -> @_data
+  @getter 'default'      , -> @_default
+  @getter 'isDirty'      , -> @_dirtyManager.isDirty
+  @getter 'dirtyManager' , -> @_dirtyManager
 
 
-  ### Construction ###
+  ### Initialization ###
 
-  @from = (a) ->
+  _initEventHandlers: ->
+    @_dirtyManager.onDirty = () => @onDirty()
+
+    @_data.onChanged = (ix) =>
+      @_dirtyManager.handleChanged ix
+      @onChanged ix
+
+    @_data.onChangedRange = (offset, length) =>
+      @_dirtyManager.handleChangedRange offset, length
+      @onChangedRange offset, length
+
+    @_data.onResized = (oldLength, newLength) =>
+      @_dirtyManager.handleResized oldLength, newLength
+      @onResized oldLength, newLength
+
+
+  ### Smart Constructors ###
+
+  @from = (parent, id, a) ->
     if a.constructor == Object
-      @_from a.data, a.type, a
+      @_from parent, id, a.data, a.type, a
     else
-      @_from a 
+      @_from parent, id, a 
 
   @_inferArrType = (arr) -> arr[0].constructor
-  @_from = (a, expType, cfg={}) ->
+  @_from = (parent, id, a, expType, cfg={}) ->
     if a.constructor == Array
       type = expType || @_inferArrType a
       size = a.length
-      attr = new Attribute type, size, cfg
+      attr = new Attribute parent, id, type, size, cfg
       attr.set a
       attr
     else if ArrayBuffer.isView a
       type = expType || @_inferArrType a
       size = a.length / type.size
-      attr = new Attribute type, size, cfg
+      attr = new Attribute parent, id, type, size, cfg
       attr.set a
       attr
-    else new Attribute a.type, 0, cfg
-    
-  @fromObject: (cfg) ->
-    attrs = {}
-    for name of cfg
-      attrs[name] = Attribute.from cfg[name]
-    attrs
+    else new Attribute parent, id, a.type, 0, cfg
 
+
+  ### Size Management ###
+
+  resize: (newSize) ->
+    oldSize = @size
+    if oldSize != newSize
+      @logger.info "Resizing to handle up to #{newSize} elements"
+      @_size = newSize
+      @data.resize (@size * @type.size)
+      @onResized oldSize, newSize
+    
 
   ### Indexing ###
 
-  read: (ix) ->
-    @type.view @data, ix*@type.size 
+  read  : (ix)    -> @type.view @data, ix*@type.size 
+  write : (ix, v) -> @read(ix).set v
 
-  # TODO: should we trigger events here?
   set: (data) ->
     if data.constructor == Array
-      size = @type.size
+      typeSize = @type.size
+      buffer   = @type.bufferCons (typeSize * data.length)
       for i in [0 ... data.length]
-        offset = i * size
-        @data.array.set data[i].rawArray, offset
-
-
-  ### Event handling ###
-
-  _onChanged: (ix) =>
-    if @_dirty
-      if      ix > @_dirtyRange.max then @_dirtyRange.max = ix
-      else if ix < @_dirtyRange.min then @_dirtyRange.min = ix
+        offset = i * typeSize
+        buffer.set data[i].rawArray, offset
+      @data.set buffer.rawArray
     else
-      @_dirty = true
-      @_dirtyRange.min = ix
-      @_dirtyRange.max = ix
-      @onDirty @_name
-    
+      throw "Unsupported type"
+
 
   ### Events ###
 
-  onDirty: (name) ->
-  
-
-
-# a = Attribute.from [
-#   (vec3 [-0.5,  0.5, 0]),
-#   (vec3 [-0.5, -0.5, 0]),
-#   (vec3 [ 0.5,  0.5, 0]),
-#   (vec3 [ 0.5, -0.5, 0])]
-
-# a.onDirty = (i) ->
-#   console.log "DIRTY", i
-# console.log '-----'
-# console.log a
-# t = a.read(3)
-# console.log t
-# console.log t.xyz
-# t[0] = 7
-# t[1] = 7
-# console.log a
-# console.log '-----'
-
-
-class Pool 
-  constructor: (@size=0) -> 
-    @free      = []
-    @nextIndex = 0
-
-  reserve: () ->
-    n = @free.shift()
-    if n != undefined      then return n
-    if @nextIndex == @size then return undefined
-    n = @nextIndex
-    @nextIndex += 1
-    n
-
-  dirtySize: () -> @nextIndex
-
-  free: (n) ->
-    @free.push(n)
-
-  resize: (newSize) -> 
-    @size = newSize
+  onDirty        : ->
+  onChanged      : (ix) ->
+  onChangedRange : (offset, length) ->
+  onResized      : (oldSize, newSize) ->  
 
 
 
-class Pool2
+##################
+### Index Pool ###
+##################
+
+class Pool
   constructor: (required=0) -> 
     @size      = @_computeSquareSize required
     @free      = []
     @nextIndex = required
 
-  _computeSquareSize: (required) ->
+  _computeSquareSize: (required) =>
     if required == 0 
       size = 0
     else 
@@ -561,7 +523,7 @@ class Pool2
         else break
     size
 
-  reserve: () ->
+  reserve: () =>
     n = @free.shift()
     if n != undefined      then return n
     if @nextIndex == @size then @grow()
@@ -569,41 +531,39 @@ class Pool2
     @nextIndex += 1
     n
 
-  dirtySize: () -> @nextIndex
+  dirtySize: () => @nextIndex
 
-  free: (n) ->
+  free: (n) =>
     @free.push(n)
 
-  resize: (newSize) -> 
+  resize: (newSize) => 
     @size = newSize
 
-  growTo: (required) -> 
-    size = @_computeSquareSize required
-    if size > @size 
-      @size = size
-      @onResized @size
+  growTo: (required) => 
+    newSize = @_computeSquareSize required
+    oldSize = @size
+    if newSize > oldSize 
+      @size = newSize
+      @onResized oldSize, newSize
 
-  grow: () ->
-    @size <<= 1
-    @onResized @size
+  grow: () =>
+    oldSize = @size
+    newSize = if oldSize == 0 then 1 else oldSize << 1
+    @size   = newSize
+    @onResized oldSize, newSize
 
-  reserveFromBeginning: (required) ->
-    @growTo required
+  reserveFromBeginning: (required) =>
     @nextIndex = required
+    @growTo required
 
   ### Events ###
-  onResized: (size) ->
+  onResized: (oldSize, newSize) =>
     
-
-
-
 
 
 #######################
 ### Attribute Scope ###
 #######################
-
-
 
 export class Scope
 
@@ -611,63 +571,52 @@ export class Scope
 
   constructor: (@geometry, @id, cfg) ->
     @logger      = @geometry.logger.scoped @id
-    @attrs       = Attribute.fromObject cfg 
+    @attrs       = {}
     @_dirtyAttrs = []
 
-    for name,attr of @attrs 
-      do (name,attr) =>
-        attr.onDirty = =>
-          console.log "DIRTY!!!", name
-          @_dirtyAttrs.push name
-        
     @_initIndexPool()
+    @_initAttrs cfg
+    
+  @getter 'size'       , -> @_indexPool.size
+  @getter 'dirtyAttrs' , -> @_dirtyAttrs
 
-  _initIndexPool: () =>
-    commonSize = @_computeCommonSize @attrs
-    console.log "###", commonSize
-    @pool      = new Pool2 commonSize
-    @logger.info "Initializing for #{@pool.size} elements"
+  _initIndexPool: () ->
+    @_indexPool = new Pool
+    @_indexPool.onResized = @_handlePoolResized
+  
+  _initAttrs: (cfg) -> 
+    for name,attrCfg of cfg
+      @addAttribute name, attrCfg
 
-    @pool.onResized = @_onResized
 
-  _computeCommonSize: (attrs) =>
-    commonSize = 0
-    for name of attrs
-      attr = attrs[name]
-      size = attr.size
-      if size > commonSize
-        commonSize = size
-    commonSize
+  ### Attribute Management ###
 
   add: (cfg) =>
-    id = @pool.reserve()
-    for name of cfg
-      console.log "+", id, name
-      console.log @attrs[name].attr
+    ix = @_indexPool.reserve()
+    for name, val of cfg
+      @attrs[name].write(ix,val)
 
   addAttribute: (name, cfg) =>
-    console.log "!!!", name, cfg
-    attr = Attribute.from cfg
-    console.log attr
-    @pool.reserveFromBeginning attr.data.length
-    # @geometry._onAttributeAdded @id, name
-    
+    attr = Attribute.from @, name, cfg
+    @_indexPool.reserveFromBeginning attr.size
+    @onAttributeAdded name
+    attr.resize @size
+    @attrs[name] = attr
+
+
+  ### Handlers ###
+
+  _handlePoolResized: (oldSize, newSize) =>
+    @logger.group "Resizing to handle up to #{newSize} elements", =>
+      for name,attr of @attrs
+        attr.resize newSize
+      @onResized oldSize, newSize
+      
 
   ### Events ###
 
-  _onResized: (s) =>
-    console.log "TODO: resize buffers"
-    @geometry._onScopeResized(@id, s)
-        
-
-
-# Geometry
-#   - js buffers
-#   - size management 
-
-# GeometryBuffers
-#   - per scene
-#   - geo -> GL buffers
+  onAttributeAdded : (name) =>
+  onResized        : (oldSize, newSize) =>
   
 
 
@@ -806,6 +755,7 @@ export test = (ctx) ->
   program = utils.createProgramFromSources(ctx,
       [vertexShaderSource, fragmentShaderSource])
 
+  console.warn "Creating geometry"
   geo = new Geometry
     name: "Geo1"
     point:
@@ -813,14 +763,14 @@ export test = (ctx) ->
         usage : usage.static
         data  : [
           (vec3 [-0.5,  0.5, 0]),
-          (vec3 [-0.5, -0.5, 0]),
+          # (vec3 [-0.5, -0.5, 0]),
           (vec3 [ 0.5,  0.5, 0]),
           (vec3 [ 0.5, -0.5, 0])]
       uv:[
         # usage : usage.static
         # data  : [
           (vec2 [0,1]),
-          (vec2 [0,0]),
+          # (vec2 [0,0]),
           (vec2 [1,1]),
           (vec2 [1,0])] 
       
@@ -828,10 +778,19 @@ export test = (ctx) ->
       color:     vec3
       transform: mat4
 
+  console.warn "Position modification"  
   # console.log geo.point.attrs
-  geo.point.attrs.position.read(0)[0] = 7
-  geo.point.attrs.position.read(0)[0] = 7
-  geo.point.attrs.position.read(0)[1] = 7
+  geo.point.attrs.position.read(1)[0] = 7
+  geo.point.attrs.position.read(1)[0] = 7
+  geo.point.attrs.position.read(1)[1] = 7
+
+  console.log "---"
+  console.log geo.point.attrs.position.read(1)
+  console.log geo.point.attrs.uv.read(1)
+
+  console.log geo.point.attrs.position.read(3)
+  console.log geo.point.attrs.uv.read(3)
+  console.log geo.point.attrs.uv.read(3).xy
 
   # geo = new Geometry
   #   name: "Geo1"
@@ -845,18 +804,164 @@ export test = (ctx) ->
   #     color:     vec3
   #     transform: mat4
 
-  geo.point.addAttribute 'foo', [
-          (vec2 [0,1]),
-          (vec2 [0,0]),
-          (vec2 [1,1]),
-          (vec2 [1,1]),
-          (vec2 [1,0])] 
-  # geo.point.add 
-  #   position : vec3 [1,1,1]
-  #   uv       : vec2 [0,0]
+    # console.warn "Adding attribute"    
+    # # geo.point.addAttribute 'foo', [
+    # #         (vec2 [0,1]),
+    # #         (vec2 [0,0]),
+    # #         (vec2 [1,1]),
+    # #         (vec2 [1,1]),
+    # #         (vec2 [1,0])] 
 
-  # mesh = new Mesh geo
-  # mi = new MeshInstance ctx, mesh, program
+    # console.warn "Adding point"      
+    # geo.point.add 
+    #   position : vec3 [7,8,9]
+    #   uv       : vec2 [7,8]
+
+    # # mesh = new Mesh geo
+    # # mi = new MeshInstance ctx, mesh, program
+    # console.log "Dirty:", geo.point.dirtyAttrs
+    # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.dirtyRange
+    # # console.log ">>>", geo.point.attrs.position.size
+
+    # console.log geo.point.attrs.position
+    # console.log geo.point.attrs.uv
+
+    # console.warn "END"    
+    
+
+
+
+
+
+
+###############################################################################
+### OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE ###
+###############################################################################
+
+class Pool_old 
+  constructor: (@size=0) -> 
+    @free      = []
+    @nextIndex = 0
+
+  reserve: () =>
+    n = @free.shift()
+    if n != undefined      then return n
+    if @nextIndex == @size then return undefined
+    n = @nextIndex
+    @nextIndex += 1
+    n
+
+  dirtySize: () => @nextIndex
+
+  free: (n) =>
+    @free.push(n)
+
+  resize: (newSize) => 
+    @size = newSize
+
+
+WebGL = 
+  SIZE_OF_FLOAT: 4
+
+BufferUsage = 
+  STATIC_DRAW  : 'STATIC_DRAW'
+  DYNAMIC_DRAW : 'DYNAMIC_DRAW'
+  STREAM_DRAW  : 'STREAM_DRAW'
+  STATIC_READ  : 'STATIC_READ'
+  DYNAMIC_READ : 'DYNAMIC_READ'
+  STREAM_READ  : 'STREAM_READ'
+  STATIC_COPY  : 'STATIC_COPY'
+  DYNAMIC_COPY : 'DYNAMIC_COPY'
+  STREAM_COPY  : 'STREAM_COPY'
+
+patternFloat32Array = (iterations, pattern) ->
+  chunks = 1 << (iterations - 1)
+  length = chunks * pattern.length
+  arr = new Float32Array length
+  for i in [0 .. pattern.length - 1]
+    arr[i] = pattern[i]
+  p = pattern.length
+  for i in [1 .. iterations - 1]
+    arr.copyWithin p, 0, p
+    p <<= 1
+  arr 
+
+# xarr = patternFloat32Array 8, [1,2,3,4]
+# console.log xarr
+
+withVAO = (gl, vao, f) -> 
+  gl.bindVertexArray(vao)
+  out = f()
+  gl.bindVertexArray(null)
+  out
+
+
+withBuffer = (gl, type, buffer, f) -> 
+  gl.bindBuffer(type, buffer)
+  out = f()
+  gl.bindBuffer(type, null)
+  out
+
+withArrayBuffer = (gl, buffer, f) ->
+  withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
+  
+arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
+  withArrayBuffer gl, buffer, =>
+    gl.bufferSubData(gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length)
+      
+
+withNewArrayBuffer = (gl, f) ->
+  buffer = gl.createBuffer()
+  withArrayBuffer gl, buffer, => f(buffer)
+  
+
+class Pool_old 
+  constructor: (@size=0) -> 
+    @free      = []
+    @nextIndex = 0
+
+  reserve: () ->
+    n = @free.shift()
+    if n != undefined      then return n
+    if @nextIndex == @size then return undefined
+    n = @nextIndex
+    @nextIndex += 1
+    n
+
+  dirtySize: () -> @nextIndex
+
+  free: (n) ->
+    @free.push(n)
+
+  resize: (newSize) -> 
+    @size = newSize
+
+
+applyDef = (cfg, defCfg) ->
+  if not cfg? then return defCfg
+  for key of defCfg
+    if cfg[key] == undefined
+      cfg[key] = defCfg[key]
+
+
+export class Sprite extends Composable
+  @DEFAULT_SIZE = 10
+  cons: (cfg) -> 
+    @mixin displayObjectMixin, [], cfg
+    ds       = Sprite.DEFAULT_SIZE
+    @_id     = null
+    @_buffer = null
+    @configure cfg
+
+    @_displayObject.onTransformed = => @onTransformed()
+
+    @variables = 
+      color: new Vector [0,0,0], => 
+        @_buffer.setVariable @_id, 'color', @variables.color
+
+
+  onTransformed: () => 
+    if not @isDirty then @_buffer.markDirty @
 
 
 
@@ -870,7 +975,7 @@ export class SpriteBuffer
     @_VTX_ELEMS        = @_SPRITE_IND_COUNT * @_VTX_DIM
     @_sizeExp          = 1
 
-    @_ixPool           = new Pool
+    @_ixPool           = new Pool_old
     @_vao              = @_gl.createVertexArray()
     @_locs             = @_program.lookupVariables @_variables  
     @__dirty           = []
