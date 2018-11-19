@@ -130,6 +130,9 @@ export usage =
 export itemType =
   float : WebGLRenderingContext.FLOAT
 
+export byteSize =
+  float : 4
+
 
 
 ###################
@@ -486,7 +489,7 @@ class BoolLazyManager
 
   ### Initialization ###
   constructor: () ->
-    @reset
+    @reset()
 
   reset: -> @isDirty = false
 
@@ -583,7 +586,6 @@ export class Logged
   constructor: (cfg={}) ->
     @_label = param('label', cfg) || @constructor.name
     @logger = logger.scoped @_label
-    @logger.info "Initialization"
   @getter 'label', -> @_label
 
 
@@ -604,12 +606,12 @@ export class Lazy extends Logged
 
   setDirty: (force = false) ->
     if force || (not @isDirty)
-      @logger.info "Marked dirty"
+      @logger.info "Dirty flag set"
       @onDirty.dispatch()
 
   unsetDirty: ->
     if @isDirty
-      @logger.info "Marked not dirty"
+      @logger.info "Dirty flag unset"
       elems = @_lazyManager.elems
       if elems?
         for elem in elems
@@ -815,7 +817,8 @@ export class AttributeScope extends Lazy
     @_initIndexPool()
     @_initValues cfg.data
     
-  @getter 'size', -> @_indexPool.size
+  @getter 'size'       , -> @_indexPool.size
+  @getter 'dirtyElems' , -> @_lazyManager.elems
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -839,7 +842,7 @@ export class AttributeScope extends Lazy
     @_indexPool.reserveFromBeginning attr.size
     attr.registerScope @
     attr.resizeToScopes()
-    @data[name]  = attr
+    @data[name] = attr
     @_dataNames.set attr, name
     attr.onDirty.addEventListener =>
       @_lazyManager.handleChanged name
@@ -884,10 +887,14 @@ export class Geometry extends Lazy
     super
       label       : "Geometry.#{label}"
       lazyManager : new EnumLazyManager
-    @_scope = {}
-
+    
     @logger.group 'Initialization', =>
+      @_scope = {}
       @_initScopes cfg
+
+  @getter 'scope'      , -> @_scope
+  @getter 'dirtyElems' , -> @_lazyManager.elems
+
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -904,22 +911,30 @@ export class Geometry extends Lazy
           @_scope[name] = scope
           @[name]       = scope 
           scope.onDirty.addEventListener =>
-            @_lazyManager.handleChanged scope
+            @_lazyManager.handleChanged name
 
 
+
+
+############
+### Mesh ###
+############
 
 export class Mesh extends Lazy
   constructor: (geometry, @material) ->
     super
-      label: geometry.label
+      label: "Mesh." + geometry.label
     @geometry = geometry
+    @geometry.onDirty.addEventListener =>
+      @_lazyManager.handleChanged()
 
   onDirtyChild: ->
 
 
 
-
-
+###############
+### GPUMesh ###
+###############
 
 export class GPUMesh extends Lazy
   constructor: (@_ctx, mesh, @_program) ->
@@ -927,14 +942,10 @@ export class GPUMesh extends Lazy
       label: "GPU.#{mesh.label}"
     @mesh = mesh
     @progVarLoc = {}
-    @gpuBuffer  = {}
+    @buffer  = {}
     @_initVarLocations()
     @_initVAO()
     @_initBuffers()
-
-    console.log ">>>", @progVarLoc
-    
-
 
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
@@ -957,7 +968,6 @@ export class GPUMesh extends Lazy
           else
             @logger.info "Variable '" + name + "' bound successfully"
             spaceLoc[name] = loc
-              
 
   _initVAO: () ->
     @logger.group 'Initializing Vertex Array Object (VAO)', =>
@@ -968,7 +978,7 @@ export class GPUMesh extends Lazy
   _initAttrs: (spaceName, instanced) ->
     @logger.group "Initializing #{spaceName} variables", =>
       space = @mesh.geometry[spaceName].data
-      @gpuBuffer[spaceName] = {}
+      @buffer[spaceName] = {}
       withVAO @_ctx, @_vao, =>  
         for name of space
           @logger.info "Enabling variable '#{name}'"
@@ -977,7 +987,7 @@ export class GPUMesh extends Lazy
           if loc == -1
             @logger.info "Variable '" + name + "' not used in shader"
           else withNewArrayBuffer @_ctx, (buffer) =>  
-            @gpuBuffer[spaceName][name] = buffer 
+            @buffer[spaceName][name] = buffer 
             @_ctx.enableVertexAttribArray loc
             norm   = false
             stride = 0
@@ -990,7 +1000,7 @@ export class GPUMesh extends Lazy
         
   _initBuffers: () ->
     @logger.group "Initializing buffers", =>
-      for spaceName,cfg of @gpuBuffer
+      for spaceName,cfg of @buffer
         space = bufferJS = @mesh.geometry[spaceName]
         @logger.group "Initializing #{spaceName} buffers", =>     
           for varName,bufferGL of cfg
@@ -1003,6 +1013,28 @@ export class GPUMesh extends Lazy
 
   update: ->
     @logger.group 'Updating', =>
+      console.log @
+      console.log @mesh
+      if @mesh.isDirty
+        geometry = @mesh.geometry
+        if geometry.isDirty
+          for scopeName in geometry.dirtyElems
+            @logger.group "Updating #{scopeName} scope", =>
+              scope       = geometry.scope[scopeName]
+              scopeBuffer = @buffer[scopeName]
+              for varName in scope.dirtyElems
+                _INT_BYTES    = 4 # FIXME
+                variable      = scope.data[varName]
+                bufferGL      = scopeBuffer[varName]
+                bufferJS      = variable.data.rawArray
+                dirtyRange    = variable._lazyManager.dirtyRange # FIXME
+                srcOffset     = dirtyRange.min
+                dstByteOffset = _INT_BYTES * srcOffset
+                length        = dirtyRange.max - dirtyRange.min + 1
+                @logger.info "Updating #{varName} variable (#{length} elements)"
+                arrayBufferSubData @_ctx, bufferGL, dstByteOffset, bufferJS, 
+                                   srcOffset, length 
+
       # for 
 
   draw: (viewProjectionMatrix) ->
