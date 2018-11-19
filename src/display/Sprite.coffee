@@ -467,7 +467,7 @@ class Pool
 ### DirtyManager ###
 ####################
 
-class RangedDirtyManager
+class RangedLazyManager
 
   ### Initialization ###
 
@@ -515,14 +515,14 @@ class RangedDirtyManager
 
 
 
-class EnumDirtyManager
+class EnumLazyManager
 
   ### Initialization ###
-  constructor : (@onDirty) -> 
+  constructor: () -> 
     @reset()
-
-  reset       : -> @elems = []
   @getter 'isDirty', -> @elems.length != 0
+  
+  reset: -> @elems = []
 
   ### Handlers ###
   handleChanged: (elem) ->
@@ -531,44 +531,69 @@ class EnumDirtyManager
     if not wasDirty
       @onDirty()
 
+  onDirty: ->
 
 
-####################
-### Hierarchical ###
-####################
+class BoolLazyManager
 
-export class Hierarchical
-  constructor: ->
-    @_parents = new Set
+  ### Initialization ###
+  constructor: () ->
+    @reset
 
-  registerParent: (scope) ->
-    @_parents.add scope
+  reset: -> @isDirty = false
 
-  unregisterParent: (scope) ->
-    @_parents.delete scope
-
-
-
-#########################
-### HierarchicalDirty ###
-#########################
-
-export class HierarchicalDirty extends Hierarchical
-
-  setDirty: () ->
+  ### Handlers ###
+  handleChanged: () ->
     if not @isDirty
-      @logger.info "Marked dirty"
-      @_parents.forEach (a) =>
-        a.onDirtyChild @
+      @isDirty = true
+      @onDirty()
 
-  unsetDirty: () ->
+  onDirty: ->
+  
+
+
+
+############
+### Lazy ###
+############
+
+export class Lazy
+
+  constructor: (lazyManager) ->
+    @onDirty      = new EventDispatcher    
+    @_lazyManager = lazyManager || new BoolLazyManager 
+    @_lazyManager.onDirty = => @setDirty(true)
+    
+  @getter 'isDirty' , -> @_lazyManager.isDirty  
+
+  setDirty: (force = false) ->
+    if force || (not @isDirty)
+      @logger.info "Marked dirty"
+      @onDirty.dispatch()
+
+  unsetDirty: ->
     if @isDirty
       @logger.info "Marked not dirty"
-      if @dirtyChildren?
-        for child in @dirtyChildren
-          child.unsetDirty()
-      @_dirtyManager.reset()
+      elems = @_lazyManager.elems
+      if elems?
+        for elem in elems
+          elem.unsetDirty()
+      @_lazyManager.reset()
 
+
+
+class EventDispatcher
+  constructor: ->
+    @_listeners = new Set
+
+  addEventListener: (f) ->
+    @_listeners.add f
+
+  removeEventListener: (f) ->
+    @_listeners.delete f
+
+  dispatch: (args...) ->
+    @_listeners.forEach (f) => f args...
 
   
 #################
@@ -619,7 +644,7 @@ export class HierarchicalDirty extends Hierarchical
 #             0.5,  0.5, 0 ,
 #             0.5, -0.5, 0 ]
 
-export class Attribute extends HierarchicalDirty
+export class Attribute extends Lazy
   # TODO: to be used when no label provided + make label optional
   @_nextID = 0
   @getID: ->
@@ -630,14 +655,17 @@ export class Attribute extends HierarchicalDirty
   ### Properties ###
 
   constructor: (@label, @_type, @_size, cfg) -> 
-    super()
+    lazyManager = cfg.lazyManager || new RangedLazyManager 
+    super(lazyManager)
+
     @logger = logger.scoped @label
     @logger.info "Initializing with #{@_size} elements"
 
-    @_default      = cfg.default
-    @_usage        = cfg.usage || usage.dynamic
-    @_data         = new Observable (@type.bufferCons (@size * @type.size))
-    @_dirtyManager = cfg.dirtyManager || new RangedDirtyManager 
+    @_scopes  = new Set
+    @_default = cfg.default
+    @_usage   = cfg.usage || usage.dynamic
+    @_data    = new Observable (@type.bufferCons (@size * @type.size))
+
     @_initEventHandlers()
 
   @getter 'type'    , -> @_type
@@ -645,16 +673,20 @@ export class Attribute extends HierarchicalDirty
   @getter 'data'    , -> @_data
   @getter 'usage'   , -> @_usage
   @getter 'default' , -> @_default
-  @getter 'isDirty' , -> @_dirtyManager.isDirty
+
+
+  ### Scope management ###
+
+  registerScope: (scope) ->
+    @_scopes.add scope
 
 
   ### Initialization ###
 
   _initEventHandlers: ->
-    @_dirtyManager.onDirty = => @setDirty()
-    @_data.onChanged      = (args...) => @_dirtyManager.handleChanged      args...
-    @_data.onChangedRange = (args...) => @_dirtyManager.handleChangedRange args...
-    @_data.onResized      = (args...) => @_dirtyManager.handleResized      args...
+    @_data.onChanged      = (args...) => @_lazyManager.handleChanged      args...
+    @_data.onChangedRange = (args...) => @_lazyManager.handleChangedRange args...
+    @_data.onResized      = (args...) => @_lazyManager.handleResized      args...
 
 
   ### Smart Constructors ###
@@ -692,7 +724,7 @@ export class Attribute extends HierarchicalDirty
   ### Size Management ###
 
   resizeToScopes: ->
-    sizes = (scope.size for scope from @_parents)
+    sizes = (scope.size for scope from @_scopes)
     size  = arrayMax sizes
     @resize size
 
@@ -729,23 +761,22 @@ export class Attribute extends HierarchicalDirty
 ### AttributeScope ###
 ######################
 
-export class AttributeScope extends HierarchicalDirty
+export class AttributeScope extends Lazy
 
   ### Initialization ###
 
   constructor: (todelete, @id, cfg) ->
-    super()
+    lazyManager = new EnumLazyManager
+    super(lazyManager)
+
     @logger        = todelete.logger.scoped @id
     @data          = {}
     @_dataNames    = new Map
-    @_dirtyManager = new EnumDirtyManager => @setDirty()
 
     @_initIndexPool()
     @_initValues cfg
     
-  @getter 'size'          , -> @_indexPool.size
-  @getter 'dirtyChildren' , -> @_dirtyManager.elems
-  @getter 'isDirty'       , -> @_dirtyManager.isDirty 
+  @getter 'size', -> @_indexPool.size
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -767,14 +798,12 @@ export class AttributeScope extends HierarchicalDirty
     label = @logger.scope + '.' + name
     attr  = Attribute.from label, cfg
     @_indexPool.reserveFromBeginning attr.size
-    attr.registerParent @
+    attr.registerScope @
     attr.resizeToScopes()
     @data[name]  = attr
     @_dataNames.set attr, name
-  
-  onDirtyChild: (attr) ->
-    name = @_dataNames.get attr
-    @_dirtyManager.handleChanged name
+    attr.onDirty.addEventListener =>
+      @_lazyManager.handleChanged name
 
 
   ### Handlers ###
@@ -790,8 +819,9 @@ export class AttributeScope extends HierarchicalDirty
 ### UniformScope ###
 ####################
 
-class UniformScope
+class UniformScope extends Lazy
   constructor: (@parent, @id, cfg) ->
+    super()
     @logger = @parent.logger.scoped @id
     @data   = {}
     @_initValues cfg
@@ -800,8 +830,6 @@ class UniformScope
     for name,val of cfg
       @logger.info "Initializing '#{name}' variable"
       @data[name] = val
-
-  registerParent: -> # TODO
       
 
 
@@ -809,23 +837,20 @@ class UniformScope
 ### Geometry ###
 ################
 
-export class Geometry extends HierarchicalDirty
+export class Geometry extends Lazy
 
   ### Initialization ###
 
   constructor: (cfg) ->
-    super()
-    @name          = cfg.name || "Unnamed"
-    @logger        = logger.scoped "Geometry.#{@name}"
-    @_scope        = {}
+    lazyManager = new EnumLazyManager
+    super(lazyManager)
+
+    @name   = cfg.name || "Unnamed"
+    @logger = logger.scoped "Geometry.#{@name}"
+    @_scope = {}
 
     @logger.group 'Initialization', =>
       @_initScopes cfg
-      @_dirtyManager = new EnumDirtyManager => @setDirty()
-
-  @getter 'meshRegistry'  , -> @_meshRegistry
-  @getter 'dirtyChildren' , -> @_dirtyManager.elems
-  
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -834,34 +859,26 @@ export class Geometry extends HierarchicalDirty
       global   : UniformScope
 
     for name,cons of scopes
-      scopeCfg = cfg[name]
-      @logger.group "Initializing #{name} scope", =>
-        scope         = new cons @, name, scopeCfg
-        @_scope[name] = scope
-        @[name]       = scope 
-        scope.registerParent @
-
-  
-  ### Dirty Management ###
-
-  onDirtyChild: (scope) ->
-    @_dirtyManager.handleChanged scope
+      do (name,cons) =>
+        scopeCfg = cfg[name]
+        @logger.group "Initializing #{name} scope", =>
+          scope         = new cons @, name, scopeCfg
+          @_scope[name] = scope
+          @[name]       = scope 
+          scope.onDirty.addEventListener =>
+            @_lazyManager.handleChanged scope
 
 
 
-export class Mesh extends HierarchicalDirty
+export class Mesh extends Lazy
   constructor: (@geometry, @material) ->
     super()
-    @geometry.registerParent @
 
   @getter 'name',            -> @geometry.name
 
 
   onDirtyChild: ->
 
-
-export class GeometryModel
-  constructor: () ->
 
 
 
@@ -876,7 +893,7 @@ export class GPUMesh
     @_initVAO()
     @_initBuffers()
 
-    @mesh.registerParent @
+    # @mesh.registerParent @
     console.log ">>>", @progVarLoc
     
 
