@@ -22,6 +22,33 @@ Benchmark = benchmark.runInContext({ _, process });
 window.Benchmark = Benchmark;
 
 
+
+#############
+### UTILS ###
+#############
+
+arrayMin = (arr) -> arr.reduce (p, v) -> if p < v then p else v
+arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
+
+# class Foo
+#   @_nextID = 0
+#   @getID: ->
+#     id = @_nextID 
+#     @_nextID += 1
+#     id
+
+#   constructor: () ->
+#     @id = @constructor.getID()
+
+
+# foo1 = new Foo
+# foo2 = new Foo
+
+# console.log foo1
+# console.log foo2
+
+
+
 ### BENCHMARKS ###
 
 # bench = ->
@@ -377,241 +404,6 @@ mat4.type = Mat4
 
 
 
-####################
-### DirtyManager ###
-####################
-
-class RangedDirtyManager
-
-  ### Initialization ###
-
-  constructor: ->
-    @reset()
-
-  reset: ->
-    @isDirty = false
-    @dirtyRange = 
-      min: null
-      max: null
-
-
-  ### Handlers ###
-
-  handleChanged: (ix) ->
-    if @isDirty
-      if      ix > @dirtyRange.max then @dirtyRange.max = ix
-      else if ix < @dirtyRange.min then @dirtyRange.min = ix
-    else
-      @isDirty        = true
-      @dirtyRange.min = ix
-      @dirtyRange.max = ix
-      @onDirty()
-
-  handleChangedRange: (offset, length) ->
-    min = offset
-    max = min + length - 1
-    if @isDirty
-      if max > @dirtyRange.max then @dirtyRange.max = max
-      if min < @dirtyRange.min then @dirtyRange.min = min
-    else
-      @isDirty        = true
-      @dirtyRange.min = min
-      @dirtyRange.max = max
-      @onDirty()
-
-  handleResized: (oldSize, newSize) ->
-
-
-  ### Events ###
-  
-  onDirty: ->
-
-
-
-
-class EnumDirtyManager
-
-  ### Initialization ###
-  constructor : (base) -> 
-    @reset()
-    if base
-      @onDirty = -> base.onDirty()
-    else
-      @onDirty = ->
-
-  reset       : -> @elems = []
-  @getter 'isDirty', -> @elems.length != 0
-
-  ### Handlers ###
-  handleChanged: (elem) ->
-    wasDirty = @isDirty
-    @elems.push elem
-    if not wasDirty
-      @onDirty()
-
-
-
-
-#################
-### Attribute ###
-#################
-
-# Attribute is a data associated with geometry. It is stored as typed array
-# buffer under the hood. There are several ways to initialize an Attribute when
-# using the Attribute.from smart constructor.
-
-# ### Initialization ###
-#
-# 1. Simple initialization. In its shortest form it takes only a list of values
-#    and automatically infers the needed type.
-#
-#        position: [
-#         (vec3 [-0.5,  0.5, 0]) ,
-#         (vec3 [-0.5, -0.5, 0]) ,
-#         (vec3 [ 0.5,  0.5, 0]) ,
-#         (vec3 [ 0.5, -0.5, 0]) ]
-#
-# 2. Explicite initialization. This form allows providing additional parameters.
-#
-#        position: 
-#          usage : usage.static
-#          data  : [
-#            (vec3 [-0.5,  0.5, 0]) ,
-#            (vec3 [-0.5, -0.5, 0]) ,
-#            (vec3 [ 0.5,  0.5, 0]) ,
-#            (vec3 [ 0.5, -0.5, 0]) ]
-#
-# 3. Typed array initialization. This form has the best performance, but is less
-#    readable than previous ones. Unless you are providing very big chunks of
-#    data you will not see any performance difference here. Using this form you
-#    have to provide the type explicitly.
-#
-#        position: 
-#          usage : usage.static
-#          type  : vec3
-#          data  : new Float32Array [
-#            -0.5,  0.5, 0 ,
-#            -0.5, -0.5, 0 ,
-#             0.5,  0.5, 0 ,
-#             0.5, -0.5, 0 ]
-
-export class Attribute
-
-  ### Properties ###
-
-  constructor: (parent, @id, @_type, @_size, cfg) -> 
-    @logger = parent.logger.scoped @id
-    @logger.info "Initializing with #{@_size} elements"
-
-    @_default      = cfg.default
-    @_usage        = cfg.usage || usage.dynamic
-    @_data         = new Observable (@type.bufferCons (@size * @type.size))
-    @_dirtyManager = cfg.dirtyManager || new RangedDirtyManager 
-    @_initEventHandlers()
-
-  @getter 'type'         , -> @_type
-  @getter 'size'         , -> @_size
-  @getter 'data'         , -> @_data
-  @getter 'usage'        , -> @_usage
-  @getter 'default'      , -> @_default
-  @getter 'isDirty'      , -> @_dirtyManager.isDirty
-  @getter 'dirtyManager' , -> @_dirtyManager
-
-
-  ### Initialization ###
-
-  _initEventHandlers: ->
-    @_dirtyManager.onDirty = =>
-      @onDirty()
-
-    @_data.onChanged = (ix) =>
-      @_dirtyManager.handleChanged ix
-      @onChanged ix
-
-    @_data.onChangedRange = (offset, length) =>
-      @_dirtyManager.handleChangedRange offset, length
-      @onChangedRange offset, length
-
-    @_data.onResized = (oldLength, newLength) =>
-      @_dirtyManager.handleResized oldLength, newLength
-      @onResized oldLength, newLength
-
-
-  ### Smart Constructors ###
-
-  @from = (parent, id, a) ->
-    if a.constructor == Object
-      @_from parent, id, a.data, a.type, a
-    else
-      @_from parent, id, a 
-
-  @_inferArrType = (arr) -> arr[0].constructor
-  @_from = (parent, id, a, expType, cfg={}) ->
-    if a.constructor == Array
-      type = expType || @_inferArrType a
-      size = a.length
-      attr = new Attribute parent, id, type, size, cfg
-      attr.set a
-      attr.unsetDirty()
-      attr
-    else if ArrayBuffer.isView a
-      type = expType?.type
-      if not type?
-        throw "You have to provide explicit type when using TypedArray
-              initializator for '#{id}' attribute."
-      size = a.length / type.size
-      attr = new Attribute parent, id, type, size, cfg
-      attr.set a
-      attr.unsetDirty()
-      attr
-    else new Attribute parent, id, a.type, 0, cfg
-
-
-  ### Size Management ###
-
-  resize: (newSize) ->
-    oldSize = @size
-    if oldSize != newSize
-      @logger.info "Resizing to handle up to #{newSize} elements"
-      @_size = newSize
-      @data.resize (@size * @type.size)
-      @onResized oldSize, newSize
-    
-
-  ### Indexing ###
-
-  read  : (ix)    -> @type.view @data, ix*@type.size 
-  write : (ix, v) -> @read(ix).set v
-
-  set: (data) ->
-    if data.constructor == Array
-      typeSize = @type.size
-      buffer   = @type.bufferCons (typeSize * data.length)
-      for i in [0 ... data.length]
-        offset = i * typeSize
-        buffer.set data[i].rawArray, offset
-      @data.set buffer.rawArray
-    else if ArrayBuffer.isView data
-      @data.set data
-    else
-      throw "Unsupported attribute initializer '#{data.constructor.name}'"
-
-
-  ### Dirty Management ###
-
-  unsetDirty: () ->
-    @_dirtyManager.reset()
-
-
-  ### Events ###
-
-  onDirty        : ->
-  onChanged      : (ix) ->
-  onChangedRange : (offset, length) ->
-  onResized      : (oldSize, newSize) ->  
-
-
-
 ##################
 ### Index Pool ###
 ##################
@@ -668,28 +460,292 @@ class Pool
 
   ### Events ###
   onResized: (oldSize, newSize) =>
+
+
+
+####################
+### DirtyManager ###
+####################
+
+class RangedDirtyManager
+
+  ### Initialization ###
+
+  constructor: ->
+    @reset()
+
+  reset: ->
+    @isDirty = false
+    @dirtyRange = 
+      min: null
+      max: null
+
+
+  ### Handlers ###
+
+  handleChanged: (ix) ->
+    if @isDirty
+      if      ix > @dirtyRange.max then @dirtyRange.max = ix
+      else if ix < @dirtyRange.min then @dirtyRange.min = ix
+    else
+      @isDirty        = true
+      @dirtyRange.min = ix
+      @dirtyRange.max = ix
+      @onDirty()
+
+  handleChangedRange: (offset, length) ->
+    min = offset
+    max = min + length - 1
+    if @isDirty
+      if max > @dirtyRange.max then @dirtyRange.max = max
+      if min < @dirtyRange.min then @dirtyRange.min = min
+    else
+      @isDirty        = true
+      @dirtyRange.min = min
+      @dirtyRange.max = max
+      @onDirty()
+
+  handleResized: (oldSize, newSize) ->
+
+
+  ### Events ###
+  
+  onDirty: ->
+
+
+
+
+class EnumDirtyManager
+
+  ### Initialization ###
+  constructor : (@onDirty) -> 
+    @reset()
+
+  reset       : -> @elems = []
+  @getter 'isDirty', -> @elems.length != 0
+
+  ### Handlers ###
+  handleChanged: (elem) ->
+    wasDirty = @isDirty
+    @elems.push elem
+    if not wasDirty
+      @onDirty()
+
+
+
+####################
+### Hierarchical ###
+####################
+
+export class Hierarchical
+  constructor: ->
+    @_parents = new Set
+
+  registerParent: (scope) ->
+    @_parents.add scope
+
+  unregisterParent: (scope) ->
+    @_parents.delete scope
+
+
+
+#########################
+### HierarchicalDirty ###
+#########################
+
+export class HierarchicalDirty extends Hierarchical
+
+  setDirty: () ->
+    if not @isDirty
+      @logger.info "Marked dirty"
+      @_parents.forEach (a) =>
+        a.onDirtyChild @
+
+  unsetDirty: () ->
+    if @isDirty
+      @logger.info "Marked not dirty"
+      if @dirtyChildren?
+        for child in @dirtyChildren
+          child.unsetDirty()
+      @_dirtyManager.reset()
+
+
+  
+#################
+### Attribute ###
+#################
+
+# Attribute is a data associated with geometry. It is stored as typed array
+# buffer under the hood. There are several ways to initialize an Attribute when
+# using the Attribute.from smart constructor.
+
+# ### Initialization ###
+#
+# 1. Type hint initialization. In its shortest form, it takes only the type name
+#    and initializes to an empty buffer of the given type.
+#
+#        position: vec3
+#
+# 2. Simple initialization. In its shortest form it takes only a list of values
+#    and automatically infers the needed type.
+#
+#        position: [
+#         (vec3 [-0.5,  0.5, 0]) ,
+#         (vec3 [-0.5, -0.5, 0]) ,
+#         (vec3 [ 0.5,  0.5, 0]) ,
+#         (vec3 [ 0.5, -0.5, 0]) ]
+#
+# 3. Explicite initialization. This form allows providing additional parameters.
+#
+#        position: 
+#          usage : usage.static
+#          data  : [
+#            (vec3 [-0.5,  0.5, 0]) ,
+#            (vec3 [-0.5, -0.5, 0]) ,
+#            (vec3 [ 0.5,  0.5, 0]) ,
+#            (vec3 [ 0.5, -0.5, 0]) ]
+#
+# 4. Typed array initialization. This form has the best performance, but is less
+#    readable than previous ones. Unless you are providing very big chunks of
+#    data you will not see any performance difference here. Using this form you
+#    have to provide the type explicitly.
+#
+#        position: 
+#          usage : usage.static
+#          type  : vec3
+#          data  : new Float32Array [
+#            -0.5,  0.5, 0 ,
+#            -0.5, -0.5, 0 ,
+#             0.5,  0.5, 0 ,
+#             0.5, -0.5, 0 ]
+
+export class Attribute extends HierarchicalDirty
+  # TODO: to be used when no label provided + make label optional
+  @_nextID = 0
+  @getID: ->
+    id = @_nextID 
+    @_nextID += 1
+    id
+
+  ### Properties ###
+
+  constructor: (@label, @_type, @_size, cfg) -> 
+    super()
+    @logger = logger.scoped @label
+    @logger.info "Initializing with #{@_size} elements"
+
+    @_default      = cfg.default
+    @_usage        = cfg.usage || usage.dynamic
+    @_data         = new Observable (@type.bufferCons (@size * @type.size))
+    @_dirtyManager = cfg.dirtyManager || new RangedDirtyManager 
+    @_initEventHandlers()
+
+  @getter 'type'    , -> @_type
+  @getter 'size'    , -> @_size
+  @getter 'data'    , -> @_data
+  @getter 'usage'   , -> @_usage
+  @getter 'default' , -> @_default
+  @getter 'isDirty' , -> @_dirtyManager.isDirty
+
+
+  ### Initialization ###
+
+  _initEventHandlers: ->
+    @_dirtyManager.onDirty = => @setDirty()
+    @_data.onChanged      = (args...) => @_dirtyManager.handleChanged      args...
+    @_data.onChangedRange = (args...) => @_dirtyManager.handleChangedRange args...
+    @_data.onResized      = (args...) => @_dirtyManager.handleResized      args...
+
+
+  ### Smart Constructors ###
+
+  # TODO: Function `from` should not expect label as separate argument.
+  #       It should be optional argument in its config.
+  @from = (label, a) ->
+    if a.constructor == Object
+      @_from label, a.data, a.type, a
+    else
+      @_from label, a 
+
+  @_inferArrType = (arr) -> arr[0].constructor
+  @_from = (label, a, expType, cfg={}) ->
+    if a.constructor == Array
+      type = expType || @_inferArrType a
+      size = a.length
+      attr = new Attribute label, type, size, cfg
+      attr.set a
+      attr.unsetDirty()
+      attr
+    else if ArrayBuffer.isView a
+      type = expType?.type
+      if not type?
+        throw "You have to provide explicit type when using TypedArray
+              initializator for '#{label}' attribute."
+      size = a.length / type.size
+      attr = new Attribute label, type, size, cfg
+      attr.set a
+      attr.unsetDirty()
+      attr
+    else new Attribute label, a.type, 0, cfg
+
+
+  ### Size Management ###
+
+  resizeToScopes: ->
+    sizes = (scope.size for scope from @_parents)
+    size  = arrayMax sizes
+    @resize size
+
+  resize: (newSize) ->
+    oldSize = @size
+    if oldSize != newSize
+      @logger.info "Resizing to handle up to #{newSize} elements"
+      @_size = newSize
+      @data.resize (@size * @type.size)
+      @onResized oldSize, newSize
     
+
+  ### Indexing ###
+
+  read  : (ix)    -> @type.view @data, ix*@type.size 
+  write : (ix, v) -> @read(ix).set v
+
+  set: (data) ->
+    if data.constructor == Array
+      typeSize = @type.size
+      buffer   = @type.bufferCons (typeSize * data.length)
+      for i in [0 ... data.length]
+        offset = i * typeSize
+        buffer.set data[i].rawArray, offset
+      @data.set buffer.rawArray
+    else if ArrayBuffer.isView data
+      @data.set data
+    else
+      throw "Unsupported attribute initializer '#{data.constructor.name}'"
+
 
 
 ######################
 ### AttributeScope ###
 ######################
 
-export class AttributeScope
+export class AttributeScope extends HierarchicalDirty
 
   ### Initialization ###
 
-  constructor: (@parent, @id, cfg) ->
-    @logger        = @parent.logger.scoped @id
+  constructor: (todelete, @id, cfg) ->
+    super()
+    @logger        = todelete.logger.scoped @id
     @data          = {}
-    @_dirtyManager = new EnumDirtyManager @
+    @_dataNames    = new Map
+    @_dirtyManager = new EnumDirtyManager => @setDirty()
 
     @_initIndexPool()
     @_initValues cfg
     
-  @getter 'size'       , -> @_indexPool.size
-  @getter 'dirtyAttrs' , -> @_dirtyManager.elems
-  @getter 'isDirty'    , -> @_dirtyManager.isDirty 
+  @getter 'size'          , -> @_indexPool.size
+  @getter 'dirtyChildren' , -> @_dirtyManager.elems
+  @getter 'isDirty'       , -> @_dirtyManager.isDirty 
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -708,20 +764,17 @@ export class AttributeScope
       @data[name].write(ix,val)
 
   addAttribute: (name, cfg) ->
-    attr = Attribute.from @, name, cfg
+    label = @logger.scope + '.' + name
+    attr  = Attribute.from label, cfg
     @_indexPool.reserveFromBeginning attr.size
-    @onAttributeAdded name
-    attr.resize @size
-    attr.onDirty = => @_dirtyManager.handleChanged name
+    attr.registerParent @
+    attr.resizeToScopes()
     @data[name]  = attr
-
-
-  ### Dirty Management ###
-
-  unsetDirty: () ->
-    for attr in @_dirtyAttrs
-      attr.unsetDirty()
-    @_dirtyManager.reset()
+    @_dataNames.set attr, name
+  
+  onDirtyChild: (attr) ->
+    name = @_dataNames.get attr
+    @_dirtyManager.handleChanged name
 
 
   ### Handlers ###
@@ -729,16 +782,8 @@ export class AttributeScope
   _handlePoolResized: (oldSize, newSize) ->
     @logger.info "Resizing to handle up to #{newSize} elements"
     for name,attr of @data
-      attr.resize newSize
-    @onResized oldSize, newSize
+      attr.resizeToScopes()
       
-
-  ### Events ###
-
-  onAttributeAdded : (name) ->
-  onResized        : (oldSize, newSize) ->
-  onDirty          : () ->
-  
 
 
 ####################
@@ -755,6 +800,8 @@ class UniformScope
     for name,val of cfg
       @logger.info "Initializing '#{name}' variable"
       @data[name] = val
+
+  registerParent: -> # TODO
       
 
 
@@ -762,21 +809,23 @@ class UniformScope
 ### Geometry ###
 ################
 
-export class Geometry 
+export class Geometry extends HierarchicalDirty
 
   ### Initialization ###
 
   constructor: (cfg) ->
+    super()
     @name          = cfg.name || "Unnamed"
     @logger        = logger.scoped "Geometry.#{@name}"
     @_scope        = {}
-    @_meshRegistry = new Set
 
     @logger.group 'Initialization', =>
       @_initScopes cfg
-      @_initDirtyManagement()    
+      @_dirtyManager = new EnumDirtyManager => @setDirty()
 
-  @getter 'meshRegistry', -> @_meshRegistry
+  @getter 'meshRegistry'  , -> @_meshRegistry
+  @getter 'dirtyChildren' , -> @_dirtyManager.elems
+  
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -790,38 +839,26 @@ export class Geometry
         scope         = new cons @, name, scopeCfg
         @_scope[name] = scope
         @[name]       = scope 
+        scope.registerParent @
 
   
   ### Dirty Management ###
 
-  _initDirtyManagement: -> 
-    @_dirtyManager = new EnumDirtyManager @
-
-    for name,scope of @_scope
-      do (name,scope) => 
-        scope.onDirty = => 
-          @_dirtyManager.handleChanged scope
+  onDirtyChild: (scope) ->
+    @_dirtyManager.handleChanged scope
 
 
-  ### Events ###
 
-  onDirty: ->
-    console.log "GEOMETRY DIRTY!", @name, @_meshRegistry
-    @_meshRegistry.forEach (mesh) =>
-      console.log mesh
-
-
-export class Mesh
+export class Mesh extends HierarchicalDirty
   constructor: (@geometry, @material) ->
-    @_gpuMeshRegistry = new Set
-    @_registerReferences()
+    super()
+    @geometry.registerParent @
 
   @getter 'name',            -> @geometry.name
-  @getter 'gpuMeshRegistry', -> @_gpuMeshRegistry
 
-  _registerReferences: () ->
-    @geometry.meshRegistry.add @
-    
+
+  onDirtyChild: ->
+
 
 export class GeometryModel
   constructor: () ->
@@ -838,7 +875,8 @@ export class GPUMesh
     @_initVarLocations()
     @_initVAO()
     @_initBuffers()
-    @_registerReferences()
+
+    @mesh.registerParent @
     console.log ">>>", @progVarLoc
     
 
@@ -910,11 +948,12 @@ export class GPUMesh
             withArrayBuffer @_ctx, bufferGL, =>
               @_ctx.bufferData(@_ctx.ARRAY_BUFFER, bufferJS, usage)
 
-  _registerReferences: () ->
-    @mesh.gpuMeshRegistry.add @
+  update: ->
+    @logger.group 'Updating', =>
+      # for 
 
   draw: (viewProjectionMatrix) ->
-    # @update() 
+    @update() 
     withVAO @_ctx, @_vao, =>
       @_ctx.uniformMatrix4fv(@progVarLoc.global.matrix, false, viewProjectionMatrix)
       elemCount = 1 # @_ixPool.dirtySize()
@@ -982,7 +1021,7 @@ export test = (ctx, program, viewProjectionMatrix) ->
   mi.draw(viewProjectionMatrix)
   
 
-    # console.log "Dirty:", geo.point.dirtyAttrs
+    # console.log "Dirty:", geo.point.dirtyChildren
     # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.dirtyRange
     # # console.log ">>>", geo.point.attrs.position.size
 
