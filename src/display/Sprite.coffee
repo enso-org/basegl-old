@@ -128,7 +128,7 @@ export usage =
   streamCopy  : WebGLRenderingContext.STREAM_COPY
 
 export itemType =
-  float : WebGLRenderingContext.FLOAT
+  float : {code: WebGLRenderingContext.FLOAT, byteSize: 4}
 
 export byteSize =
   float : 4
@@ -613,10 +613,12 @@ export class Lazy extends Logged
     if @isDirty
       @logger.info "Dirty flag unset"
       elems = @_lazyManager.elems
-      if elems?
-        for elem in elems
-          elem.unsetDirty()
-      @_lazyManager.reset()
+      @_lazyManager.reset()    
+      @_unsetDirtyChildren(elems)
+
+  _unsetDirtyChildren: (elems) ->
+    for elem in elems
+      elem.unsetDirty()
 
 
 
@@ -730,6 +732,8 @@ export class Attribute extends Lazy
     @_data.onChanged      = (args...) => @_lazyManager.handleChanged      args...
     @_data.onChangedRange = (args...) => @_lazyManager.handleChangedRange args...
     @_data.onResized      = (args...) => @_lazyManager.handleResized      args...
+
+  _unsetDirtyChildren: -> # FIXME
 
 
   ### Smart Constructors ###
@@ -847,6 +851,9 @@ export class AttributeScope extends Lazy
     attr.onDirty.addEventListener =>
       @_lazyManager.handleChanged name
 
+  _unsetDirtyChildren: (names) ->
+    for name in names
+      @data[name].unsetDirty()
 
   ### Handlers ###
 
@@ -895,7 +902,6 @@ export class Geometry extends Lazy
   @getter 'scope'      , -> @_scope
   @getter 'dirtyElems' , -> @_lazyManager.elems
 
-
   _initScopes: (cfg) -> 
     scopes = 
       point    : AttributeScope
@@ -913,6 +919,10 @@ export class Geometry extends Lazy
           scope.onDirty.addEventListener =>
             @_lazyManager.handleChanged name
 
+  _unsetDirtyChildren: (names) ->
+    for name in names
+      @scope[name].unsetDirty()
+
 
 
 
@@ -928,7 +938,8 @@ export class Mesh extends Lazy
     @geometry.onDirty.addEventListener =>
       @_lazyManager.handleChanged()
 
-  onDirtyChild: ->
+  _unsetDirtyChildren: ->
+    @geometry.unsetDirty()
 
 
 
@@ -940,12 +951,15 @@ export class GPUMesh extends Lazy
   constructor: (@_ctx, mesh, @_program) ->
     super
       label: "GPU.#{mesh.label}"
-    @mesh = mesh
+    @mesh       = mesh
     @progVarLoc = {}
-    @buffer  = {}
-    @_initVarLocations()
-    @_initVAO()
-    @_initBuffers()
+    @buffer     = {}
+    @logger.group "Initializing", =>
+      @_initVarLocations()
+      @_initVAO()
+      @_initBuffers()
+      mesh.onDirty.addEventListener =>
+        @_lazyManager.handleChanged()
 
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
@@ -992,7 +1006,7 @@ export class GPUMesh extends Lazy
             norm   = false
             stride = 0
             offset = 0
-            type   = val.type.item
+            type   = val.type.item.code
             size   = val.type.size
             @_ctx.vertexAttribPointer(loc, size, type, norm, stride, offset)
             if instanced
@@ -1011,42 +1025,73 @@ export class GPUMesh extends Lazy
             withArrayBuffer @_ctx, bufferGL, =>
               @_ctx.bufferData(@_ctx.ARRAY_BUFFER, bufferJS, usage)
 
+  _unsetDirtyChildren: ->
+    @mesh.unsetDirty()
+
   update: ->
     @logger.group 'Updating', =>
-      console.log @
-      console.log @mesh
       if @mesh.isDirty
         geometry = @mesh.geometry
         if geometry.isDirty
           for scopeName in geometry.dirtyElems
-            @logger.group "Updating #{scopeName} scope", =>
-              scope       = geometry.scope[scopeName]
-              scopeBuffer = @buffer[scopeName]
-              for varName in scope.dirtyElems
-                _INT_BYTES    = 4 # FIXME
-                variable      = scope.data[varName]
-                bufferGL      = scopeBuffer[varName]
-                bufferJS      = variable.data.rawArray
-                dirtyRange    = variable._lazyManager.dirtyRange # FIXME
-                srcOffset     = dirtyRange.min
-                dstByteOffset = _INT_BYTES * srcOffset
-                length        = dirtyRange.max - dirtyRange.min + 1
-                @logger.info "Updating #{varName} variable (#{length} elements)"
-                arrayBufferSubData @_ctx, bufferGL, dstByteOffset, bufferJS, 
-                                   srcOffset, length 
-
-      # for 
+            @_updateScope geometry, scopeName
+            
+  _updateScope: (geometry, scopeName) ->
+    @logger.group "Updating #{scopeName} scope", =>
+      scope       = geometry.scope[scopeName]
+      scopeBuffer = @buffer[scopeName]
+      for varName in scope.dirtyElems
+        bufferGL = scopeBuffer[varName]
+        if not bufferGL
+          @logger.info "Skipping #{varName} variable (missing in shader)"
+        else
+          variable      = scope.data[varName]
+          bufferJS      = variable.data.rawArray
+          dirtyRange    = variable._lazyManager.dirtyRange # FIXME
+          srcOffset     = dirtyRange.min
+          byteSize      = variable.type.item.byteSize
+          dstByteOffset = byteSize * srcOffset
+          length        = dirtyRange.max - dirtyRange.min + 1
+          @logger.info "Updating #{varName} variable (#{length} elements)"
+          arrayBufferSubData @_ctx, bufferGL, dstByteOffset, bufferJS, 
+                            srcOffset, length 
 
   draw: (viewProjectionMatrix) ->
-    @update() 
-    withVAO @_ctx, @_vao, =>
-      @_ctx.uniformMatrix4fv(@progVarLoc.global.matrix, false, viewProjectionMatrix)
-      elemCount = 1 # @_ixPool.dirtySize()
-      if elemCount > 0
-        # offset = elemCount * @_SPRITE_VTX_COUNT
-        # @_ctx.drawElements(@_ctx.TRIANGLES, offset, @_ctx.UNSIGNED_SHORT, 0)
-        SPRITE_IND_COUNT = 4
-        @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, SPRITE_IND_COUNT, 1)
+    @logger.group "Drawing", =>
+      withVAO @_ctx, @_vao, =>
+        @_ctx.uniformMatrix4fv(@progVarLoc.global.matrix, false, viewProjectionMatrix)
+        elemCount = 1 # @_ixPool.dirtySize()
+        if elemCount > 0
+          # offset = elemCount * @_SPRITE_VTX_COUNT
+          # @_ctx.drawElements(@_ctx.TRIANGLES, offset, @_ctx.UNSIGNED_SHORT, 0)
+          SPRITE_IND_COUNT = 4
+          @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, SPRITE_IND_COUNT, 1)
+
+
+
+export class GPUMeshRegistry extends Lazy
+  constructor: ->
+    super
+      lazyManager : new EnumLazyManager    
+    @_meshes = new Set
+
+  @getter 'dirtyMeshes', -> @_lazyManager.elems
+
+  add: (mesh) ->
+    @_meshes.add mesh
+    mesh.onDirty.addEventListener =>
+      @_lazyManager.handleChanged mesh
+
+  update: ->
+    if @isDirty
+      @logger.group "Updating", =>
+        @logger.group "Updating all GPU meshes", =>
+          @dirtyMeshes.forEach (mesh) =>
+            mesh.update()
+        @logger.group "Unsetting dirty flags", =>
+          @unsetDirty()
+    else @logger.info "Everything up to date"
+
 
 
 export test = (ctx, program, viewProjectionMatrix) ->
@@ -1084,26 +1129,30 @@ export test = (ctx, program, viewProjectionMatrix) ->
   console.warn "Mesh creation"  
   
 
-  
+  meshRegistry = new GPUMeshRegistry
 
   mesh = new Mesh geo
-  mi = new GPUMesh ctx, mesh, program
+  m1 = new GPUMesh ctx, mesh, program
+  meshRegistry.add m1
 
+  logger.group "FRAME 1", =>
+    meshRegistry.update()
+  
+  logger.group "FRAME 2", =>
+    geo.point.data.position.read(1)[0] = 7
+    geo.point.data.position.read(1)[0] = 7
+    geo.point.data.position.read(1)[1] = 7
+    meshRegistry.update()
 
+  logger.group "FRAME 3", =>
+    geo.point.data.position.read(1)[0] = 8
+    geo.point.data.uv.read(1)[0] = 8
+    meshRegistry.update()
 
-  console.warn "Position modification"  
-  console.log geo.point.data.position.isDirty
-  console.log geo.point.data.position.read(1)
-  geo.point.data.position.read(1)[0] = 7
-  geo.point.data.position.read(1)[0] = 7
-  geo.point.data.position.read(1)[1] = 7
-  console.log geo.point.data.position.isDirty
+  logger.group "FRAME 4", =>
+    meshRegistry.update()
 
-  console.log ">>>", geo
-
-  console.warn "END"  
-
-  mi.draw(viewProjectionMatrix)
+  m1.draw(viewProjectionMatrix)
   
 
     # console.log "Dirty:", geo.point.dirtyChildren
