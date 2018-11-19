@@ -96,6 +96,21 @@ arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
 # bench()
 
 
+##########################
+### Extensible Configs ###
+##########################
+
+param = (name, cfg) ->
+  if cfg
+    cfg[name] || param(name, cfg._)
+  else
+    cfg
+
+extend = (base, ext) -> 
+  ext._ = base
+  ext
+
+
 
 #######################
 ### WebGL constants ###
@@ -463,9 +478,55 @@ class Pool
 
 
 
-####################
-### DirtyManager ###
-####################
+#######################
+### BoolLazyManager ###
+#######################
+
+class BoolLazyManager
+
+  ### Initialization ###
+  constructor: () ->
+    @reset
+
+  reset: -> @isDirty = false
+
+  ### Handlers ###
+  handleChanged: () ->
+    if not @isDirty
+      @isDirty = true
+      @onDirty()
+
+  onDirty: ->
+
+
+
+#######################
+### EnumLazyManager ###
+#######################
+
+class EnumLazyManager
+
+  ### Initialization ###
+  constructor: () -> 
+    @reset()
+  @getter 'isDirty', -> @elems.length != 0
+  
+  reset: -> @elems = []
+
+  ### Handlers ###
+  handleChanged: (elem) ->
+    wasDirty = @isDirty
+    @elems.push elem
+    if not wasDirty
+      @onDirty()
+
+  onDirty: ->
+
+
+
+#########################
+### RangedLazyManager ###
+#########################
 
 class RangedLazyManager
 
@@ -512,44 +573,18 @@ class RangedLazyManager
   
   onDirty: ->
 
-
-
-
-class EnumLazyManager
-
-  ### Initialization ###
-  constructor: () -> 
-    @reset()
-  @getter 'isDirty', -> @elems.length != 0
   
-  reset: -> @elems = []
 
-  ### Handlers ###
-  handleChanged: (elem) ->
-    wasDirty = @isDirty
-    @elems.push elem
-    if not wasDirty
-      @onDirty()
+##############
+### Logged ###
+##############
 
-  onDirty: ->
-
-
-class BoolLazyManager
-
-  ### Initialization ###
-  constructor: () ->
-    @reset
-
-  reset: -> @isDirty = false
-
-  ### Handlers ###
-  handleChanged: () ->
-    if not @isDirty
-      @isDirty = true
-      @onDirty()
-
-  onDirty: ->
-  
+export class Logged
+  constructor: (cfg={}) ->
+    @_label = param('label', cfg) || @constructor.name
+    @logger = logger.scoped @_label
+    @logger.info "Initialization"
+  @getter 'label', -> @_label
 
 
 
@@ -557,11 +592,12 @@ class BoolLazyManager
 ### Lazy ###
 ############
 
-export class Lazy
+export class Lazy extends Logged
 
-  constructor: (lazyManager) ->
+  constructor: (cfg={}) ->
+    super cfg
     @onDirty      = new EventDispatcher    
-    @_lazyManager = lazyManager || new BoolLazyManager 
+    @_lazyManager = param('lazyManager',cfg) || new BoolLazyManager 
     @_lazyManager.onDirty = => @setDirty(true)
     
   @getter 'isDirty' , -> @_lazyManager.isDirty  
@@ -582,6 +618,10 @@ export class Lazy
 
 
 
+#######################
+### EventDispatcher ###
+#######################
+
 class EventDispatcher
   constructor: ->
     @_listeners = new Set
@@ -596,6 +636,7 @@ class EventDispatcher
     @_listeners.forEach (f) => f args...
 
   
+
 #################
 ### Attribute ###
 #################
@@ -654,16 +695,16 @@ export class Attribute extends Lazy
 
   ### Properties ###
 
-  constructor: (@label, @_type, @_size, cfg) -> 
-    lazyManager = cfg.lazyManager || new RangedLazyManager 
-    super(lazyManager)
-
-    @logger = logger.scoped @label
-    @logger.info "Initializing with #{@_size} elements"
+  constructor: (label, @_type, @_size, cfg) -> 
+    super
+      label       : label
+      lazyManager : param('lazyManager',cfg) || new RangedLazyManager 
+    
+    @logger.info "Allocating space for #{@_size} elements"
 
     @_scopes  = new Set
-    @_default = cfg.default
-    @_usage   = cfg.usage || usage.dynamic
+    @_default = param('default',cfg)
+    @_usage   = param('usage',cfg) || usage.dynamic
     @_data    = new Observable (@type.bufferCons (@size * @type.size))
 
     @_initEventHandlers()
@@ -765,16 +806,14 @@ export class AttributeScope extends Lazy
 
   ### Initialization ###
 
-  constructor: (todelete, @id, cfg) ->
-    lazyManager = new EnumLazyManager
-    super(lazyManager)
-
-    @logger        = todelete.logger.scoped @id
-    @data          = {}
-    @_dataNames    = new Map
+  constructor: (cfg) ->
+    super extend cfg,
+      lazyManager : new EnumLazyManager
+    @data       = {}
+    @_dataNames = new Map
 
     @_initIndexPool()
-    @_initValues cfg
+    @_initValues cfg.data
     
   @getter 'size', -> @_indexPool.size
 
@@ -782,21 +821,21 @@ export class AttributeScope extends Lazy
     @_indexPool = new Pool
     @_indexPool.onResized = @_handlePoolResized.bind @
   
-  _initValues: (cfg) -> 
-    for name,attrCfg of cfg
+  _initValues: (data) -> 
+    for name,attrCfg of data
       @addAttribute name, attrCfg
 
 
   ### Attribute Management ###
 
-  add: (cfg) ->
+  add: (data) ->
     ix = @_indexPool.reserve()
-    for name, val of cfg
+    for name, val of data
       @data[name].write(ix,val)
 
-  addAttribute: (name, cfg) ->
+  addAttribute: (name, data) ->
     label = @logger.scope + '.' + name
-    attr  = Attribute.from label, cfg
+    attr  = Attribute.from label, data
     @_indexPool.reserveFromBeginning attr.size
     attr.registerScope @
     attr.resizeToScopes()
@@ -820,14 +859,13 @@ export class AttributeScope extends Lazy
 ####################
 
 class UniformScope extends Lazy
-  constructor: (@parent, @id, cfg) ->
-    super()
-    @logger = @parent.logger.scoped @id
-    @data   = {}
-    @_initValues cfg
+  constructor: (cfg) ->
+    super cfg
+    @data = {}
+    @_initValues cfg.data
 
-  _initValues: (cfg) ->
-    for name,val of cfg
+  _initValues: (data) ->
+    for name,val of data
       @logger.info "Initializing '#{name}' variable"
       @data[name] = val
       
@@ -842,11 +880,10 @@ export class Geometry extends Lazy
   ### Initialization ###
 
   constructor: (cfg) ->
-    lazyManager = new EnumLazyManager
-    super(lazyManager)
-
-    @name   = cfg.name || "Unnamed"
-    @logger = logger.scoped "Geometry.#{@name}"
+    label = param('label',cfg) || "Unnamed"
+    super
+      label       : "Geometry.#{label}"
+      lazyManager : new EnumLazyManager
     @_scope = {}
 
     @logger.group 'Initialization', =>
@@ -860,9 +897,10 @@ export class Geometry extends Lazy
 
     for name,cons of scopes
       do (name,cons) =>
-        scopeCfg = cfg[name]
+        label = "#{@label}.#{name}"
+        data  = cfg[name]
         @logger.group "Initializing #{name} scope", =>
-          scope         = new cons @, name, scopeCfg
+          scope         = new cons {label, data}
           @_scope[name] = scope
           @[name]       = scope 
           scope.onDirty.addEventListener =>
@@ -871,11 +909,10 @@ export class Geometry extends Lazy
 
 
 export class Mesh extends Lazy
-  constructor: (@geometry, @material) ->
-    super()
-
-  @getter 'name',            -> @geometry.name
-
+  constructor: (geometry, @material) ->
+    super
+      label: geometry.label
+    @geometry = geometry
 
   onDirtyChild: ->
 
@@ -884,21 +921,20 @@ export class Mesh extends Lazy
 
 
 
-export class GPUMesh
-  constructor: (@_ctx, @mesh, @_program) ->
-    @logger     = logger.scoped "GPUMesh.#{@name}.0"
+export class GPUMesh extends Lazy
+  constructor: (@_ctx, mesh, @_program) ->
+    super
+      label: "GPU.#{mesh.label}"
+    @mesh = mesh
     @progVarLoc = {}
     @gpuBuffer  = {}
     @_initVarLocations()
     @_initVAO()
     @_initBuffers()
 
-    # @mesh.registerParent @
     console.log ">>>", @progVarLoc
     
 
-  @getter 'name', -> @mesh.name
-            
 
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
@@ -989,7 +1025,7 @@ export test = (ctx, program, viewProjectionMatrix) ->
 
   console.warn "Creating geometry"
   geo = new Geometry
-    name: "Geo1"
+    label: "Geo1"
     point:
       position: 
         usage : usage.static
