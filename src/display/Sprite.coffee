@@ -130,34 +130,34 @@ export usage =
   dynamicCopy : CTX.DYNAMIC_COPY
   streamCopy  : CTX.STREAM_COPY
 
-webgl =
-  type:
-    float: {code: CTX.FLOAT, byteSize: 4}
+webGL =
   glsl:
     precision:
       low:    'lowp'
       medium: 'mediump'
       high:   'highp'
-  type2: {}
+  types: {}
 
 
 class WebGLType
   constructor: (name, cfg) ->
+    @name       = name
+    @code       = CTX[@name]
     if cfg.item
-      @item     = cfg.item
-      @size     = cfg.size
-      @byteSize = @size * @item.byteSize
+      @item       = cfg.item
+      @size       = cfg.size
+      @byteSize   = @size * @item.byteSize
+      @bufferType = @item.bufferType
     else
-      @item     = null
-      @size     = 1
-      @byteSize = cfg.byteSize
-    @name = name
-    @code = CTX[@name]
-
+      @bufferType = cfg.bufferType    
+      @item       = null
+      @size       = 1
+      @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
+    
 
 typesCfg =
-  float        : {byteSize: Float32Array.BYTES_PER_ELEMENT}
-  int          : {byteSize: Int32Array.BYTES_PER_ELEMENT}
+  float        : {bufferType: Float32Array}
+  int          : {bufferType: Int32Array}
   float_vec2   : {item: 'float' , size: 2}
   float_vec3   : {item: 'float' , size: 3}
   float_vec4   : {item: 'float' , size: 4}
@@ -175,12 +175,12 @@ typesCfg =
 
 for name,cfg of typesCfg
   if cfg.item?
-    cfg.item = webgl.type2[cfg.item]
+    cfg.item = webGL.types[cfg.item]
   glName = name.toUpperCase()
-  webgl.type2[name] = new WebGLType glName, cfg
+  webGL.types[name] = new WebGLType glName, cfg
 
 export webGLType = TypeClass.define2 'WebGLType'
-TypeClass.implementStatic2 Number, webGLType, webgl.type2.float
+TypeClass.implementStatic2 Number, webGLType, webGL.types.float
 
 
 
@@ -360,21 +360,19 @@ export class Observable
 
 ### Abstraction ###
 
-export class Type
-  @size       : 16
-  @bufferCons : (args...) -> new Buffer Float32Array, args...
-  @item       : webgl.type.float
+bufferCons = (tp, args...) -> new Buffer webGLType(tp).bufferType, args...
 
+export class Type
   constructor: (@array) ->
 
-  @getter 'length'   , -> @constructor.size
+  @getter 'length'   , -> webGLType(@constructor).size
   @getter 'buffer'   , -> @array.buffer
   @getter 'rawArray' , -> @array.rawArray
   
   # Smart constructor performing conversions if needed.
   @from: (args) ->
     cfg   = if args then args else @size
-    array = @bufferCons cfg
+    array = bufferCons @, cfg
     new @ array
 
   # View another buffer as desired type without copying.
@@ -388,69 +386,60 @@ export class Type
   writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
 
   set: (src) ->
-    for i in [0 ... @constructor.size]
+    for i in [0 ... webGLType(@constructor).size]
       @write i, (src.read i)
     
 Property.swizzleFieldsXYZW2 Type
 Property.swizzleFieldsRGBA2 Type
-Property.addIndexFields2    Type
+Property.addIndexFields2    Type, 16
 
 
 ### Basic types ###
 
 export class Vec2 extends Type
-  @size: 2
-TypeClass.implementStatic2 Vec2, webGLType, webgl.type2.float_vec2
+TypeClass.implementStatic2 Vec2, webGLType, webGL.types.float_vec2
 
 export class Vec3 extends Type
-  @size: 3 
-TypeClass.implementStatic2 Vec3, webGLType, webgl.type2.float_vec3
+TypeClass.implementStatic2 Vec3, webGLType, webGL.types.float_vec3
 
 export class Vec4 extends Type
-  @size: 4 
-TypeClass.implementStatic2 Vec4, webGLType, webgl.type2.float_vec4
+TypeClass.implementStatic2 Vec4, webGLType, webGL.types.float_vec4
 
 export class Mat2 extends Type
-  @size: 4
-
   @from: (args) ->
     if args
-      array = @bufferCons args
+      array = bufferCons @, args
     else
-      array = @bufferCons @size
+      array = bufferCons @, webGLType(@).size
       array[0] = 1
       array[3] = 1
     new @ array
-TypeClass.implementStatic2 Mat2, webGLType, webgl.type2.float_mat2
+TypeClass.implementStatic2 Mat2, webGLType, webGL.types.float_mat2
 
 export class Mat3 extends Type
-  @size: 9
-
   @from: (args) ->
     if args
-      array = @bufferCons args
+      array = bufferCons @, args
     else
-      array = @bufferCons @size
+      array = bufferCons @, webGLType(@).size
       array[0] = 1
       array[4] = 1
       array[8] = 1
     new @ array
-TypeClass.implementStatic2 Mat3, webGLType, webgl.type2.float_mat3
+TypeClass.implementStatic2 Mat3, webGLType, webGL.types.float_mat3
 
 export class Mat4 extends Type
-  @size: 16
-
   @from: (args) ->
     if args
-      array = @bufferCons args
+      array = bufferCons @, args
     else
-      array = @bufferCons @size
+      array = bufferCons @, webGLType(@).size
       array[0]  = 1
       array[5]  = 1
       array[10] = 1
       array[15] = 1
     new @ array
-TypeClass.implementStatic2 Mat4, webGLType, webgl.type2.float_mat4
+TypeClass.implementStatic2 Mat4, webGLType, webGL.types.float_mat4
 
 
 ### Smart constructors ###
@@ -764,7 +753,7 @@ export class Attribute extends Lazy
     @_scopes  = new Set
     @_default = param('default',cfg)
     @_usage   = param('usage',cfg) || usage.dynamic
-    @_data    = new Observable (@type.bufferCons (@size * @type.size))
+    @_data    = new Observable (bufferCons @type, (@size * webGLType(@type).size))
 
     @_initEventHandlers()
 
@@ -811,6 +800,7 @@ export class Attribute extends Lazy
       attr.unsetDirty()
       attr
     else if ArrayBuffer.isView a
+      throw "fixme"
       type = expType?.type
       if not type?
         throw "You have to provide explicit type when using TypedArray
@@ -835,18 +825,18 @@ export class Attribute extends Lazy
     if oldSize != newSize
       @logger.info "Resizing to handle up to #{newSize} elements"
       @_size = newSize
-      @data.resize (@size * @type.size)
+      @data.resize (@size * webGLType(@type).size)
       
 
   ### Indexing ###
 
-  read  : (ix)    -> @type.view @data, ix*@type.size 
+  read  : (ix)    -> @type.view @data, ix*webGLType(@type).size 
   write : (ix, v) -> @read(ix).set v
 
   set: (data) ->
     if data.constructor == Array
-      typeSize = @type.size
-      buffer   = @type.bufferCons (typeSize * data.length)
+      typeSize = webGLType(@type).size
+      buffer   = bufferCons @type, (typeSize * data.length)
       for i in [0 ... data.length]
         offset = i * typeSize
         buffer.set data[i].rawArray, offset
@@ -1000,23 +990,23 @@ export class Mesh extends Lazy
 export class Precision
   high = 'high'
   constructor: ->
-    @float                = webgl.glsl.precision.medium
-    @int                  = webgl.glsl.precision.medium
-    @sampler2D            = webgl.glsl.precision.low 
-    @samplerCube          = webgl.glsl.precision.low 
-    @sampler3D            = webgl.glsl.precision.low   
-    @samplerCubeShadow    = webgl.glsl.precision.low         
-    @sampler2DShadow      = webgl.glsl.precision.low       
-    @sampler2DArray       = webgl.glsl.precision.low      
-    @sampler2DArrayShadow = webgl.glsl.precision.low            
-    @isampler2D           = webgl.glsl.precision.low  
-    @isampler3D           = webgl.glsl.precision.low  
-    @isamplerCube         = webgl.glsl.precision.low    
-    @isampler2DArray      = webgl.glsl.precision.low       
-    @usampler2D           = webgl.glsl.precision.low  
-    @usampler3D           = webgl.glsl.precision.low  
-    @usamplerCube         = webgl.glsl.precision.low    
-    @usampler2DArray      = webgl.glsl.precision.low       
+    @float                = webGL.glsl.precision.medium
+    @int                  = webGL.glsl.precision.medium
+    @sampler2D            = webGL.glsl.precision.low 
+    @samplerCube          = webGL.glsl.precision.low 
+    @sampler3D            = webGL.glsl.precision.low   
+    @samplerCubeShadow    = webGL.glsl.precision.low         
+    @sampler2DShadow      = webGL.glsl.precision.low       
+    @sampler2DArray       = webGL.glsl.precision.low      
+    @sampler2DArrayShadow = webGL.glsl.precision.low            
+    @isampler2D           = webGL.glsl.precision.low  
+    @isampler3D           = webGL.glsl.precision.low  
+    @isamplerCube         = webGL.glsl.precision.low    
+    @isampler2DArray      = webGL.glsl.precision.low       
+    @usampler2D           = webGL.glsl.precision.low  
+    @usampler3D           = webGL.glsl.precision.low  
+    @usamplerCube         = webGL.glsl.precision.low    
+    @usampler2DArray      = webGL.glsl.precision.low       
   
 
 
@@ -1137,8 +1127,8 @@ class ShaderBuilder
     @precision =
       vertex   : new Precision
       fragment : new Precision
-    @precision.vertex.float = webgl.glsl.precision.high
-    @precision.vertex.int   = webgl.glsl.precision.high
+    @precision.vertex.float = webGL.glsl.precision.high
+    @precision.vertex.int   = webGL.glsl.precision.high
 
   mkVertexName:   (s) -> 'v_' + s
   mkFragmentName: (s) -> s
@@ -1277,6 +1267,7 @@ mat1 = new RawMaterial
   fragment : fragmentShaderSource
 
 console.log mat1.shader
+console.warn webGLType(Number)
 # sb1 = new ShaderBuilder mat1, 
 #   attributes: 
 #     foo: 'vec3'
@@ -1352,9 +1343,9 @@ export class GPUMesh extends Lazy
 
             maxChunkSize  = 4
             normalize     = false
-            size          = val.type.size
-            itemByteSize  = val.type.item.byteSize
-            itemType      = val.type.item.code
+            size          = webGLType(val.type).size
+            itemByteSize  = webGLType(val.type).item.byteSize
+            itemType      = webGLType(val.type).item.code
             chunksNum     = Math.ceil (size/maxChunkSize)
             chunkSize     = Math.min size, maxChunkSize
             chunkByteSize = chunkSize * itemByteSize
@@ -1411,7 +1402,7 @@ export class GPUMesh extends Lazy
           bufferJS      = variable.data.rawArray
           dirtyRange    = variable._lazyManager.dirtyRange # FIXME
           srcOffset     = dirtyRange.min
-          byteSize      = variable.type.item.byteSize
+          byteSize      = webGLType(variable.type).item.byteSize
           dstByteOffset = byteSize * srcOffset
           length        = dirtyRange.max - dirtyRange.min + 1
           @logger.info "Updating #{varName} variable (#{length} elements)"

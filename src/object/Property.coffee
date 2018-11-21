@@ -1,3 +1,6 @@
+assert = (ok) ->
+  if not ok then throw "Assertion failed"
+
 # FIXME: move from define* to define*2
 # It is better to set things oncei n prototype then per object(!)
 ### OBSOLETE START ###
@@ -104,6 +107,7 @@ export addIndexFieldsStd = (cls, ref) -> addIndexFields cls, ref, 16
 
 export addIndexFields2 = (cls, num) ->
   if num == undefined then num = cls.size
+  assert num?
   fget = (i) -> ()  -> @read  i
   fset = (i) -> (v) -> @write i, v
   for i in [0..num-1]
