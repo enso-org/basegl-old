@@ -10,6 +10,7 @@ import {logger}                            from 'logger'
 import * as basegl from 'basegl'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import * as Color     from 'basegl/display/Color'
+import * as TypeClass from 'basegl/lib/TypeClass'
 import * as Symbol from 'basegl/display/Symbol'
 
 # import * as Benchmark from 'benchmark'
@@ -116,26 +117,70 @@ extend = (base, ext) ->
 ### WebGL constants ###
 #######################
 
+CTX = WebGLRenderingContext
+
 export usage = 
-  static      : WebGLRenderingContext.STATIC_DRAW
-  dynamic     : WebGLRenderingContext.DYNAMIC_DRAW
-  stream      : WebGLRenderingContext.STREAM_DRAW
-  staticRead  : WebGLRenderingContext.STATIC_READ
-  dynamicRead : WebGLRenderingContext.DYNAMIC_READ
-  streamRead  : WebGLRenderingContext.STREAM_READ
-  staticCopy  : WebGLRenderingContext.STATIC_COPY
-  dynamicCopy : WebGLRenderingContext.DYNAMIC_COPY
-  streamCopy  : WebGLRenderingContext.STREAM_COPY
+  static      : CTX.STATIC_DRAW
+  dynamic     : CTX.DYNAMIC_DRAW
+  stream      : CTX.STREAM_DRAW
+  staticRead  : CTX.STATIC_READ
+  dynamicRead : CTX.DYNAMIC_READ
+  streamRead  : CTX.STREAM_READ
+  staticCopy  : CTX.STATIC_COPY
+  dynamicCopy : CTX.DYNAMIC_COPY
+  streamCopy  : CTX.STREAM_COPY
 
 webgl =
   type:
-    float: {code: WebGLRenderingContext.FLOAT, byteSize: 4}
+    float: {code: CTX.FLOAT, byteSize: 4}
   glsl:
     precision:
       low:    'lowp'
       medium: 'mediump'
       high:   'highp'
+  type2: {}
 
+
+class WebGLType
+  constructor: (name, cfg) ->
+    if cfg.item
+      @item     = cfg.item
+      @size     = cfg.size
+      @byteSize = @size * @item.byteSize
+    else
+      @item     = null
+      @size     = 1
+      @byteSize = cfg.byteSize
+    @name = name
+    @code = CTX[@name]
+
+
+typesCfg =
+  float        : {byteSize: Float32Array.BYTES_PER_ELEMENT}
+  int          : {byteSize: Int32Array.BYTES_PER_ELEMENT}
+  float_vec2   : {item: 'float' , size: 2}
+  float_vec3   : {item: 'float' , size: 3}
+  float_vec4   : {item: 'float' , size: 4}
+  int_vec2     : {item: 'int'   , size: 2}
+  int_vec3     : {item: 'int'   , size: 3}
+  int_vec4     : {item: 'int'   , size: 4}
+  float_mat2   : {item: 'float' , size: 4}
+  float_mat3   : {item: 'float' , size: 9}
+  float_mat4   : {item: 'float' , size: 16}
+
+
+
+
+
+
+for name,cfg of typesCfg
+  if cfg.item?
+    cfg.item = webgl.type2[cfg.item]
+  glName = name.toUpperCase()
+  webgl.type2[name] = new WebGLType glName, cfg
+
+export webGLType = TypeClass.define2 'WebGLType'
+TypeClass.implementStatic2 Number, webGLType, webgl.type2.float
 
 
 
@@ -355,12 +400,15 @@ Property.addIndexFields2    Type
 
 export class Vec2 extends Type
   @size: 2
+TypeClass.implementStatic2 Vec2, webGLType, webgl.type2.float_vec2
 
 export class Vec3 extends Type
   @size: 3 
+TypeClass.implementStatic2 Vec3, webGLType, webgl.type2.float_vec3
 
 export class Vec4 extends Type
   @size: 4 
+TypeClass.implementStatic2 Vec4, webGLType, webgl.type2.float_vec4
 
 export class Mat2 extends Type
   @size: 4
@@ -373,6 +421,7 @@ export class Mat2 extends Type
       array[0] = 1
       array[3] = 1
     new @ array
+TypeClass.implementStatic2 Mat2, webGLType, webgl.type2.float_mat2
 
 export class Mat3 extends Type
   @size: 9
@@ -386,6 +435,7 @@ export class Mat3 extends Type
       array[4] = 1
       array[8] = 1
     new @ array
+TypeClass.implementStatic2 Mat3, webGLType, webgl.type2.float_mat3
 
 export class Mat4 extends Type
   @size: 16
@@ -400,6 +450,7 @@ export class Mat4 extends Type
       array[10] = 1
       array[15] = 1
     new @ array
+TypeClass.implementStatic2 Mat4, webGLType, webgl.type2.float_mat4
 
 
 ### Smart constructors ###
@@ -1079,10 +1130,10 @@ class GLSLCodeBuilder
 
 
 class ShaderBuilder
-  constructor: (@material, cfg) ->
-    @attributes = cfg.attributes
-    @uniforms   = cfg.uniforms
-    @outputs    = cfg.outputs 
+  constructor: (@material, cfg={}) ->
+    @attributes = cfg.attributes || {}
+    @uniforms   = cfg.uniforms   || {}
+    @outputs    = cfg.outputs    || {}
     @precision =
       vertex   : new Precision
       fragment : new Precision
@@ -1101,7 +1152,7 @@ class ShaderBuilder
       prec = cfg.precision
     {name, type, prec}
 
-  compute: () ->
+  compute: (providedVertexCode, providedFragmentCode) ->
     vertexCode     = new GLSLCodeBuilder
     vertexBodyCode = new GLSLCodeBuilder false
     fragmentCode   = new GLSLCodeBuilder
@@ -1144,7 +1195,6 @@ class ShaderBuilder
 
 
     # Generating vertex code
-    providedVertexCode = @material.vertexCode()
     vpart = partitionGLSL providedVertexCode
 
     generateMain = (f) =>
@@ -1169,8 +1219,8 @@ class ShaderBuilder
         vertexCode.addSection "Material code"      
         vertexCode.addLine val.after
 
+
     # Generating fragment code    
-    providedFragmentCode = @material.fragmentCode()
     fragmentCode.addSection "Material code"
     fragmentCode.addLine providedFragmentCode
     
@@ -1181,8 +1231,40 @@ class ShaderBuilder
 
 
 
-export class RawMaterial
+class Material extends Lazy
+  constructor: (cfg) -> 
+    super cfg 
+    @_shaderBuilder = new ShaderBuilder
+    @_shader        = null
+    @_attributes    = {}
+    @_uniforms      = {}
+
+    @_lazyManager.isDirty = true
+
+  @getter 'shader', ->
+    @update()
+    @_shader
+
+  setAttribute: (name, value) ->
+    @_
+
+  update: -> 
+    if @isDirty
+      @logger.info 'Generating shader'
+      vcode = @vertexCode()
+      fcode = @fragmentCode()
+      @_shader = @_shaderBuilder.compute vcode, fcode
+      @unsetDirty()
+
+  _unsetDirtyChildren: ->
+
+  vertexCode   : -> ''
+  fragmentCode : -> ''
+  
+
+export class RawMaterial extends Material
   constructor: (cfg) ->
+    super cfg
     @vertex   = cfg.vertex
     @fragment = cfg.fragment
 
@@ -1194,16 +1276,17 @@ mat1 = new RawMaterial
   vertex   : vertexShaderSource
   fragment : fragmentShaderSource
 
-sb1 = new ShaderBuilder mat1, 
-  attributes: 
-    foo: 'vec3'
-  outputs:
-    foo: 'vec3'
+console.log mat1.shader
+# sb1 = new ShaderBuilder mat1, 
+#   attributes: 
+#     foo: 'vec3'
+#   outputs:
+#     foo: 'vec3'
 
-{vertex, fragment} = sb1.compute()
+# {vertex, fragment} = sb1.compute()
 
-console.warn vertex
-console.warn fragment
+# console.warn vertex
+# console.warn fragment
 
 
 
