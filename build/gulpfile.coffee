@@ -60,6 +60,13 @@ gulp.task 'watch', (gulp.parallel watchables...)
 gulp.task 'watch', (gulp.parallel watchables...)
 
 
+### Logging ###
+
+# var replace = require('gulp-regex-replace');
+ 
+# gulp.task 'remove-logging', () ->
+#     gulp.src('test.js')
+#         .pipe(replace({regex:'Lorem', replace:'DeLorean'}));
 
 
 ### Versioning ###

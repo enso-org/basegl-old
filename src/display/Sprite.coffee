@@ -127,11 +127,15 @@ export usage =
   dynamicCopy : WebGLRenderingContext.DYNAMIC_COPY
   streamCopy  : WebGLRenderingContext.STREAM_COPY
 
-export itemType =
-  float : {code: WebGLRenderingContext.FLOAT, byteSize: 4}
+webgl =
+  type:
+    float: {code: WebGLRenderingContext.FLOAT, byteSize: 4}
+  glsl:
+    precision:
+      low:    'lowp'
+      medium: 'mediump'
+      high:   'highp'
 
-export byteSize =
-  float : 4
 
 
 
@@ -314,7 +318,7 @@ export class Observable
 export class Type
   @size       : 16
   @bufferCons : (args...) -> new Buffer Float32Array, args...
-  @item       : itemType.float
+  @item       : webgl.type.float
 
   constructor: (@array) ->
 
@@ -781,8 +785,7 @@ export class Attribute extends Lazy
       @logger.info "Resizing to handle up to #{newSize} elements"
       @_size = newSize
       @data.resize (@size * @type.size)
-      @onResized oldSize, newSize
-    
+      
 
   ### Indexing ###
 
@@ -931,15 +934,276 @@ export class Geometry extends Lazy
 ############
 
 export class Mesh extends Lazy
-  constructor: (geometry, @material) ->
+  constructor: (geometry, material) ->
     super
       label: "Mesh." + geometry.label
     @geometry = geometry
+    @material = material
     @geometry.onDirty.addEventListener =>
       @_lazyManager.handleChanged()
 
   _unsetDirtyChildren: ->
     @geometry.unsetDirty()
+
+
+export class Precision
+  high = 'high'
+  constructor: ->
+    @float                = webgl.glsl.precision.medium
+    @int                  = webgl.glsl.precision.medium
+    @sampler2D            = webgl.glsl.precision.low 
+    @samplerCube          = webgl.glsl.precision.low 
+    @sampler3D            = webgl.glsl.precision.low   
+    @samplerCubeShadow    = webgl.glsl.precision.low         
+    @sampler2DShadow      = webgl.glsl.precision.low       
+    @sampler2DArray       = webgl.glsl.precision.low      
+    @sampler2DArrayShadow = webgl.glsl.precision.low            
+    @isampler2D           = webgl.glsl.precision.low  
+    @isampler3D           = webgl.glsl.precision.low  
+    @isamplerCube         = webgl.glsl.precision.low    
+    @isampler2DArray      = webgl.glsl.precision.low       
+    @usampler2D           = webgl.glsl.precision.low  
+    @usampler3D           = webgl.glsl.precision.low  
+    @usamplerCube         = webgl.glsl.precision.low    
+    @usampler2DArray      = webgl.glsl.precision.low       
+  
+
+
+
+
+
+vertexShaderSource = '''in vec4 position;
+in vec4 color;
+in vec2 uv;
+in mat4 transform;
+
+uniform mat4 matrix;
+
+out vec4 v_color;
+out vec4 v_position;
+out vec2 v_uv;
+
+void main() {
+  gl_Position = matrix * position;
+  gl_Position.x += transform[3][3];
+  v_position = gl_Position;
+  v_uv = uv;
+
+  v_color = color;
+}
+'''
+
+fragmentShaderSource = '''
+
+in vec4 v_color;
+in vec4 v_position;
+in vec2 v_uv;
+
+out vec4 outColor;
+
+void main() {
+  outColor = v_color ;//* v_position;
+  //outColor = vec4(0.0,0.0,0.0,1.0); // v_color ;//* v_position;
+  // outColor.x = v_uv.x;
+  // outColor.y = v_uv.y;
+}'''
+
+
+glslMainPattern = /void +main *\( *\) *{/gm
+
+partitionGLSL = (txt) ->
+  mainSplit    = txt.split glslMainPattern
+  mainSplitLen = mainSplit.length
+  if mainSplitLen > 2 then return
+    left: "Multimple main functions found"
+  else if mainSplitLen < 2 then return
+    right:
+      before : txt
+      body   : ''
+      after  : ''
+  else 
+    [before, afterMain] = mainSplit
+    afterMainSplit      = splitOnClosingBrace afterMain
+    if afterMainSplit == null then return 
+      left: "Mismatched brackets in main function"
+    return
+      right: 
+        before : before
+        body   : afterMainSplit.before
+        after  : afterMainSplit.after
+
+splitOnClosingBrace =(txt) ->
+  depth = 0
+  for i in [0 ... txt.length]
+    char = txt[i]
+    if      char == '{' then depth += 1
+    else if char == '}'
+      if depth == 0 then return
+        before : txt.substring(0,i)
+        after  : txt.substring(i+1)
+      else depth -= 1
+  return null
+
+
+class GLSLCodeBuilder
+  constructor: (addVersion = true) ->
+    @code = ''
+    if addVersion
+      @addLine '#version 300 es'
+
+  _sectionTitle: (s) ->
+    border = '/'.repeat (s.length + 6)
+    title  = '\n\n' + border + '\n' + '// ' + s + ' //' + '\n' + border + '\n\n'
+    title
+
+  addSection        : (s) -> @code += @_sectionTitle s
+  addComment        : (s) -> @addLine "// #{s}"
+  addCommentSection : (s) -> @addLine "\n// #{s}\n"
+  addText           : (s) -> @code += s
+  addLine           : (s) -> @addText "#{s}\n"
+  addExpr           : (s) -> @code += s + ';\n'
+  addAssignment     : (l, r)    -> @addExpr "#{l} = #{r}"
+  addInput          : (args...) -> @addAttr 'in'      , args...
+  addOutput         : (args...) -> @addAttr 'out'     , args...
+  addUniform        : (args...) -> @addAttr 'uniform' , args...
+  addAttr           : (qual, prec, type, name) ->
+    p = if prec then " #{prec} " else ' '
+    @addExpr "#{qual}#{p}#{type} #{name}"
+  buildMain     : (f) ->
+    @addLine 'void main() {'
+    f?()
+    @addLine '}'
+    
+  
+
+
+
+class ShaderBuilder
+  constructor: (@material, cfg) ->
+    @attributes = cfg.attributes
+    @uniforms   = cfg.uniforms
+    @outputs    = cfg.outputs 
+    @precision =
+      vertex   : new Precision
+      fragment : new Precision
+    @precision.vertex.float = webgl.glsl.precision.high
+    @precision.vertex.int   = webgl.glsl.precision.high
+
+  mkVertexName:   (s) -> 'v_' + s
+  mkFragmentName: (s) -> s
+  mkOutputName:   (s) -> 'out_' + s
+
+  readVar: (name,cfg) ->
+    type = cfg
+    prec = null
+    if cfg.constructor == Object
+      type = cfg.type
+      prec = cfg.precision
+    {name, type, prec}
+
+  compute: () ->
+    vertexCode     = new GLSLCodeBuilder
+    vertexBodyCode = new GLSLCodeBuilder false
+    fragmentCode   = new GLSLCodeBuilder
+
+    addSection = (s) =>
+      vertexCode.addSection s
+      fragmentCode.addSection s
+      
+    addSection 'Default precision declarations'
+    for type, prec of @precision.vertex
+      vertexCode.addExpr "precision #{prec} #{type}"
+    for type, prec of @precision.fragment
+      fragmentCode.addExpr "precision #{prec} #{type}"
+
+    if @attributes
+      addSection 'Attributes shared between vertex and fragment shaders'
+      for name,cfg of @attributes
+        v = @readVar name, cfg
+        fragmentName = @mkFragmentName v.name
+        vertexName   = @mkVertexName   v.name
+        vertexCode.addInput   v.prec, v.type, vertexName
+        vertexCode.addOutput  v.prec, v.type, fragmentName
+        fragmentCode.addInput v.prec, v.type, fragmentName
+        vertexBodyCode.addAssignment fragmentName, vertexName
+    
+    if @uniforms
+      addSection 'Uniforms'
+      for name,cfg in @uniforms
+        v = @readVar name, cfg        
+        vertexCode.addUniform v.prec, v.type, v.name
+        vertexCode.addExpr   decl
+        fragmentCode.addExpr decl
+
+    if @outputs
+      fragmentCode.addSection 'Outputs'
+      for name,cfg of @outputs
+        v = @readVar name, cfg        
+        name = @mkOutputName v.name
+        fragmentCode.addOutput v.prec, v.type, v.name
+
+
+    # Generating vertex code
+    providedVertexCode = @material.vertexCode()
+    vpart = partitionGLSL providedVertexCode
+
+    generateMain = (f) =>
+      vertexCode.addSection "Main entry point"
+      vertexCode.buildMain =>
+        vertexCode.addCommentSection "Passing values to fragment shader" 
+        vertexCode.addText vertexBodyCode.code
+        f?()
+
+    if vpart.left
+      logger.error "Error while generating vertex shader, reverting to default"
+      logger.error vpart.left
+      generateMain()
+    else
+      val = vpart.right
+      vertexCode.addSection "Material code"
+      vertexCode.addLine val.before
+      generateMain =>
+        vertexCode.addCommentSection "Material main code"
+        vertexCode.addLine val.body
+      if val.after.length > 0
+        vertexCode.addSection "Material code"      
+        vertexCode.addLine val.after
+
+    # Generating fragment code    
+    providedFragmentCode = @material.fragmentCode()
+    fragmentCode.addSection "Material code"
+    fragmentCode.addLine providedFragmentCode
+    
+    return
+      vertex   : vertexCode.code
+      fragment : fragmentCode.code
+    
+
+
+
+export class RawMaterial
+  constructor: (cfg) ->
+    @vertex   = cfg.vertex
+    @fragment = cfg.fragment
+
+  vertexCode:   -> @vertex
+  fragmentCode: -> @fragment
+
+
+mat1 = new RawMaterial
+  vertex   : vertexShaderSource
+  fragment : fragmentShaderSource
+
+sb1 = new ShaderBuilder mat1, 
+  attributes: 
+    foo: 'vec3'
+  outputs:
+    foo: 'vec3'
+
+{vertex, fragment} = sb1.compute()
+
+console.warn vertex
+console.warn fragment
 
 
 
@@ -974,7 +1238,7 @@ export class GPUMesh extends Lazy
         space = @mesh.geometry[spaceName].data
         for name of space
           if isUniform
-             loc = @_program.getUniformLocation name
+            loc = @_program.getUniformLocation name
           else 
             loc = @_program.getAttribLocation name
           if loc == -1
@@ -995,22 +1259,37 @@ export class GPUMesh extends Lazy
       @buffer[spaceName] = {}
       withVAO @_ctx, @_vao, =>  
         for name of space
-          @logger.info "Enabling variable '#{name}'"
+          @logger.info "Binding variable '#{name}'"
           val = space[name]
           loc = @_program.getAttribLocation name
           if loc == -1
             @logger.info "Variable '" + name + "' not used in shader"
           else withNewArrayBuffer @_ctx, (buffer) =>  
             @buffer[spaceName][name] = buffer 
-            @_ctx.enableVertexAttribArray loc
-            norm   = false
-            stride = 0
-            offset = 0
-            type   = val.type.item.code
-            size   = val.type.size
-            @_ctx.vertexAttribPointer(loc, size, type, norm, stride, offset)
-            if instanced
-              @_ctx.vertexAttribDivisor(loc, 1)
+
+            maxChunkSize  = 4
+            normalize     = false
+            size          = val.type.size
+            itemByteSize  = val.type.item.byteSize
+            itemType      = val.type.item.code
+            chunksNum     = Math.ceil (size/maxChunkSize)
+            chunkSize     = Math.min size, maxChunkSize
+            chunkByteSize = chunkSize * itemByteSize
+            stride        = chunksNum * chunkByteSize
+
+            for chunkIx in [0 ... chunksNum]
+              offByteSize = chunkIx * chunkByteSize
+              chunkLoc    = loc + chunkIx
+              @_ctx.enableVertexAttribArray chunkLoc
+              @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
+                                        normalize, stride, offByteSize
+              if instanced
+                @_ctx.vertexAttribDivisor(chunkLoc, 1)
+            @logger.info "Variable '#{name}' bound succesfully using 
+                         #{chunksNum} locations"
+            
+              
+              
         
   _initBuffers: () ->
     @logger.group "Initializing buffers", =>
@@ -1060,13 +1339,19 @@ export class GPUMesh extends Lazy
     @logger.group "Drawing", =>
       withVAO @_ctx, @_vao, =>
         @_ctx.uniformMatrix4fv(@progVarLoc.global.matrix, false, viewProjectionMatrix)
-        elemCount = 1 # @_ixPool.dirtySize()
-        if elemCount > 0
+        pointCount    = @mesh.geometry.point.size
+        instanceCount = @mesh.geometry.instance.size
+        if instanceCount > 0
+          instanceWord = if instanceCount > 1 then "instances" else "instance"
+          @logger.info "Drawing #{instanceCount} " + instanceWord
+          
           # offset = elemCount * @_SPRITE_VTX_COUNT
           # @_ctx.drawElements(@_ctx.TRIANGLES, offset, @_ctx.UNSIGNED_SHORT, 0)
-          SPRITE_IND_COUNT = 4
-          @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, SPRITE_IND_COUNT, 1)
-
+          @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, pointCount, instanceCount)
+        else 
+          @logger.info "Drawing not instanced geometry"
+          @_ctx.drawArrays(@_ctx.TRIANGLE_STRIP, 0, pointCount)
+          
 
 
 export class GPUMeshRegistry extends Lazy
@@ -1094,13 +1379,13 @@ export class GPUMeshRegistry extends Lazy
 
 
 
+
 export test = (ctx, program, viewProjectionMatrix) ->
 
 
   # program = utils.createProgramFromSources(ctx,
   #     [vertexShaderSource, fragmentShaderSource])
 
-  console.warn "Creating geometry"
   geo = new Geometry
     label: "Geo1"
     point:
@@ -1119,15 +1404,20 @@ export test = (ctx, program, viewProjectionMatrix) ->
           (vec2 [1,1]),
           (vec2 [1,0])] 
       
+      # transform: [
+      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100]) ,
+      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ,
+      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ,
+      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ]
+      
     instance:
-      color:     vec3
-      transform: mat4
+      # color: [
+        # (vec4 [1,0,0,1]) ]
+      transform: [mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]]
 
     global:
       matrix: mat4
 
-  console.warn "Mesh creation"  
-  
 
   meshRegistry = new GPUMeshRegistry
 
@@ -1147,6 +1437,7 @@ export test = (ctx, program, viewProjectionMatrix) ->
   logger.group "FRAME 3", =>
     geo.point.data.position.read(1)[0] = 8
     geo.point.data.uv.read(1)[0] = 8
+    # geo.instance.data.color.read(0)[0] = 0.7
     meshRegistry.update()
 
   logger.group "FRAME 4", =>
