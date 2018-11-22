@@ -138,10 +138,17 @@ webGL =
   types: {}
 
 
+
+##############
+### GLType ###
+##############
+
+### Definition ###
+
 class GLType
-  constructor: (@name, cfg) ->
-    @glslName = cfg.glslName
-    @code     = CTX[@name]
+  constructor: (@id, cfg) ->
+    @name = cfg.name
+    @code = CTX[@id]
     if cfg.item
       @item       = cfg.item
       @size       = cfg.size
@@ -154,22 +161,20 @@ class GLType
       @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
     
 
+### Batch preparation ###
+
 typesCfg =
-  float        : {glslName: 'float' , bufferType: Float32Array}
-  int          : {glslName: 'int'   , bufferType: Int32Array}
-  float_vec2   : {glslName: 'vec2'  , item: 'float' , size: 2}
-  float_vec3   : {glslName: 'vec3'  , item: 'float' , size: 3}
-  float_vec4   : {glslName: 'vec4'  , item: 'float' , size: 4}
-  int_vec2     : {glslName: 'ivec2' , item: 'int'   , size: 2}
-  int_vec3     : {glslName: 'ivec3' , item: 'int'   , size: 3}
-  int_vec4     : {glslName: 'ivec4' , item: 'int'   , size: 4}
-  float_mat2   : {glslName: 'mat2'  , item: 'float' , size: 4}
-  float_mat3   : {glslName: 'mat3'  , item: 'float' , size: 9}
-  float_mat4   : {glslName: 'mat4'  , item: 'float' , size: 16}
-
-
-
-
+  float        : {name: 'float' , bufferType: Float32Array}
+  int          : {name: 'int'   , bufferType: Int32Array}
+  float_vec2   : {name: 'vec2'  , item: 'float' , size: 2}
+  float_vec3   : {name: 'vec3'  , item: 'float' , size: 3}
+  float_vec4   : {name: 'vec4'  , item: 'float' , size: 4}
+  int_vec2     : {name: 'ivec2' , item: 'int'   , size: 2}
+  int_vec3     : {name: 'ivec3' , item: 'int'   , size: 3}
+  int_vec4     : {name: 'ivec4' , item: 'int'   , size: 4}
+  float_mat2   : {name: 'mat2'  , item: 'float' , size: 4}
+  float_mat3   : {name: 'mat3'  , item: 'float' , size: 9}
+  float_mat4   : {name: 'mat4'  , item: 'float' , size: 16}
 
 for name,cfg of typesCfg
   if cfg.item?
@@ -186,16 +191,16 @@ for name,cfg of typesCfg
 ###################
 
 withVAO = (gl, vao, f) -> 
-  gl.bindVertexArray(vao)
+  gl.bindVertexArray vao
   out = f()
-  gl.bindVertexArray(null)
+  gl.bindVertexArray null
   out
 
 
 withBuffer = (gl, type, buffer, f) -> 
-  gl.bindBuffer(type, buffer)
+  gl.bindBuffer type, buffer
   out = f()
-  gl.bindBuffer(type, null)
+  gl.bindBuffer type, null
   out
 
 withArrayBuffer = (gl, buffer, f) ->
@@ -203,12 +208,12 @@ withArrayBuffer = (gl, buffer, f) ->
   
 arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
   withArrayBuffer gl, buffer, =>
-    gl.bufferSubData(gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length)
+    gl.bufferSubData gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length
       
 
 withNewArrayBuffer = (gl, f) ->
   buffer = gl.createBuffer()
-  withArrayBuffer gl, buffer, => f(buffer)
+  withArrayBuffer gl, buffer, => f buffer
   
 
 
@@ -390,7 +395,7 @@ export class BufferType
       @write i, src.read(i)
 
   toGLSL: ->
-    name = @glType.glslName
+    name = @glType.name
     args = @rawArray.join ','
     args = (toGLSL a for a in @rawArray)
     "#{name}(#{args.join(',')})"
@@ -1185,7 +1190,7 @@ class Material extends Lazy
 
   # _write: (loc, sbloc, name, value) ->
   #   glType   = webGLType_old value
-  #   glslType = glType.glslName
+  #   glslType = glType.name
   #   if sbloc[name] != glslType
   #     sbloc[name] = glslType
   #     @_lazyManager.handleChanged()
@@ -1262,7 +1267,7 @@ export class Mesh extends Lazy
   _bindVariables: ->
     for varName, varDef of @material.variable.input 
       glType   = varDef.glType
-      glslType = glType.glslName
+      glslType = glType.name
       @logger.info "Binding variable '#{varName}'"
       scopeName = @_lookupAttrScope varName
       if scopeName
@@ -1276,7 +1281,7 @@ export class Mesh extends Lazy
           throw "Unsupported scope #{scopeName}"
       else
         @_shaderBuilder.constants[varName] =
-          type  : varDef.glType.glslName
+          type  : varDef.glType.name
           value : varDef.toGLSL()
          
 
