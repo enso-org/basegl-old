@@ -140,9 +140,9 @@ webGL =
 
 
 class WebGLType
-  constructor: (name, cfg) ->
-    @name       = name
-    @code       = CTX[@name]
+  constructor: (@name, cfg) ->
+    @glslName = cfg.glslName
+    @code     = CTX[@name]
     if cfg.item
       @item       = cfg.item
       @size       = cfg.size
@@ -156,18 +156,17 @@ class WebGLType
     
 
 typesCfg =
-  float        : {bufferType: Float32Array}
-  int          : {bufferType: Int32Array}
-  float_vec2   : {item: 'float' , size: 2}
-  float_vec3   : {item: 'float' , size: 3}
-  float_vec4   : {item: 'float' , size: 4}
-  int_vec2     : {item: 'int'   , size: 2}
-  int_vec3     : {item: 'int'   , size: 3}
-  int_vec4     : {item: 'int'   , size: 4}
-  float_mat2   : {item: 'float' , size: 4}
-  float_mat3   : {item: 'float' , size: 9}
-  float_mat4   : {item: 'float' , size: 16}
-
+  float        : {glslName: 'float' , bufferType: Float32Array}
+  int          : {glslName: 'int'   , bufferType: Int32Array}
+  float_vec2   : {glslName: 'vec2'  , item: 'float' , size: 2}
+  float_vec3   : {glslName: 'vec3'  , item: 'float' , size: 3}
+  float_vec4   : {glslName: 'vec4'  , item: 'float' , size: 4}
+  int_vec2     : {glslName: 'ivec2' , item: 'int'   , size: 2}
+  int_vec3     : {glslName: 'ivec3' , item: 'int'   , size: 3}
+  int_vec4     : {glslName: 'ivec4' , item: 'int'   , size: 4}
+  float_mat2   : {glslName: 'mat2'  , item: 'float' , size: 4}
+  float_mat3   : {glslName: 'mat3'  , item: 'float' , size: 9}
+  float_mat4   : {glslName: 'mat4'  , item: 'float' , size: 16}
 
 
 
@@ -457,6 +456,7 @@ vec4.type = Vec4
 mat2.type = Mat2
 mat3.type = Mat3
 mat4.type = Mat4
+
 
 
 
@@ -1013,40 +1013,15 @@ export class Precision
 
 
 
-vertexShaderSource = '''in vec4 position;
-in vec4 color;
-in vec2 uv;
-in mat4 transform;
-
-uniform mat4 matrix;
-
-out vec4 v_color;
-out vec4 v_position;
-out vec2 v_uv;
-
+vertexShaderSource = '''
 void main() {
-  gl_Position = matrix * position;
-  gl_Position.x += transform[3][3];
-  v_position = gl_Position;
-  v_uv = uv;
-
-  v_color = color;
+  gl_Position = matrix * v_position;
 }
 '''
 
 fragmentShaderSource = '''
-
-in vec4 v_color;
-in vec4 v_position;
-in vec2 v_uv;
-
-out vec4 outColor;
-
 void main() {
-  outColor = v_color ;//* v_position;
-  //outColor = vec4(0.0,0.0,0.0,1.0); // v_color ;//* v_position;
-  // outColor.x = v_uv.x;
-  // outColor.y = v_uv.y;
+  out_color = color;
 }'''
 
 
@@ -1132,7 +1107,7 @@ class ShaderBuilder
 
   mkVertexName:   (s) -> 'v_' + s
   mkFragmentName: (s) -> s
-  mkOutputName:   (s) -> 'out_' + s
+  # mkOutputName:   (s) -> 'out_' + s
 
   readVar: (name,cfg) ->
     type = cfg
@@ -1170,17 +1145,16 @@ class ShaderBuilder
     
     if @uniforms
       addSection 'Uniforms'
-      for name,cfg in @uniforms
+      for name,cfg of @uniforms
         v = @readVar name, cfg        
-        vertexCode.addUniform v.prec, v.type, v.name
-        vertexCode.addExpr   decl
-        fragmentCode.addExpr decl
+        vertexCode.addUniform   v.prec, v.type, v.name
+        fragmentCode.addUniform v.prec, v.type, v.name
 
     if @outputs
       fragmentCode.addSection 'Outputs'
       for name,cfg of @outputs
         v = @readVar name, cfg        
-        name = @mkOutputName v.name
+        # name = @mkOutputName v.name
         fragmentCode.addOutput v.prec, v.type, v.name
 
 
@@ -1224,19 +1198,51 @@ class ShaderBuilder
 class Material extends Lazy
   constructor: (cfg) -> 
     super cfg 
+    @_lazyManager.isDirty = true
+
     @_shaderBuilder = new ShaderBuilder
     @_shader        = null
-    @_attributes    = {}
-    @_uniforms      = {}
-
-    @_lazyManager.isDirty = true
+    @renaming       =
+      point:    (s) -> s
+      instance: (s) -> "instance_#{s}"
+      global:   (s) -> "global_#{s}"
+      output:   (s) -> "out_#{s}"
+    @_defaultValues =
+      point: {}
+      instance: {}
+    @_values =
+      global: {}
+      output: {}
 
   @getter 'shader', ->
     @update()
     @_shader
 
-  setAttribute: (name, value) ->
-    @_
+  _write: (loc, sbloc, name, value) ->
+    glType   = webGLType value
+    glslType = glType.glslName
+    if sbloc[name] != glslType
+      sbloc[name] = glslType
+      console.log "!!!", sbloc
+      @_lazyManager.handleChanged()
+    loc[name] = value
+
+  writePointVariable: (name, value) -> 
+    n = @renaming.point name
+    @_write @_defaultValues.point, @_shaderBuilder.attributes, n, value
+
+  writeInstanceVariable: (name, value) -> 
+    n = @renaming.instance name
+    @_write @_defaultValues.instance, @_shaderBuilder.attributes, n, value
+
+  writeGlobalVariable: (name, value) -> 
+    n = @renaming.global name
+    @_write @_values.global, @_shaderBuilder.uniforms, n, value
+
+  writeOutputVariable: (name, value) -> 
+    n = @renaming.output name
+    @_write @_values.output, @_shaderBuilder.outputs, n, value
+  
 
   update: -> 
     if @isDirty
@@ -1267,7 +1273,15 @@ mat1 = new RawMaterial
   fragment : fragmentShaderSource
 
 console.log mat1.shader
-console.warn webGLType(Number)
+mat1.writePointVariable 'position', (vec4 [0,0,0,0])
+mat1.writePointVariable 'color', (vec4 [0,0,0,1])
+mat1.writePointVariable 'uv', (vec2 [0,0])
+mat1.writeGlobalVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
+console.log mat1.shader.vertex
+console.log mat1.shader.fragment
+
+
 # sb1 = new ShaderBuilder mat1, 
 #   attributes: 
 #     foo: 'vec3'

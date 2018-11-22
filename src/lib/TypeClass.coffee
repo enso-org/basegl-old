@@ -45,6 +45,9 @@ export implement2 = (obj, tc, val) ->
   obj.prototype.__typeclass__[tc.id] = val
 
 export implementStatic2 = (obj, tc, val) ->
+  if obj.prototype.__typeclass__ == undefined
+    obj.prototype.__typeclass__ = {}
+  obj.prototype.__typeclass__[tc.id] = val
   if obj.__typeclass__ == undefined
     obj.__typeclass__ = {}
   obj.__typeclass__[tc.id] = val
