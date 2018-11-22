@@ -351,6 +351,7 @@ export class Observable
 
 
 
+
 ############
 ### Type ###
 ############
@@ -387,6 +388,12 @@ export class Type
   set: (src) ->
     for i in [0 ... webGLType(@constructor).size]
       @write i, (src.read i)
+
+  toGLSL: ->
+    name = webGLType(@).glslName
+    args = @rawArray.join ','
+    args = (toGLSL a for a in @rawArray)
+    "#{name}(#{args.join(',')})"
     
 Property.swizzleFieldsXYZW2 Type
 Property.swizzleFieldsRGBA2 Type
@@ -394,6 +401,10 @@ Property.addIndexFields2    Type, 16
 
 
 ### Basic types ###
+
+export class Float
+  constructor: (@number) ->
+  toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
 export class Vec2 extends Type
 TypeClass.implementStatic2 Vec2, webGLType, webGL.types.float_vec2
@@ -458,6 +469,12 @@ mat3.type = Mat3
 mat4.type = Mat4
 
 
+toWebGLType = (a) ->
+  switch a.constructor
+    when Number then new Float a
+    else a
+
+toGLSL = (a) -> toWebGLType(a).toGLSL()
 
 
 ################################################################################
@@ -1027,6 +1044,7 @@ class GLSLCodeBuilder
   addLine           : (s) -> @addText "#{s}\n"
   addExpr           : (s) -> @code += s + ';\n'
   addAssignment     : (l, r)    -> @addExpr "#{l} = #{r}"
+  addDefinition     : (t, n, v) -> @addAssignment "#{t} #{n}", v
   addInput          : (args...) -> @addAttr 'in'      , args...
   addOutput         : (args...) -> @addAttr 'out'     , args...
   addUniform        : (args...) -> @addAttr 'uniform' , args...
@@ -1044,6 +1062,7 @@ class GLSLCodeBuilder
 
 class ShaderBuilder
   constructor: (@material, cfg={}) ->
+    @constants  = cfg.constants  || {}
     @attributes = cfg.attributes || {}
     @uniforms   = cfg.uniforms   || {}
     @outputs    = cfg.outputs    || {}
@@ -1079,6 +1098,12 @@ class ShaderBuilder
       vertexCode.addExpr "precision #{prec} #{type}"
     for type, prec of @precision.fragment
       fragmentCode.addExpr "precision #{prec} #{type}"
+
+    if @constants
+      addSection 'Constants'
+      for name,cfg of @constants
+        vertexCode.addDefinition   cfg.type, name, cfg.value
+        fragmentCode.addDefinition cfg.type, name, cfg.value
 
     if @attributes
       addSection 'Attributes shared between vertex and fragment shaders'
@@ -1265,7 +1290,10 @@ export class Mesh extends Lazy
         else
           throw "Unsupported scope #{scopeName}"
       else
-        console.log "TODO: defaults"
+        @_shaderBuilder.constants[varName] =
+          type  : webGLType(varDef).glslName
+          value : varDef.toGLSL()
+         
 
   _generateShader: ->
     @logger.info 'Generating shader'
@@ -1333,23 +1361,21 @@ export class GPUMesh extends Lazy
       shader = @mesh.shader
       @_program = utils.createProgramFromSources @_ctx, shader.vertex, shader.fragment
     
-
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
       for varName, spaceName of @mesh.bindings
         @_initSpaceVarLocation spaceName, varName
 
   _initSpaceVarLocation: (spaceName, varName) ->
-      @logger.group "Binding '#{varName}' variable", =>
-        if spaceName == 'object'
-          loc = @_program.getUniformLocation varName
-        else 
-          loc = @_program.getAttribLocation "v_#{varName}"
-        if loc == -1
-          @logger.info "Variable '" + varName + "' not used in shader"
-        else
-          @logger.info "Variable '" + varName + "' bound successfully"
-          @varLoc[varName] = loc
+      if spaceName == 'object'
+        loc = @_program.getUniformLocation varName
+      else 
+        loc = @_program.getAttribLocation "v_#{varName}"
+      if loc == -1
+        @logger.info "Variable '" + varName + "' not used in shader"
+      else
+        @logger.info "Variable '" + varName + "' bound successfully"
+        @varLoc[varName] = loc
 
   _initVAO: () ->
     @logger.group 'Initializing Vertex Array Object (VAO)', =>
@@ -1371,38 +1397,41 @@ export class GPUMesh extends Lazy
         space = @mesh.geometry[spaceName].data
         val   = space[varName]
         loc   = @varLoc[varName]
-        @buffer[spaceName] = {}
-        withNewArrayBuffer @_ctx, (buffer) =>  
-          @buffer[spaceName][varName] = buffer 
+        if not @buffer[spaceName]?
+          @buffer[spaceName] = {}
+        if loc != undefined
+          withNewArrayBuffer @_ctx, (buffer) =>  
+            @buffer[spaceName][varName] = buffer 
 
-          maxChunkSize  = 4
-          normalize     = false
-          size          = webGLType(val.type).size
-          itemByteSize  = webGLType(val.type).item.byteSize
-          itemType      = webGLType(val.type).item.code
-          chunksNum     = Math.ceil (size/maxChunkSize)
-          chunkSize     = Math.min size, maxChunkSize
-          chunkByteSize = chunkSize * itemByteSize
-          stride        = chunksNum * chunkByteSize
+            maxChunkSize  = 4
+            normalize     = false
+            size          = webGLType(val.type).size
+            itemByteSize  = webGLType(val.type).item.byteSize
+            itemType      = webGLType(val.type).item.code
+            chunksNum     = Math.ceil (size/maxChunkSize)
+            chunkSize     = Math.min size, maxChunkSize
+            chunkByteSize = chunkSize * itemByteSize
+            stride        = chunksNum * chunkByteSize
 
-          for chunkIx in [0 ... chunksNum]
-            offByteSize = chunkIx * chunkByteSize
-            chunkLoc    = loc + chunkIx
-            @_ctx.enableVertexAttribArray chunkLoc
-            @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
-                                      normalize, stride, offByteSize
-            if spaceName == 'instance'
-              @_ctx.vertexAttribDivisor(chunkLoc, 1)
-          @logger.info "Variable '#{varName}' bound succesfully using 
-                      #{chunksNum} locations"
+            for chunkIx in [0 ... chunksNum]
+              offByteSize = chunkIx * chunkByteSize
+              chunkLoc    = loc + chunkIx
+              @_ctx.enableVertexAttribArray chunkLoc
+              @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
+                                        normalize, stride, offByteSize
+              if spaceName == 'instance'
+                @_ctx.vertexAttribDivisor(chunkLoc, 1)
+            @logger.info "Variable '#{varName}' bound succesfully using 
+                        #{chunksNum} locations"
             
               
         
   _initBuffers: () ->
     @logger.group "Initializing buffers", =>
+      console.log "!!!!", @buffer 
       for spaceName,cfg of @buffer
         space = bufferJS = @mesh.geometry[spaceName]
-        @logger.group "Initializing #{spaceName} buffers", =>     
+        @logger.group "Initializing #{spaceName} buffers", =>    
           for varName,bufferGL of cfg
             variable = space.data[varName]
             bufferJS = variable.data.rawArray
@@ -1511,6 +1540,13 @@ export test = (ctx, viewProjectionMatrix) ->
           (vec2 [0,0]),
           (vec2 [1,1]),
           (vec2 [1,0])] 
+
+      # color: [
+      #   (vec4 [1,0,0,1]),
+      #   (vec4 [0,1,0,1]),
+      #   (vec4 [0,0,1,1]),
+      #   (vec4 [1,1,1,1])
+      # ]
       
       # transform: [
       #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100]) ,
@@ -1520,7 +1556,7 @@ export test = (ctx, viewProjectionMatrix) ->
       
     instance:
       color: [
-        (vec4 [0,0,0,1]) ]
+        (vec4 [1,0,0,1]) ]
       transform: [mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]]
 
     object:
@@ -1540,7 +1576,7 @@ export test = (ctx, viewProjectionMatrix) ->
   fragmentShaderSource = '''
   out vec4 output_color;  
   void main() {
-    output_color = vec4(1,0,0,1);
+    output_color = color;
   }'''
 
   mat1 = new RawMaterial
@@ -1550,6 +1586,7 @@ export test = (ctx, viewProjectionMatrix) ->
       position  : vec4 [0,0,0,0]
       transform : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
       matrix    : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+      color     : vec4 [0,1,0,1]
   mesh = new Mesh geo, mat1
 
   m1 = new GPUMesh ctx, mesh
