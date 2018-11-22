@@ -1,5 +1,5 @@
 import * as matrix2 from 'gl-matrix'
-import * as utils   from 'basegl/render/webgl'
+import {Program}   from 'basegl/render/webgl'
 
 import {Composable, fieldMixin}            from "basegl/object/Property"
 import * as Property           from "basegl/object/Property"
@@ -1016,7 +1016,7 @@ splitOnClosingBrace =(txt) ->
   return null
 
 
-class GLSLCodeBuilder
+class GLSLBuilder
   constructor: (addVersion = true) ->
     @code = ''
     if addVersion
@@ -1064,7 +1064,6 @@ class ShaderBuilder
 
   mkVertexName:   (s) -> 'v_' + s
   mkFragmentName: (s) -> s
-  # mkOutputName:   (s) -> 'out_' + s
 
   readVar: (name,cfg) ->
     type = cfg
@@ -1075,9 +1074,9 @@ class ShaderBuilder
     {name, type, prec}
 
   compute: (providedVertexCode, providedFragmentCode) ->
-    vertexCode     = new GLSLCodeBuilder
-    vertexBodyCode = new GLSLCodeBuilder false
-    fragmentCode   = new GLSLCodeBuilder
+    vertexCode     = new GLSLBuilder
+    vertexBodyCode = new GLSLBuilder false
+    fragmentCode   = new GLSLBuilder
 
     addSection = (s) =>
       vertexCode.addSection s
@@ -1118,11 +1117,11 @@ class ShaderBuilder
       fragmentCode.addSection 'Outputs'
       for name,cfg of @outputs
         v = @readVar name, cfg        
-        # name = @mkOutputName v.name
         fragmentCode.addOutput v.prec, v.type, v.name
 
+    
+    ### Generating vertex code ###
 
-    # Generating vertex code
     vpart = partitionGLSL providedVertexCode
 
     generateMain = (f) =>
@@ -1148,7 +1147,8 @@ class ShaderBuilder
         vertexCode.addLine val.after
 
 
-    # Generating fragment code    
+    ### Generating fragment code ###
+
     fragmentCode.addSection "Material code"
     fragmentCode.addLine providedFragmentCode
     
@@ -1287,8 +1287,8 @@ export class Mesh extends Lazy
 
   _generateShader: ->
     @logger.info 'Generating shader'
-    vcode  = @material.vertexCode()
-    fcode  = @material.fragmentCode()
+    vcode = @material.vertexCode()
+    fcode = @material.fragmentCode()
     @_shader = @_shaderBuilder.compute vcode, fcode
     console.log @_shader.vertex
     console.log @_shader.fragment
@@ -1349,7 +1349,7 @@ export class GPUMesh extends Lazy
   _updateProgram: ->
     @logger.group "Compiling shader program", =>
       shader = @mesh.shader
-      @_program = utils.createProgramFromSources @_ctx, shader.vertex, shader.fragment
+      @_program = Program.from @_ctx, shader.vertex, shader.fragment
     
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
@@ -1510,7 +1510,7 @@ export class GPUMeshRegistry extends Lazy
 export test = (ctx, viewProjectionMatrix) ->
 
 
-  # program = utils.createProgramFromSources(ctx,
+  # program = utils.createProgram(ctx,
   #     [vertexShaderSource, fragmentShaderSource])
 
   geo = new Geometry

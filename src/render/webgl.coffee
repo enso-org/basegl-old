@@ -2,49 +2,51 @@ import * as Property from "basegl/object/Property"
 
   
   
-class Program 
-  constructor: (@_ctx, @_glProgram) ->
+export class Program 
+  constructor: (@_gl) ->
+    @_glProgram = @_gl.createProgram()
   @getter 'glProgram', -> @_glProgram
 
-  getAttribLocation:  (a) -> @_ctx.getAttribLocation  @_glProgram, a
-  getUniformLocation: (a) -> @_ctx.getUniformLocation @_glProgram, a
+  @from: (gl, vertexCode, fragmentCode) ->
+    program = new Program gl
+    program.loadVertexShader   vertexCode
+    program.loadFragmentShader fragmentCode
+    error = program.link()
+    if error
+      console.error ("Error in program linking:" + erro)
+      Program.delete()
+      return null
+    program
 
+  link: -> 
+    @_gl.linkProgram @_glProgram
+    linked = @_gl.getProgramParameter @_glProgram, @_gl.LINK_STATUS
+    if not linked
+      lastError = gl.getProgramInfoLog @_glprogram
+      return lastError
+    return null
+
+  delete: -> @_gl.deleteProgram @_glProgram
+  attachShader       : (shader) -> @_gl.attachShader @_glProgram, shader
+  getAttribLocation  : (attr)   -> @_gl.getAttribLocation  @_glProgram, attr
+  getUniformLocation : (attr)   -> @_gl.getUniformLocation @_glProgram, attr
+  loadVertexShader   : (code)   -> @loadShader @_gl.VERTEX_SHADER   , code 
+  loadFragmentShader : (code)   -> @loadShader @_gl.FRAGMENT_SHADER , code 
+  loadShader: (type, code) ->
+    shader = loadShader @_gl, code, type
+    @attachShader shader
 
 export loadShader = (gl, shaderSource, shaderType) ->
   shader = gl.createShader shaderType
   gl.shaderSource shader, shaderSource
-  gl.compileShader(shader)
+  gl.compileShader shader
   compiled = gl.getShaderParameter shader, gl.COMPILE_STATUS
-  if (!compiled) 
-    lastError = gl.getShaderInfoLog(shader)
+  if not compiled
+    lastError = gl.getShaderInfoLog shader
     console.error ("*** Error compiling shader '" + shader + "':" + lastError)
-    gl.deleteShader(shader)
+    gl.deleteShadershader
     return null
   return shader
-
-
-
-
-export createProgram = (ctx, shaders) ->
-  program = ctx.createProgram()
-  shaders.forEach (shader) ->
-    ctx.attachShader(program, shader)
-
-  ctx.linkProgram(program)
-  linked = ctx.getProgramParameter(program, ctx.LINK_STATUS)
-  if (!linked)
-      lastError = ctx.getProgramInfoLog(program)
-      console.error ("Error in program linking:" + lastError)
-      ctx.deleteProgram(program)
-      return null
-  new Program ctx, program
-
-export createProgramFromSources = (gl, vertexCode, fragmentCode) ->
-  vertexShader   = loadShader gl , vertexCode   , gl.VERTEX_SHADER
-  fragmentShader = loadShader gl , fragmentCode , gl.FRAGMENT_SHADER
-  
-  createProgram(gl, [vertexShader, fragmentShader])
-
 
 export resizeCanvasToDisplaySize = (canvas, multiplier) ->
   multiplier = multiplier || 1
