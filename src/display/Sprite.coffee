@@ -10,7 +10,6 @@ import {logger}                            from 'logger'
 import * as basegl from 'basegl'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import * as Color     from 'basegl/display/Color'
-import * as TypeClass from 'basegl/lib/TypeClass'
 import * as Symbol from 'basegl/display/Symbol'
 
 # import * as Benchmark from 'benchmark'
@@ -350,15 +349,13 @@ export class Observable
 
 
 
-
-############
+##################
 ### BufferType ###
-############
+##################
 
-# BufferType is a base-class for attribute types.
+# BufferType is a base-class for buffer-like attribute types.
 
 ### Abstraction ###
-
 
 export class BufferType
   @bufferCons: (args...) -> new Buffer @glType.bufferType, args...
@@ -372,9 +369,11 @@ export class BufferType
   
   # Smart constructor performing conversions if needed.
   @from: (args) ->
-    cfg   = if args then args else @size
-    array = @bufferCons cfg
-    new @ array
+    if args
+      new @ (@bufferCons args)
+    else @default()
+
+  @default: -> new @ (@bufferCons @size)
 
   # View another buffer as desired type without copying.
   @view: (base, offset=0) ->
@@ -388,7 +387,7 @@ export class BufferType
 
   set: (src) ->
     for i in [0 ... @glType.size]
-      @write i, (src.read i)
+      @write i, src.read(i)
 
   toGLSL: ->
     name = @glType.glslName
@@ -404,6 +403,7 @@ Property.addIndexFields2    BufferType, 16
 ### Basic types ###
 
 export class Float
+  @glType: webGL.types.float
   constructor: (@number) ->
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
@@ -418,38 +418,29 @@ export class Vec4 extends BufferType
 
 export class Mat2 extends BufferType
   @glType: webGL.types.float_mat2
-  @from: (args) ->
-    if args
-      array = @bufferCons args
-    else
-      array = @bufferCons @glType.size
-      array[0] = 1
-      array[3] = 1
+  @default: ->
+    array = super.default()
+    array[0] = 1
+    array[3] = 1
     new @ array
 
 export class Mat3 extends BufferType
   @glType: webGL.types.float_mat3
-  @from: (args) ->
-    if args
-      array = @bufferCons args
-    else
-      array = @bufferCons @glType.size
-      array[0] = 1
-      array[4] = 1
-      array[8] = 1
+  @default: ->
+    array = super.default()
+    array[0] = 1
+    array[4] = 1
+    array[8] = 1
     new @ array
 
 export class Mat4 extends BufferType
   @glType: webGL.types.float_mat4
-  @from: (args) ->
-    if args
-      array = @bufferCons args
-    else
-      array = @bufferCons @glType.size
-      array[0]  = 1
-      array[5]  = 1
-      array[10] = 1
-      array[15] = 1
+  @default: ->
+    array = super.default()
+    array[0]  = 1
+    array[5]  = 1
+    array[10] = 1
+    array[15] = 1
     new @ array
 
 
@@ -461,14 +452,6 @@ vec4 = (a) => Vec4.from a
 mat2 = (a) => Mat2.from a
 mat3 = (a) => Mat3.from a
 mat4 = (a) => Mat4.from a
-
-# vec2.type = Vec2
-# vec3.type = Vec3
-# vec4.type = Vec4
-# mat2.type = Mat2
-# mat3.type = Mat3
-# mat4.type = Mat4
-
 
 value = (a) ->
   switch a.constructor
