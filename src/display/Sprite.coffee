@@ -1247,6 +1247,7 @@ export class Mesh extends Lazy
   @getter 'geometry' , -> @_geometry
   @getter 'material' , -> @_material
   @getter 'shader'   , -> @_shader
+  @getter 'bindings' , -> @_bindings
 
   _bindVariables: ->
     for varName, varDef of @material.variable.input 
@@ -1262,7 +1263,7 @@ export class Mesh extends Lazy
         else if scopeName == 'object'
           @_shaderBuilder.uniforms[varName] = glslType
         else
-          throw "TODO"
+          throw "Unsupported scope #{scopeName}"
       else
         console.log "TODO: defaults"
 
@@ -1316,7 +1317,7 @@ export class GPUMesh extends Lazy
     super
       label: "GPU.#{mesh.label}"
     @mesh       = mesh
-    @progVarLoc = {}
+    @varLoc     = {}
     @buffer     = {}
     @_program   = null
     @logger.group "Initializing", =>
@@ -1335,68 +1336,66 @@ export class GPUMesh extends Lazy
 
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
-      @_initSpaceVarLocations ["point", "instance"], false
-      @_initSpaceVarLocations ["object"], true
+      for varName, spaceName of @mesh.bindings
+        @_initSpaceVarLocation spaceName, varName
 
-  _initSpaceVarLocations: (spaceNames, isUniform) ->
-    for spaceName in spaceNames
-      @logger.group "Binding #{spaceName} variables", =>
-        spaceLoc = {}
-        @progVarLoc[spaceName] = spaceLoc
-        space = @mesh.geometry[spaceName].data
-        for name of space
-          if isUniform
-            loc = @_program.getUniformLocation name
-          else 
-            loc = @_program.getAttribLocation "v_#{name}"
-          if loc == -1
-            @logger.info "Variable '" + name + "' not used in shader"
-          else
-            @logger.info "Variable '" + name + "' bound successfully"
-            spaceLoc[name] = loc
+  _initSpaceVarLocation: (spaceName, varName) ->
+      @logger.group "Binding '#{varName}' variable", =>
+        if spaceName == 'object'
+          loc = @_program.getUniformLocation varName
+        else 
+          loc = @_program.getAttribLocation "v_#{varName}"
+        if loc == -1
+          @logger.info "Variable '" + varName + "' not used in shader"
+        else
+          @logger.info "Variable '" + varName + "' bound successfully"
+          @varLoc[varName] = loc
 
   _initVAO: () ->
     @logger.group 'Initializing Vertex Array Object (VAO)', =>
       @_vao = @_ctx.createVertexArray()
-      @_initAttrs 'point'    , false
-      @_initAttrs 'instance' , true
+      @_initAttrs()
 
-  _initAttrs: (spaceName, instanced) ->
-    @logger.group "Initializing #{spaceName} variables", =>
-      space = @mesh.geometry[spaceName].data
-      @buffer[spaceName] = {}
-      withVAO @_ctx, @_vao, =>  
-        for name of space
-          @logger.info "Binding variable '#{name}'"
-          val = space[name]
-          loc = @_program.getAttribLocation "v_#{name}"
-          if loc == -1
-            @logger.info "Variable '" + name + "' not used in shader"
-          else withNewArrayBuffer @_ctx, (buffer) =>  
-            @buffer[spaceName][name] = buffer 
+  _initAttrs: () ->
+    withVAO @_ctx, @_vao, =>  
+      for varName, spaceName of @mesh.bindings
+        @__initAttr spaceName, varName
+      
+  _initAttr: (spaceName, varName) -> 
+    withVAO @_ctx, @_vao, =>  
+      @__initAttr spaceName, varName
 
-            maxChunkSize  = 4
-            normalize     = false
-            size          = webGLType(val.type).size
-            itemByteSize  = webGLType(val.type).item.byteSize
-            itemType      = webGLType(val.type).item.code
-            chunksNum     = Math.ceil (size/maxChunkSize)
-            chunkSize     = Math.min size, maxChunkSize
-            chunkByteSize = chunkSize * itemByteSize
-            stride        = chunksNum * chunkByteSize
+  __initAttr: (spaceName, varName) -> 
+    if spaceName != 'object'
+      @logger.group "Binding variable '#{spaceName}.#{varName}'", =>
+        space = @mesh.geometry[spaceName].data
+        val   = space[varName]
+        loc   = @varLoc[varName]
+        @buffer[spaceName] = {}
+        withNewArrayBuffer @_ctx, (buffer) =>  
+          @buffer[spaceName][varName] = buffer 
 
-            for chunkIx in [0 ... chunksNum]
-              offByteSize = chunkIx * chunkByteSize
-              chunkLoc    = loc + chunkIx
-              @_ctx.enableVertexAttribArray chunkLoc
-              @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
-                                        normalize, stride, offByteSize
-              if instanced
-                @_ctx.vertexAttribDivisor(chunkLoc, 1)
-            @logger.info "Variable '#{name}' bound succesfully using 
-                         #{chunksNum} locations"
+          maxChunkSize  = 4
+          normalize     = false
+          size          = webGLType(val.type).size
+          itemByteSize  = webGLType(val.type).item.byteSize
+          itemType      = webGLType(val.type).item.code
+          chunksNum     = Math.ceil (size/maxChunkSize)
+          chunkSize     = Math.min size, maxChunkSize
+          chunkByteSize = chunkSize * itemByteSize
+          stride        = chunksNum * chunkByteSize
+
+          for chunkIx in [0 ... chunksNum]
+            offByteSize = chunkIx * chunkByteSize
+            chunkLoc    = loc + chunkIx
+            @_ctx.enableVertexAttribArray chunkLoc
+            @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
+                                      normalize, stride, offByteSize
+            if spaceName == 'instance'
+              @_ctx.vertexAttribDivisor(chunkLoc, 1)
+          @logger.info "Variable '#{varName}' bound succesfully using 
+                      #{chunksNum} locations"
             
-              
               
         
   _initBuffers: () ->
@@ -1434,7 +1433,7 @@ export class GPUMesh extends Lazy
         else
           variable      = scope.data[varName]
           bufferJS      = variable.data.rawArray
-          dirtyRange    = variable._lazyManager.dirtyRange # FIXME
+          dirtyRange    = variable._lazyManager.dirtyRange # FIXME access to private variable
           srcOffset     = dirtyRange.min
           byteSize      = webGLType(variable.type).item.byteSize
           dstByteOffset = byteSize * srcOffset
@@ -1447,7 +1446,7 @@ export class GPUMesh extends Lazy
     @logger.group "Drawing", =>
       @_ctx.useProgram @_program.glProgram      
       withVAO @_ctx, @_vao, =>
-        @_ctx.uniformMatrix4fv(@progVarLoc.object.matrix, false, viewProjectionMatrix)
+        @_ctx.uniformMatrix4fv(@varLoc.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.size
         instanceCount = @mesh.geometry.instance.size
         if instanceCount > 0
@@ -1520,8 +1519,8 @@ export test = (ctx, viewProjectionMatrix) ->
       #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ]
       
     instance:
-      # color: [
-        # (vec4 [1,0,0,1]) ]
+      color: [
+        (vec4 [0,0,0,1]) ]
       transform: [mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]]
 
     object:
@@ -1585,9 +1584,6 @@ export test = (ctx, viewProjectionMatrix) ->
   # logger.group "FRAME 4", =>
   #   meshRegistry.update()
 
-  # console.log "!!!"
-  # console.log mesh._findAttrData 'position'
-  # console.log "----"
 
   m1.draw(viewProjectionMatrix)
   
