@@ -139,7 +139,7 @@ webGL =
   types: {}
 
 
-class WebGLType
+class GLType
   constructor: (@name, cfg) ->
     @glslName = cfg.glslName
     @code     = CTX[@name]
@@ -176,10 +176,9 @@ for name,cfg of typesCfg
   if cfg.item?
     cfg.item = webGL.types[cfg.item]
   glName = name.toUpperCase()
-  webGL.types[name] = new WebGLType glName, cfg
+  webGL.types[name] = new GLType glName, cfg
 
-export webGLType = TypeClass.define2 'WebGLType'
-TypeClass.implementStatic2 Number, webGLType, webGL.types.float
+
 
 
 
@@ -353,26 +352,28 @@ export class Observable
 
 
 ############
-### Type ###
+### BufferType ###
 ############
 
-# Type is a base-class for attribute types.
+# BufferType is a base-class for attribute types.
 
 ### Abstraction ###
 
-bufferCons = (tp, args...) -> new Buffer webGLType(tp).bufferType, args...
 
-export class Type
+export class BufferType
+  @bufferCons: (args...) -> new Buffer @glType.bufferType, args...
+  
   constructor: (@array) ->
 
-  @getter 'length'   , -> webGLType(@constructor).size
+  @getter 'length'   , -> @glType.size
   @getter 'buffer'   , -> @array.buffer
   @getter 'rawArray' , -> @array.rawArray
+  @getter 'glType'   , -> @constructor.glType
   
   # Smart constructor performing conversions if needed.
   @from: (args) ->
     cfg   = if args then args else @size
-    array = bufferCons @, cfg
+    array = @bufferCons cfg
     new @ array
 
   # View another buffer as desired type without copying.
@@ -386,18 +387,18 @@ export class Type
   writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
 
   set: (src) ->
-    for i in [0 ... webGLType(@constructor).size]
+    for i in [0 ... @glType.size]
       @write i, (src.read i)
 
   toGLSL: ->
-    name = webGLType(@).glslName
+    name = @glType.glslName
     args = @rawArray.join ','
     args = (toGLSL a for a in @rawArray)
     "#{name}(#{args.join(',')})"
     
-Property.swizzleFieldsXYZW2 Type
-Property.swizzleFieldsRGBA2 Type
-Property.addIndexFields2    Type, 16
+Property.swizzleFieldsXYZW2 BufferType
+Property.swizzleFieldsRGBA2 BufferType
+Property.addIndexFields2    BufferType, 16
 
 
 ### Basic types ###
@@ -406,50 +407,50 @@ export class Float
   constructor: (@number) ->
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
-export class Vec2 extends Type
-TypeClass.implementStatic2 Vec2, webGLType, webGL.types.float_vec2
+export class Vec2 extends BufferType
+  @glType: webGL.types.float_vec2
 
-export class Vec3 extends Type
-TypeClass.implementStatic2 Vec3, webGLType, webGL.types.float_vec3
+export class Vec3 extends BufferType
+  @glType: webGL.types.float_vec3
 
-export class Vec4 extends Type
-TypeClass.implementStatic2 Vec4, webGLType, webGL.types.float_vec4
+export class Vec4 extends BufferType
+  @glType: webGL.types.float_vec4
 
-export class Mat2 extends Type
+export class Mat2 extends BufferType
+  @glType: webGL.types.float_mat2
   @from: (args) ->
     if args
-      array = bufferCons @, args
+      array = @bufferCons args
     else
-      array = bufferCons @, webGLType(@).size
+      array = @bufferCons @glType.size
       array[0] = 1
       array[3] = 1
     new @ array
-TypeClass.implementStatic2 Mat2, webGLType, webGL.types.float_mat2
 
-export class Mat3 extends Type
+export class Mat3 extends BufferType
+  @glType: webGL.types.float_mat3
   @from: (args) ->
     if args
-      array = bufferCons @, args
+      array = @bufferCons args
     else
-      array = bufferCons @, webGLType(@).size
+      array = @bufferCons @glType.size
       array[0] = 1
       array[4] = 1
       array[8] = 1
     new @ array
-TypeClass.implementStatic2 Mat3, webGLType, webGL.types.float_mat3
 
-export class Mat4 extends Type
+export class Mat4 extends BufferType
+  @glType: webGL.types.float_mat4
   @from: (args) ->
     if args
-      array = bufferCons @, args
+      array = @bufferCons args
     else
-      array = bufferCons @, webGLType(@).size
+      array = @bufferCons @glType.size
       array[0]  = 1
       array[5]  = 1
       array[10] = 1
       array[15] = 1
     new @ array
-TypeClass.implementStatic2 Mat4, webGLType, webGL.types.float_mat4
 
 
 ### Smart constructors ###
@@ -461,20 +462,21 @@ mat2 = (a) => Mat2.from a
 mat3 = (a) => Mat3.from a
 mat4 = (a) => Mat4.from a
 
-vec2.type = Vec2
-vec3.type = Vec3
-vec4.type = Vec4
-mat2.type = Mat2
-mat3.type = Mat3
-mat4.type = Mat4
+# vec2.type = Vec2
+# vec3.type = Vec3
+# vec4.type = Vec4
+# mat2.type = Mat2
+# mat3.type = Mat3
+# mat4.type = Mat4
 
 
-toWebGLType = (a) ->
+value = (a) ->
   switch a.constructor
     when Number then new Float a
     else a
 
-toGLSL = (a) -> toWebGLType(a).toGLSL()
+toGLSL = (a) -> value(a).toGLSL()
+
 
 
 ################################################################################
@@ -712,7 +714,7 @@ class EventDispatcher
 
 # ### Initialization ###
 #
-# 1. Type hint initialization. In its shortest form, it takes only the type name
+# 1. BufferType hint initialization. In its shortest form, it takes only the type name
 #    and initializes to an empty buffer of the given type.
 #
 #        position: vec3
@@ -770,7 +772,7 @@ export class Attribute extends Lazy
     @_scopes  = new Set
     @_default = param('default',cfg)
     @_usage   = param('usage',cfg) || usage.dynamic
-    @_data    = new Observable (bufferCons @type, (@size * webGLType(@type).size))
+    @_data    = new Observable (@type.bufferCons (@size * @type.glType.size))
 
     @_initEventHandlers()
 
@@ -842,18 +844,18 @@ export class Attribute extends Lazy
     if oldSize != newSize
       @logger.info "Resizing to handle up to #{newSize} elements"
       @_size = newSize
-      @data.resize (@size * webGLType(@type).size)
+      @data.resize (@size * @type.glType.size)
       
 
   ### Indexing ###
 
-  read  : (ix)    -> @type.view @data, ix*webGLType(@type).size 
+  read  : (ix)    -> @type.view @data, ix*@type.glType.size 
   write : (ix, v) -> @read(ix).set v
 
   set: (data) ->
     if data.constructor == Array
-      typeSize = webGLType(@type).size
-      buffer   = bufferCons @type, (typeSize * data.length)
+      typeSize = @type.glType.size
+      buffer   = @type.bufferCons (typeSize * data.length)
       for i in [0 ... data.length]
         offset = i * typeSize
         buffer.set data[i].rawArray, offset
@@ -1199,7 +1201,7 @@ class Material extends Lazy
   #   @_shader
 
   # _write: (loc, sbloc, name, value) ->
-  #   glType   = webGLType value
+  #   glType   = webGLType_old value
   #   glslType = glType.glslName
   #   if sbloc[name] != glslType
   #     sbloc[name] = glslType
@@ -1276,7 +1278,7 @@ export class Mesh extends Lazy
 
   _bindVariables: ->
     for varName, varDef of @material.variable.input 
-      glType   = webGLType(varDef)
+      glType   = varDef.glType
       glslType = glType.glslName
       @logger.info "Binding variable '#{varName}'"
       scopeName = @_lookupAttrScope varName
@@ -1291,7 +1293,7 @@ export class Mesh extends Lazy
           throw "Unsupported scope #{scopeName}"
       else
         @_shaderBuilder.constants[varName] =
-          type  : webGLType(varDef).glslName
+          type  : varDef.glType.glslName
           value : varDef.toGLSL()
          
 
@@ -1405,9 +1407,9 @@ export class GPUMesh extends Lazy
 
             maxChunkSize  = 4
             normalize     = false
-            size          = webGLType(val.type).size
-            itemByteSize  = webGLType(val.type).item.byteSize
-            itemType      = webGLType(val.type).item.code
+            size          = val.type.glType.size
+            itemByteSize  = val.type.glType.item.byteSize
+            itemType      = val.type.glType.item.code
             chunksNum     = Math.ceil (size/maxChunkSize)
             chunkSize     = Math.min size, maxChunkSize
             chunkByteSize = chunkSize * itemByteSize
@@ -1464,7 +1466,7 @@ export class GPUMesh extends Lazy
           bufferJS      = variable.data.rawArray
           dirtyRange    = variable._lazyManager.dirtyRange # FIXME access to private variable
           srcOffset     = dirtyRange.min
-          byteSize      = webGLType(variable.type).item.byteSize
+          byteSize      = variable.type.glType.item.byteSize
           dstByteOffset = byteSize * srcOffset
           length        = dirtyRange.max - dirtyRange.min + 1
           @logger.info "Updating #{varName} variable (#{length} elements)"
@@ -1606,20 +1608,20 @@ export test = (ctx, viewProjectionMatrix) ->
   logger.group "FRAME 1", =>
     meshRegistry.update()
   
-  # logger.group "FRAME 2", =>
-  #   geo.point.data.position.read(1)[0] = 7
-  #   geo.point.data.position.read(1)[0] = 7
-  #   geo.point.data.position.read(1)[1] = 7
-  #   meshRegistry.update()
+  logger.group "FRAME 2", =>
+    geo.point.data.position.read(1)[0] = 7
+    geo.point.data.position.read(1)[0] = 7
+    geo.point.data.position.read(1)[1] = 7
+    meshRegistry.update()
 
-  # logger.group "FRAME 3", =>
-  #   geo.point.data.position.read(1)[0] = 8
-  #   geo.point.data.uv.read(1)[0] = 8
-  #   # geo.instance.data.color.read(0)[0] = 0.7
-  #   meshRegistry.update()
+  logger.group "FRAME 3", =>
+    geo.point.data.position.read(1)[0] = 8
+    geo.point.data.uv.read(1)[0] = 8
+    # geo.instance.data.color.read(0)[0] = 0.7
+    meshRegistry.update()
 
-  # logger.group "FRAME 4", =>
-  #   meshRegistry.update()
+  logger.group "FRAME 4", =>
+    meshRegistry.update()
 
 
   m1.draw(viewProjectionMatrix)
