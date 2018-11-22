@@ -13,123 +13,13 @@ import * as Symbol from 'basegl/display/Symbol'
 import * as Sprite from 'basegl/display/Sprite'
 
 
-Float = 
-  glType: (gl) => gl.FLOAT
-
-
-class WebGLRepr
-  constructor: (@size, @type) ->
-
-mat4 =
-  webGLRepr: new WebGLRepr 16, Float
-  
-vec3 =
-  webGLRepr: new WebGLRepr 3, Float
-
-vec2 =
-  webGLRepr: new WebGLRepr 2, Float
-
-class Buffer
-  constructor: (@data) ->
-
-  @getter 'size', =>
-    @data.length
-
-
-scene = basegl.scene
-  domElement: 'scene'
-
-myShape = basegl.expr ->
-  base    = circle('myVar')
-  base.fill(Color.rgb [0,0,0,0.7]).move(200,200)
-
-mySymbol = basegl.symbol myShape
-
-# mySymbol1 = scene.add mySymbol
-
-console.log myShape
-
-class Attribute extends Composable
-  cons: (cfg) ->
-    @instanced = false
-    @value     = null
-    @initData  = null
-    @configure cfg
-
-
-attribute = (args...) -> new Attribute args...
 
 main = () ->
 
-  # Get A WebGL context
   canvas = document.getElementById("canvas")
   gl = canvas.getContext("webgl2")
   if (!gl) 
     return
-
-    
-
-  # Use our boilerplate utils to compile the shaders and link into a program
-  program = utils.createProgramFromSources(gl,
-      [vertexShaderSource, fragmentShaderSource])
-
-  # look up where the vertex data needs to go.
-  # locs.attribute.position = gl.getAttribLocation(program.glProgram, "position")
-  # locs.attribute.color = gl.getAttribLocation(program.glProgram, "color")
-
-  # look up uniform locations
-  # locs.uniform.matrix = gl.getUniformLocation(program.glProgram, "matrix")
-
-  d = 100
-  positionData = [
-    -d ,  d , 0,
-    -d , -d , 0,
-     d ,  d , 0,
-     d , -d , 0]
-
-  uvData = [
-    0, 1,
-    0, 0,
-    1, 1,
-    1, 0]
-
-  variables =
-    attribute:
-      position  : attribute {value: vec3, initData: positionData}
-      uv        : attribute {value: vec2, initData: uvData}
-      color     : attribute {value: vec3, instanced: true}
-      transform : attribute {value: mat4, instanced: true}
-    uniform:
-      matrix   : null
-
-
-
-  # variables.attribute.position.usage = BufferUsage.STATIC_DRAW
-
-
-  # variables.attribute.uv.usage = BufferUsage.STATIC_DRAW
-
-
-
-  # sb1 = new Sprite.SpriteBuffer 'Nodes', gl, program,variables
-
-  # s1 = sb1.create()
-  # # s1.position.x = 20
-  # s1.scale.xy = [100,100]
-
-  # s2 = sb1.create()
-
-  # s2.variables.color.x = 1
-
-  # console.log sb1
-  # # vao = gl.createVertexArray()
-
-  # # withVAO gl, vao, ->
-  # # gl.bindVertexArray(vao)
-
-
-
-    
 
   radToDeg = (r) ->
     return r * 180 / Math.PI
@@ -139,54 +29,29 @@ main = () ->
     return d * Math.PI / 180
   
 
-  # First let's make some variables
-  # to hold the translation,
   fieldOfViewRadians = degToRad(60)
   cameraAngleRadians = degToRad(0);
 
-
-
-
-
-  # Draw the scene.
   drawScene = () ->
     radius = 200;
 
     utils.resizeCanvasToDisplaySize(gl.canvas);
 
-    # Tell WebGL how to convert from clip space to pixels
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-    # Clear the canvas
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    # turn on depth testing
-    # gl.enable(gl.DEPTH_TEST);
-
-    # tell webgl to cull faces
-    # gl.enable(gl.CULL_FACE);
-
-    # Tell it to use our program (pair of shaders)
-    gl.useProgram(program.glProgram);
-
-    # Bind the attribute/buffer set we want.
-    # gl.bindVertexArray(vao);
-
-    # Compute the matrix
     aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     zNear = 1;
     zFar = 2000;
     projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
 
-    # Compute the position of the first F
     fPosition = [radius, 0, 0];
 
-    # Use matrix math to compute a position on the circle.
     cameraMatrix = m4.yRotation(cameraAngleRadians);
     cameraMatrix = m4.translate(cameraMatrix, 0, 50, radius * 1.5);
 
-    # Get the camera's postion from the matrix we computed
     cameraPosition = [
       cameraMatrix[12],
       cameraMatrix[13],
@@ -195,19 +60,13 @@ main = () ->
 
     up = [0, 1, 0];
 
-    # Compute the camera's matrix using look at.
     cameraMatrix = m4.lookAt(cameraPosition, fPosition, up);
 
-    # Make a view matrix from the camera matrix.
     viewMatrix = m4.inverse(cameraMatrix);
 
-    # create a viewProjection matrix. This will both apply perspective
-    # AND move the world so that the camera is effectively the origin
     viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
-    # sb1.draw viewProjectionMatrix
-
-    Sprite.test(gl, program, viewProjectionMatrix)
+    Sprite.test(gl, viewProjectionMatrix)
     
 
   
@@ -218,8 +77,6 @@ main = () ->
     cameraAngleRadians = degToRad(ui.value);
     drawScene();
 
-  # Setup a ui.
-  webglLessonsUI.setupSlider("#cameraAngle", {value: radToDeg(cameraAngleRadians), slide: updateCameraAngle, min: -360, max: 360});
 
   
 

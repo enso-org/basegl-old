@@ -949,8 +949,10 @@ export class Geometry extends Lazy
   _initScopes: (cfg) -> 
     scopes = 
       point    : AttributeScope
+      # polygon  : TODO (triangles)
       instance : AttributeScope
-      global   : UniformScope
+      object   : UniformScope
+      # global   : TODO (shared between objects)
 
     for name,cons of scopes
       do (name,cons) =>
@@ -969,60 +971,6 @@ export class Geometry extends Lazy
 
 
 
-
-############
-### Mesh ###
-############
-
-export class Mesh extends Lazy
-  constructor: (geometry, material) ->
-    super
-      label: "Mesh." + geometry.label
-    @geometry = geometry
-    @material = material
-    @geometry.onDirty.addEventListener =>
-      @_lazyManager.handleChanged()
-
-  _unsetDirtyChildren: ->
-    @geometry.unsetDirty()
-
-
-export class Precision
-  high = 'high'
-  constructor: ->
-    @float                = webGL.glsl.precision.medium
-    @int                  = webGL.glsl.precision.medium
-    @sampler2D            = webGL.glsl.precision.low 
-    @samplerCube          = webGL.glsl.precision.low 
-    @sampler3D            = webGL.glsl.precision.low   
-    @samplerCubeShadow    = webGL.glsl.precision.low         
-    @sampler2DShadow      = webGL.glsl.precision.low       
-    @sampler2DArray       = webGL.glsl.precision.low      
-    @sampler2DArrayShadow = webGL.glsl.precision.low            
-    @isampler2D           = webGL.glsl.precision.low  
-    @isampler3D           = webGL.glsl.precision.low  
-    @isamplerCube         = webGL.glsl.precision.low    
-    @isampler2DArray      = webGL.glsl.precision.low       
-    @usampler2D           = webGL.glsl.precision.low  
-    @usampler3D           = webGL.glsl.precision.low  
-    @usamplerCube         = webGL.glsl.precision.low    
-    @usampler2DArray      = webGL.glsl.precision.low       
-  
-
-
-
-
-
-vertexShaderSource = '''
-void main() {
-  gl_Position = matrix * v_position;
-}
-'''
-
-fragmentShaderSource = '''
-void main() {
-  out_color = color;
-}'''
 
 
 glslMainPattern = /void +main *\( *\) *{/gm
@@ -1146,9 +1094,10 @@ class ShaderBuilder
     if @uniforms
       addSection 'Uniforms'
       for name,cfg of @uniforms
-        v = @readVar name, cfg        
-        vertexCode.addUniform   v.prec, v.type, v.name
-        fragmentCode.addUniform v.prec, v.type, v.name
+        v = @readVar name, cfg       
+        prec = 'mediump' # FIXME! We cannot get mismatch of prec between vertex and fragment shader!
+        vertexCode.addUniform   prec, v.type, v.name
+        fragmentCode.addUniform prec, v.type, v.name
 
     if @outputs
       fragmentCode.addSection 'Outputs'
@@ -1198,59 +1147,64 @@ class ShaderBuilder
 class Material extends Lazy
   constructor: (cfg) -> 
     super cfg 
-    @_lazyManager.isDirty = true
+    @_variable = 
+      input  : cfg.input  || {}
+      output : cfg.output || {}
 
-    @_shaderBuilder = new ShaderBuilder
-    @_shader        = null
-    @renaming       =
-      point:    (s) -> s
-      instance: (s) -> "instance_#{s}"
-      global:   (s) -> "global_#{s}"
-      output:   (s) -> "out_#{s}"
-    @_defaultValues =
-      point: {}
-      instance: {}
-    @_values =
-      global: {}
-      output: {}
+  @getter 'variable', -> @_variable
 
-  @getter 'shader', ->
-    @update()
-    @_shader
+    # @_lazyManager.isDirty = true
 
-  _write: (loc, sbloc, name, value) ->
-    glType   = webGLType value
-    glslType = glType.glslName
-    if sbloc[name] != glslType
-      sbloc[name] = glslType
-      console.log "!!!", sbloc
-      @_lazyManager.handleChanged()
-    loc[name] = value
+  #   @_shaderBuilder = new ShaderBuilder
+  #   @_shader        = null
+  #   @renaming       =
+  #     point:    (s) -> "point_#{s}"
+  #     instance: (s) -> "instance_#{s}"
+  #     object:   (s) -> "object_#{s}"
+  #     output:   (s) -> "out_#{s}"
+  #   @_defaultValues =
+  #     point: {}
+  #     instance: {}
+  #   @_values =
+  #     object: {}
+  #     output: {}
 
-  writePointVariable: (name, value) -> 
-    n = @renaming.point name
-    @_write @_defaultValues.point, @_shaderBuilder.attributes, n, value
+  # @getter 'shader', ->
+  #   @update()
+  #   @_shader
 
-  writeInstanceVariable: (name, value) -> 
-    n = @renaming.instance name
-    @_write @_defaultValues.instance, @_shaderBuilder.attributes, n, value
+  # _write: (loc, sbloc, name, value) ->
+  #   glType   = webGLType value
+  #   glslType = glType.glslName
+  #   if sbloc[name] != glslType
+  #     sbloc[name] = glslType
+  #     @_lazyManager.handleChanged()
+  #   loc[name] = value
 
-  writeGlobalVariable: (name, value) -> 
-    n = @renaming.global name
-    @_write @_values.global, @_shaderBuilder.uniforms, n, value
+  # writePointVariable: (name, value) -> 
+  #   n = @renaming.point name
+  #   @_write @_defaultValues.point, @_shaderBuilder.attributes, n, value
 
-  writeOutputVariable: (name, value) -> 
-    n = @renaming.output name
-    @_write @_values.output, @_shaderBuilder.outputs, n, value
+  # writeInstanceVariable: (name, value) -> 
+  #   n = @renaming.instance name
+  #   @_write @_defaultValues.instance, @_shaderBuilder.attributes, n, value
+
+  # writeObjectVariable: (name, value) -> 
+  #   n = @renaming.object name
+  #   @_write @_values.object, @_shaderBuilder.uniforms, n, value
+
+  # writeOutputVariable: (name, value) -> 
+  #   n = @renaming.output name
+  #   @_write @_values.output, @_shaderBuilder.outputs, n, value
   
 
-  update: -> 
-    if @isDirty
-      @logger.info 'Generating shader'
-      vcode = @vertexCode()
-      fcode = @fragmentCode()
-      @_shader = @_shaderBuilder.compute vcode, fcode
-      @unsetDirty()
+  # update: -> 
+  #   if @isDirty
+  #     @logger.info 'Generating shader'
+  #     vcode = @vertexCode()
+  #     fcode = @fragmentCode()
+  #     @_shader = @_shaderBuilder.compute vcode, fcode
+  #     @unsetDirty()
 
   _unsetDirtyChildren: ->
 
@@ -1268,55 +1222,121 @@ export class RawMaterial extends Material
   fragmentCode: -> @fragment
 
 
-mat1 = new RawMaterial
-  vertex   : vertexShaderSource
-  fragment : fragmentShaderSource
-
-console.log mat1.shader
-mat1.writePointVariable 'position', (vec4 [0,0,0,0])
-mat1.writePointVariable 'color', (vec4 [0,0,0,1])
-mat1.writePointVariable 'uv', (vec2 [0,0])
-mat1.writeGlobalVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
-console.log mat1.shader.vertex
-console.log mat1.shader.fragment
-
-
-# sb1 = new ShaderBuilder mat1, 
-#   attributes: 
-#     foo: 'vec3'
-#   outputs:
-#     foo: 'vec3'
-
-# {vertex, fragment} = sb1.compute()
-
-# console.warn vertex
-# console.warn fragment
 
 
 
+
+############
+### Mesh ###
+############
+
+export class Mesh extends Lazy
+  constructor: (geometry, material) ->
+    super
+      label: "Mesh." + geometry.label
+    @_geometry      = geometry
+    @_material      = material
+    @_shader        = null
+    @_bindings      = {}
+    @_shaderBuilder = new ShaderBuilder 
+    @geometry.onDirty.addEventListener =>
+      @_lazyManager.handleChanged()
+    @_bindVariables()
+    @_generateShader()
+
+  @getter 'geometry' , -> @_geometry
+  @getter 'material' , -> @_material
+  @getter 'shader'   , -> @_shader
+
+  _bindVariables: ->
+    for varName, varDef of @material.variable.input 
+      glType   = webGLType(varDef)
+      glslType = glType.glslName
+      @logger.info "Binding variable '#{varName}'"
+      scopeName = @_lookupAttrScope varName
+      if scopeName
+        @logger.info "Using variable '#{varName}' from #{scopeName} scope"
+        @_bindings[varName] = scopeName
+        if scopeName == 'point' || scopeName == 'instance'
+          @_shaderBuilder.attributes[varName] = glslType
+        else if scopeName == 'object'
+          @_shaderBuilder.uniforms[varName] = glslType
+        else
+          throw "TODO"
+      else
+        console.log "TODO: defaults"
+
+  _generateShader: ->
+    @logger.info 'Generating shader'
+    vcode  = @material.vertexCode()
+    fcode  = @material.fragmentCode()
+    @_shader = @_shaderBuilder.compute vcode, fcode
+    console.log @_shader.vertex
+    console.log @_shader.fragment
+
+  _lookupAttrScope: (name) ->
+    for scopeName of @geometry.scope
+      if @geometry.scope[scopeName].data[name]?
+        return scopeName
+    return null
+
+  _unsetDirtyChildren: ->
+    @geometry.unsetDirty()
+
+
+export class Precision
+  high = 'high'
+  constructor: ->
+    @float                = webGL.glsl.precision.medium
+    @int                  = webGL.glsl.precision.medium
+    @sampler2D            = webGL.glsl.precision.low 
+    @samplerCube          = webGL.glsl.precision.low 
+    @sampler3D            = webGL.glsl.precision.low   
+    @samplerCubeShadow    = webGL.glsl.precision.low         
+    @sampler2DShadow      = webGL.glsl.precision.low       
+    @sampler2DArray       = webGL.glsl.precision.low      
+    @sampler2DArrayShadow = webGL.glsl.precision.low            
+    @isampler2D           = webGL.glsl.precision.low  
+    @isampler3D           = webGL.glsl.precision.low  
+    @isamplerCube         = webGL.glsl.precision.low    
+    @isampler2DArray      = webGL.glsl.precision.low       
+    @usampler2D           = webGL.glsl.precision.low  
+    @usampler3D           = webGL.glsl.precision.low  
+    @usamplerCube         = webGL.glsl.precision.low    
+    @usampler2DArray      = webGL.glsl.precision.low       
+  
+
+  
 ###############
 ### GPUMesh ###
 ###############
 
 export class GPUMesh extends Lazy
-  constructor: (@_ctx, mesh, @_program) ->
+  constructor: (@_ctx, mesh) ->
     super
       label: "GPU.#{mesh.label}"
     @mesh       = mesh
     @progVarLoc = {}
     @buffer     = {}
+    @_program   = null
     @logger.group "Initializing", =>
+      @_updateProgram()
       @_initVarLocations()
       @_initVAO()
       @_initBuffers()
       mesh.onDirty.addEventListener =>
         @_lazyManager.handleChanged()
 
+  _updateProgram: ->
+    @logger.group "Compiling shader program", =>
+      shader = @mesh.shader
+      @_program = utils.createProgramFromSources @_ctx, shader.vertex, shader.fragment
+    
+
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
       @_initSpaceVarLocations ["point", "instance"], false
-      @_initSpaceVarLocations ["global"], true
+      @_initSpaceVarLocations ["object"], true
 
   _initSpaceVarLocations: (spaceNames, isUniform) ->
     for spaceName in spaceNames
@@ -1328,7 +1348,7 @@ export class GPUMesh extends Lazy
           if isUniform
             loc = @_program.getUniformLocation name
           else 
-            loc = @_program.getAttribLocation name
+            loc = @_program.getAttribLocation "v_#{name}"
           if loc == -1
             @logger.info "Variable '" + name + "' not used in shader"
           else
@@ -1349,7 +1369,7 @@ export class GPUMesh extends Lazy
         for name of space
           @logger.info "Binding variable '#{name}'"
           val = space[name]
-          loc = @_program.getAttribLocation name
+          loc = @_program.getAttribLocation "v_#{name}"
           if loc == -1
             @logger.info "Variable '" + name + "' not used in shader"
           else withNewArrayBuffer @_ctx, (buffer) =>  
@@ -1425,8 +1445,9 @@ export class GPUMesh extends Lazy
 
   draw: (viewProjectionMatrix) ->
     @logger.group "Drawing", =>
+      @_ctx.useProgram @_program.glProgram      
       withVAO @_ctx, @_vao, =>
-        @_ctx.uniformMatrix4fv(@progVarLoc.global.matrix, false, viewProjectionMatrix)
+        @_ctx.uniformMatrix4fv(@progVarLoc.object.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.size
         instanceCount = @mesh.geometry.instance.size
         if instanceCount > 0
@@ -1468,7 +1489,7 @@ export class GPUMeshRegistry extends Lazy
 
 
 
-export test = (ctx, program, viewProjectionMatrix) ->
+export test = (ctx, viewProjectionMatrix) ->
 
 
   # program = utils.createProgramFromSources(ctx,
@@ -1503,33 +1524,70 @@ export test = (ctx, program, viewProjectionMatrix) ->
         # (vec4 [1,0,0,1]) ]
       transform: [mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]]
 
-    global:
+    object:
       matrix: mat4
 
 
   meshRegistry = new GPUMeshRegistry
 
-  mesh = new Mesh geo
-  m1 = new GPUMesh ctx, mesh, program
+
+  vertexShaderSource = '''
+  void main() {
+    gl_Position = matrix * v_position;
+    gl_Position.x += v_transform[3][3];
+  }
+  '''
+
+  fragmentShaderSource = '''
+  out vec4 output_color;  
+  void main() {
+    output_color = vec4(1,0,0,1);
+  }'''
+
+  mat1 = new RawMaterial
+    vertex   : vertexShaderSource
+    fragment : fragmentShaderSource
+    input:
+      position  : vec4 [0,0,0,0]
+      transform : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+      matrix    : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  mesh = new Mesh geo, mat1
+
+  m1 = new GPUMesh ctx, mesh
   meshRegistry.add m1
+
+
+
+  # console.log mat1.shader
+  # mat1.writePointVariable 'position', (vec4 [0,0,0,0])
+  # mat1.writePointVariable 'color', (vec4 [0,0,0,1])
+  # mat1.writePointVariable 'uv', (vec2 [0,0])
+  # mat1.writeObjectVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+  # mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
+  # console.log mat1.shader.vertex
+  # console.log mat1.shader.fragment
 
   logger.group "FRAME 1", =>
     meshRegistry.update()
   
-  logger.group "FRAME 2", =>
-    geo.point.data.position.read(1)[0] = 7
-    geo.point.data.position.read(1)[0] = 7
-    geo.point.data.position.read(1)[1] = 7
-    meshRegistry.update()
+  # logger.group "FRAME 2", =>
+  #   geo.point.data.position.read(1)[0] = 7
+  #   geo.point.data.position.read(1)[0] = 7
+  #   geo.point.data.position.read(1)[1] = 7
+  #   meshRegistry.update()
 
-  logger.group "FRAME 3", =>
-    geo.point.data.position.read(1)[0] = 8
-    geo.point.data.uv.read(1)[0] = 8
-    # geo.instance.data.color.read(0)[0] = 0.7
-    meshRegistry.update()
+  # logger.group "FRAME 3", =>
+  #   geo.point.data.position.read(1)[0] = 8
+  #   geo.point.data.uv.read(1)[0] = 8
+  #   # geo.instance.data.color.read(0)[0] = 0.7
+  #   meshRegistry.update()
 
-  logger.group "FRAME 4", =>
-    meshRegistry.update()
+  # logger.group "FRAME 4", =>
+  #   meshRegistry.update()
+
+  # console.log "!!!"
+  # console.log mesh._findAttrData 'position'
+  # console.log "----"
 
   m1.draw(viewProjectionMatrix)
   
