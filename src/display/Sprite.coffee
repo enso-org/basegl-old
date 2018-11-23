@@ -159,7 +159,13 @@ class GLType
       @item       = null
       @size       = 1
       @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
-    
+
+  newBuffer: (elems=1) ->
+    new Buffer @bufferType, (elems * @size)
+
+  newBufferfromArray: (array) ->
+    new Buffer @bufferType, array
+
 
 ### Batch preparation ###
 
@@ -363,22 +369,24 @@ export class Observable
 ### Abstraction ###
 
 export class BufferType
-  @bufferCons: (args...) -> new Buffer @glType.bufferType, args...
-  
   constructor: (@array) ->
-
   @getter 'length'   , -> @glType.size
   @getter 'buffer'   , -> @array.buffer
   @getter 'rawArray' , -> @array.rawArray
   @getter 'glType'   , -> @constructor.glType
   
-  # Smart constructor performing conversions if needed.
   @from: (args) ->
-    if args
-      new @ (@bufferCons args)
-    else @default()
+    len = args.length
+    if len == 0
+      @default() 
+    else if len == @glType.size
+      new @ (@glType.newBufferfromArray args)
+    else
+      buffer = @default()
+      buffer.array.set args 
+      buffer
 
-  @default: -> new @ (@bufferCons @size)
+  @default: -> new @ @glType.newBuffer()
 
   # View another buffer as desired type without copying.
   @view: (base, offset=0) ->
@@ -451,12 +459,12 @@ export class Mat4 extends BufferType
 
 ### Smart constructors ###
 
-vec2 = (a) => Vec2.from a
-vec3 = (a) => Vec3.from a
-vec4 = (a) => Vec4.from a
-mat2 = (a) => Mat2.from a
-mat3 = (a) => Mat3.from a
-mat4 = (a) => Mat4.from a
+vec2 = (args...) => Vec2.from args
+vec3 = (args...) => Vec3.from args
+vec4 = (args...) => Vec4.from args
+mat2 = (args...) => Mat2.from args
+mat3 = (args...) => Mat3.from args
+mat4 = (args...) => Mat4.from args
 
 value = (a) ->
   switch a.constructor
@@ -730,7 +738,7 @@ export class Attribute extends Lazy
     @_default = param('default',cfg) || null
     @_usage   = param('usage',cfg)   || usage.dynamic
     @_scopes  = new Set
-    @_data    = new Observable (@type.bufferCons (@size * @type.glType.size))
+    @_data    = new Observable (@type.glType.newBuffer @size)
 
     @_initEventHandlers()
     Object.freeze @
@@ -812,7 +820,7 @@ export class Attribute extends Lazy
   set: (data) ->
     if data.constructor == Array
       typeSize = @type.glType.size
-      buffer   = @type.bufferCons (typeSize * data.length)
+      buffer   = @type.glType.newBuffer data.length
       for i in [0 ... data.length]
         offset = i * typeSize
         buffer.set data[i].rawArray, offset
@@ -1543,35 +1551,35 @@ export test = (ctx, viewProjectionMatrix) ->
       position: 
         usage : usage.static
         data  : [
-          (vec3 [-100,  100, 0]),
-          (vec3 [-100, -100, 0]),
-          (vec3 [ 100,  100, 0]),
-          (vec3 [ 100, -100, 0])]
+          (vec3 -100,  100, 0),
+          (vec3 -100, -100, 0),
+          (vec3  100,  100, 0),
+          (vec3  100, -100, 0)]
       uv: [
         # usage : usage.static
         # data  : [
-          (vec2 [0,1]),
-          (vec2 [0,0]),
-          (vec2 [1,1]),
-          (vec2 [1,0])] 
+          (vec2 0,1),
+          (vec2 0,0),
+          (vec2 1,1),
+          (vec2 1,0)] 
 
       # color: [
-      #   (vec4 [1,0,0,1]),
-      #   (vec4 [0,1,0,1]),
-      #   (vec4 [0,0,1,1]),
-      #   (vec4 [1,1,1,1])
+      #   (vec4 1,0,0,1),
+      #   (vec4 0,1,0,1),
+      #   (vec4 0,0,1,1),
+      #   (vec4 1,1,1,1)
       # ]
       
       # transform: [
-      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100]) ,
-      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ,
-      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ,
-      #   (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]) ]
+      #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100) ,
+      #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ,
+      #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ,
+      #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ]
       
     instance:
       color: [
-        (vec4 [1,0,0,1]) ]
-      transform: [mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]]
+        (vec4 1,0,0,1) ]
+      transform: [mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]
 
     object:
       matrix: mat4
@@ -1597,10 +1605,10 @@ export test = (ctx, viewProjectionMatrix) ->
     vertex   : vertexShaderSource
     fragment : fragmentShaderSource
     input:
-      position  : vec4 [0,0,0,0]
-      transform : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-      matrix    : mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-      color     : vec4 [0,1,0,1]
+      position  : vec4()
+      transform : mat4()
+      matrix    : mat4()
+      color     : vec4 0,1,0,1
   mesh = new Mesh geo, mat1
 
   m1 = new GPUMesh ctx, bufferRegistry, mesh
