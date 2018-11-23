@@ -533,48 +533,72 @@ class Pool
 
 
 #######################
-### BoolLazyManager ###
+### EventDispatcher ###
 #######################
 
-class BoolLazyManager
+class EventDispatcher
+  constructor         :         -> @_listeners = new Set
+  addEventListener    : (f)     -> @_listeners.add    f
+  removeEventListener : (f)     -> @_listeners.delete f
+  dispatch            : (xs...) -> @_listeners.forEach (f) => f xs...
 
-  ### Initialization ###
+
+
+###################
+### LazyManager ###
+###################
+
+class LazyManager
   constructor: () ->
-    @reset()
+    @_onSet   = new EventDispatcher 
+    @_onUnset = new EventDispatcher 
+    @_isDirty = false
+  @getter 'onSet'   , -> @_onSet
+  @getter 'onUnset' , -> @_onUnset
+  @getter 'isDirty' , -> @_isDirty
 
-  reset: -> @isDirty = false
-
-  ### Handlers ###
-  handleChanged: () ->
+  set: ->
     if not @isDirty
-      @isDirty = true
-      @onDirty()
+      @_isDirty = true
+      @onSet.dispatch()
 
-  onDirty: ->
+  unset: ->
+    if @isDirty
+      @_isDirty = false
+      @onUnset.dispatch()
 
 
 
 #######################
-### EnumLazyManager ###
+### ListLazyManager ###
 #######################
 
-class EnumLazyManager
+class ListLazyManager extends LazyManager
 
-  ### Initialization ###
-  constructor: () -> 
-    @reset()
-  @getter 'isDirty', -> @elems.length != 0
-  
-  reset: -> @elems = []
+  constructor: ->
+    super() 
+    @_elems = []
+  @getter 'elems', -> @_elems
 
-  ### Handlers ###
-  handleChanged: (elem) ->
-    wasDirty = @isDirty
-    @elems.push elem
-    if not wasDirty
-      @onDirty()
+  set: (elem) ->
+    @_elems.push elem
+    super.set()
 
-  onDirty: ->
+  unset: ->
+    @_elems = []
+    super.unset()
+
+
+
+###############################
+### HierarchicalLazyManager ###
+###############################
+
+class HierarchicalLazyManager extends ListLazyManager
+  unset: ->
+    for elem in @elems
+      elem.dirty.unset()
+    super.unset()
 
 
 
@@ -582,62 +606,46 @@ class EnumLazyManager
 ### RangedLazyManager ###
 #########################
 
-class RangedLazyManager
-
-  ### Initialization ###
-
+class RangedLazyManager extends LazyManager
   constructor: ->
-    @reset()
-
-  reset: ->
-    @isDirty = false
-    @dirtyRange = 
+    super()
+    @_range = 
       min: null
       max: null
+  @getter 'range', -> @_range
 
-
-  ### Handlers ###
-
-  handleChanged: (ix) ->
+  set: (ix) ->
     if @isDirty
-      if      ix > @dirtyRange.max then @dirtyRange.max = ix
-      else if ix < @dirtyRange.min then @dirtyRange.min = ix
+      if      ix > @range.max then @range.max = ix
+      else if ix < @range.min then @range.min = ix
     else
-      @isDirty        = true
-      @dirtyRange.min = ix
-      @dirtyRange.max = ix
-      @onDirty()
+      @_range.min = ix
+      @_range.max = ix
+      super.set()
 
-  handleChangedRange: (offset, length) ->
+  setRange: (offset, length) ->
     min = offset
     max = min + length - 1
     if @isDirty
-      if max > @dirtyRange.max then @dirtyRange.max = max
-      if min < @dirtyRange.min then @dirtyRange.min = min
+      if max > @range.max then @range.max = max
+      if min < @range.min then @range.min = min
     else
-      @isDirty        = true
-      @dirtyRange.min = min
-      @dirtyRange.max = max
-      @onDirty()
+      @_range.min = min
+      @_range.max = max
+      super.set()
 
-  handleResized: (oldSize, newSize) ->
-
-
-  ### Events ###
-  
-  onDirty: ->
 
   
-
 ##############
 ### Logged ###
 ##############
 
 export class Logged
   constructor: (cfg={}) ->
-    @_label = param('label', cfg) || @constructor.name
-    @logger = logger.scoped @_label
-  @getter 'label', -> @_label
+    @_label  = param('label', cfg) || @constructor.name
+    @_logger = logger.scoped @_label
+  @getter 'label'  , -> @_label
+  @getter 'logger' , -> @_logger
 
 
 
@@ -646,52 +654,15 @@ export class Logged
 ############
 
 export class Lazy extends Logged
-
   constructor: (cfg={}) ->
     super cfg
-    @onDirty      = new EventDispatcher    
-    @_lazyManager = param('lazyManager',cfg) || new BoolLazyManager 
-    @_lazyManager.onDirty = => @setDirty(true)
+    @_dirty = param('lazyManager',cfg) || new LazyManager 
+    @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
+    @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
+  @getter 'dirty', -> @_dirty
     
-  @getter 'isDirty' , -> @_lazyManager.isDirty  
-
-  setDirty: (force = false) ->
-    if force || (not @isDirty)
-      @logger.info "Dirty flag set"
-      @onDirty.dispatch()
-
-  unsetDirty: ->
-    if @isDirty
-      @logger.info "Dirty flag unset"
-      elems = @_lazyManager.elems
-      @_lazyManager.reset()    
-      @_unsetDirtyChildren(elems)
-
-  _unsetDirtyChildren: (elems) ->
-    for elem in elems
-      elem.unsetDirty()
-
-
-
-#######################
-### EventDispatcher ###
-#######################
-
-class EventDispatcher
-  constructor: ->
-    @_listeners = new Set
-
-  addEventListener: (f) ->
-    @_listeners.add f
-
-  removeEventListener: (f) ->
-    @_listeners.delete f
-
-  dispatch: (args...) ->
-    @_listeners.forEach (f) => f args...
 
   
-
 #################
 ### Attribute ###
 #################
@@ -756,13 +727,13 @@ export class Attribute extends Lazy
       lazyManager : param('lazyManager',cfg) || new RangedLazyManager 
     
     @logger.info "Allocating space for #{@_size} elements"
-
+    @_default = param('default',cfg) || null
+    @_usage   = param('usage',cfg)   || usage.dynamic
     @_scopes  = new Set
-    @_default = param('default',cfg)
-    @_usage   = param('usage',cfg) || usage.dynamic
     @_data    = new Observable (@type.bufferCons (@size * @type.glType.size))
 
     @_initEventHandlers()
+    Object.freeze @
 
   @getter 'type'    , -> @_type
   @getter 'size'    , -> @_size
@@ -780,11 +751,9 @@ export class Attribute extends Lazy
   ### Initialization ###
 
   _initEventHandlers: ->
-    @_data.onChanged      = (args...) => @_lazyManager.handleChanged      args...
-    @_data.onChangedRange = (args...) => @_lazyManager.handleChangedRange args...
-    @_data.onResized      = (args...) => @_lazyManager.handleResized      args...
-
-  _unsetDirtyChildren: -> # FIXME
+    @data.onChanged      = (args...) => @dirty.set      args...
+    @data.onChangedRange = (args...) => @dirty.setRange args...
+    # @_data.onResized      = (args...) => @dirty.setResized      args...
 
 
   ### Smart Constructors ###
@@ -804,7 +773,7 @@ export class Attribute extends Lazy
       size = a.length
       attr = new Attribute label, type, size, cfg
       attr.set a
-      attr.unsetDirty()
+      attr.dirty.unset()
       attr
     else if ArrayBuffer.isView a
       throw "fixme"
@@ -815,7 +784,7 @@ export class Attribute extends Lazy
       size = a.length / type.size
       attr = new Attribute label, type, size, cfg
       attr.set a
-      attr.unsetDirty()
+      attr.dirty.unset()
       attr
     else new Attribute label, a.type, 0, cfg
 
@@ -865,7 +834,7 @@ export class AttributeScope extends Logged
 
   constructor: (cfg) ->
     super extend cfg,
-      lazyManager : new EnumLazyManager
+      lazyManager : new ListLazyManager
     @data       = {}
     @_dataNames = new Map
 
@@ -873,7 +842,7 @@ export class AttributeScope extends Logged
     @_initValues cfg.data
     
   @getter 'size'       , -> @_indexPool.size
-  # @getter 'dirtyElems' , -> @_lazyManager.elems
+  # @getter 'dirtyElems' , -> @dirty.elems
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -899,12 +868,9 @@ export class AttributeScope extends Logged
     attr.resizeToScopes()
     @data[name] = attr
     @_dataNames.set attr, name
-    # attr.onDirty.addEventListener =>
-    #   @_lazyManager.handleChanged name
+    # attr.onSet.addEventListener =>
+    #   @dirty.set name
 
-  _unsetDirtyChildren: (names) ->
-    for name in names
-      @data[name].unsetDirty()
 
   ### Handlers ###
 
@@ -944,14 +910,14 @@ export class Geometry extends Logged
     label = param('label',cfg) || "Unnamed"
     super
       label       : "Geometry.#{label}"
-      lazyManager : new EnumLazyManager
+      lazyManager : new ListLazyManager
     
     @logger.group 'Initialization', =>
       @_scope = {}
       @_initScopes cfg
 
   @getter 'scope'      , -> @_scope
-  # @getter 'dirtyElems' , -> @_lazyManager.elems
+  # @getter 'dirtyElems' , -> @dirty.elems
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -969,12 +935,9 @@ export class Geometry extends Logged
           scope         = new cons {label, data}
           @_scope[name] = scope
           @[name]       = scope 
-          # scope.onDirty.addEventListener =>
-          #   @_lazyManager.handleChanged name
+          # scope.onSet.addEventListener =>
+          #   @dirty.set name
 
-  _unsetDirtyChildren: (names) ->
-    for name in names
-      @scope[name].unsetDirty()
 
 
 
@@ -1170,7 +1133,7 @@ class Material extends Lazy
 
   @getter 'variable', -> @_variable
 
-    # @_lazyManager.isDirty = true
+    # @dirty.isDirty = true
 
   #   @_shaderBuilder = new ShaderBuilder
   #   @_shader        = null
@@ -1195,7 +1158,7 @@ class Material extends Lazy
   #   glslType = glType.name
   #   if sbloc[name] != glslType
   #     sbloc[name] = glslType
-  #     @_lazyManager.handleChanged()
+  #     @dirty.set()
   #   loc[name] = value
 
   # writePointVariable: (name, value) -> 
@@ -1221,9 +1184,8 @@ class Material extends Lazy
   #     vcode = @vertexCode()
   #     fcode = @fragmentCode()
   #     @_shader = @_shaderBuilder.compute vcode, fcode
-  #     @unsetDirty()
+  #     @dirty.unset()
 
-  _unsetDirtyChildren: ->
 
   vertexCode   : -> ''
   fragmentCode : -> ''
@@ -1256,8 +1218,8 @@ export class Mesh extends Logged
     @_shader        = null
     @_bindings      = {}
     @_shaderBuilder = new ShaderBuilder 
-    # @geometry.onDirty.addEventListener =>
-    #   @_lazyManager.handleChanged()
+    # @geometry.onSet.addEventListener =>
+    #   @dirty.set()
     @_bindVariables()
     @_generateShader()
 
@@ -1301,9 +1263,6 @@ export class Mesh extends Logged
         return scopeName
     return null
 
-  _unsetDirtyChildren: ->
-    @geometry.unsetDirty()
-
 
 export class Precision
   high = 'high'
@@ -1338,12 +1297,13 @@ class GPUAttribute extends Lazy
 
   constructor: (@_gl, attribute, cfg) ->
     super extend cfg,
-      label : "GPU.#{attribute.label}"
+      label       : "GPU.#{attribute.label}"
+      lazyManager : new HierarchicalLazyManager
     @_buffer    = @_gl.createBuffer()
     @_targets   = new Set
     @_attribute = attribute
-    @_attribute.onDirty.addEventListener =>
-      @_lazyManager.handleChanged()
+    @_attribute.dirty.onSet.addEventListener =>
+      @dirty.set @_attribute
     @_init()
 
   @getter 'buffer'  , -> @_buffer 
@@ -1372,9 +1332,6 @@ class GPUAttribute extends Lazy
     withArrayBuffer @_gl, @_buffer, =>
       @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
 
-  _unsetDirtyChildren: () ->
-    @_attribute.unsetDirty()  
-
 
   ### API ###
 
@@ -1393,13 +1350,13 @@ class GPUAttribute extends Lazy
       if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
 
   update: ->
-    if @isDirty 
+    if @dirty.isDirty 
       bufferRaw     = @_attribute.data.rawArray
-      dirtyRange    = @_attribute._lazyManager.dirtyRange # FIXME access to private @_attribute
-      srcOffset     = dirtyRange.min
+      range    = @_attribute._dirty.range # FIXME access to private @_attribute
+      srcOffset     = range.min
       byteSize      = @_attribute.type.glType.item.byteSize
       dstByteOffset = byteSize * srcOffset
-      length        = dirtyRange.max - dirtyRange.min + 1
+      length        = range.max - range.min + 1
       @logger.info "Updating #{length} elements"
       arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
                          srcOffset, length 
@@ -1409,17 +1366,17 @@ class GPUAttribute extends Lazy
 class GPUBufferRegistry extends Lazy
   constructor: (@_gl) ->
     super
-      lazyManager : new EnumLazyManager        
+      lazyManager: new HierarchicalLazyManager        
     @_attrMap = new Map
-  @getter 'dirtyAttrs', -> @_lazyManager.elems  
+  @getter 'dirtyAttrs', -> @_dirty.elems  
 
   bindBuffer: (tgt, attr, f) -> 
     attrGPU = @_attrMap.get attr
     if attrGPU == undefined
       @logger.info "Creating new binding to '#{attr.label}' buffer"
       attrGPU = new GPUAttribute @_gl, attr
-      attrGPU.onDirty.addEventListener =>
-        @_lazyManager.handleChanged attrGPU
+      attrGPU.dirty.onSet.addEventListener =>
+        @_dirty.set attrGPU
     attrGPU.addTarget tgt
     buffer = attrGPU.buffer
     @_withArrayBuffer buffer, => f attrGPU    
@@ -1434,16 +1391,17 @@ class GPUBufferRegistry extends Lazy
         @_attrMap.delete attr
 
   update: ->
-    if @isDirty
+    if @dirty.isDirty
       @logger.group "Updating", =>
         @dirtyAttrs.forEach (attr) =>
           attr.update()
-        # @logger.group "Updating all GPU meshes", =>
-        #   @dirtyMeshes.forEach (mesh) =>
-        #     mesh.update()
         @logger.group "Unsetting dirty flags", =>
-          @unsetDirty()
+          @dirty.unset()
     else @logger.info "Everything up to date"
+
+  _unsetDirtyChildren: (elems) ->
+    for elem in elems
+      elem.dirty.unset()
   
   _withBuffer: (type, buffer, f) -> 
     @_gl.bindBuffer type, buffer
@@ -1469,8 +1427,8 @@ export class GPUMesh extends Logged
       @_updateProgram()
       @_initVarLocations()
       @_initVAO()
-      # mesh.onDirty.addEventListener =>
-      #   @_lazyManager.handleChanged()
+      # mesh.onSet.addEventListener =>
+      #   @_dirty.set()
 
   _updateProgram: ->
     @logger.group "Compiling shader program", =>
@@ -1525,7 +1483,7 @@ export class GPUMesh extends Logged
                          #{bufferx.chunksNum} locations"
 
   _unsetDirtyChildren: ->
-    @mesh.unsetDirty()
+    @mesh.dirty.unset()
 
   draw: (viewProjectionMatrix) ->
     @logger.group "Drawing", =>
@@ -1550,24 +1508,24 @@ export class GPUMesh extends Logged
 export class GPUMeshRegistry extends Logged
   constructor: ->
     super()
-      # lazyManager : new EnumLazyManager    
+      # lazyManager : new ListLazyManager    
     @_meshes = new Set
 
-  # @getter 'dirtyMeshes', -> @_lazyManager.elems
+  # @getter 'dirtyMeshes', -> @_dirty.elems
 
   add: (mesh) ->
     @_meshes.add mesh
-    # mesh.onDirty.addEventListener =>
-    #   @_lazyManager.handleChanged mesh
+    # mesh.onSet.addEventListener =>
+    #   @_dirty.set mesh
 
   update: ->
-    # if @isDirty
+    # if @dirty.isDirty
     #   @logger.group "Updating", =>
     #     @logger.group "Updating all GPU meshes", =>
     #       @dirtyMeshes.forEach (mesh) =>
     #         mesh.update()
     #     @logger.group "Unsetting dirty flags", =>
-    #       @unsetDirty()
+    #       @dirty.unset()
     # else @logger.info "Everything up to date"
 
 
@@ -1686,7 +1644,7 @@ export test = (ctx, viewProjectionMatrix) ->
   
 
     # console.log "Dirty:", geo.point.dirtyChildren
-    # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.dirtyRange
+    # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.range
     # # console.log ">>>", geo.point.attrs.position.size
 
     # console.log geo.point.attrs.position
@@ -1800,7 +1758,7 @@ export test = (ctx, viewProjectionMatrix) ->
 
 
 #   onTransformed: () => 
-#     if not @isDirty then @_buffer.markDirty @
+#     if not @dirty.isDirty then @_buffer.markDirty @
 
 
 
@@ -1962,10 +1920,10 @@ export test = (ctx, viewProjectionMatrix) ->
 #     # TODO: check on real use case if bulk update is faster
 #     USE_BULK_UPDATE = false
 
-#     dirtyRange = null
+#     range = null
 
 #     if USE_BULK_UPDATE
-#       dirtyRange =
+#       range =
 #         min : undefined
 #         max : undefined
 
@@ -2013,8 +1971,8 @@ export test = (ctx, viewProjectionMatrix) ->
 #       console.log ">>>", buffer.js
       
 #       if USE_BULK_UPDATE
-#         if not (sprite.id >= dirtyRange.min) then dirtyRange.min = sprite.id
-#         if not (sprite.id <= dirtyRange.max) then dirtyRange.max = sprite.id
+#         if not (sprite.id >= range.min) then range.min = sprite.id
+#         if not (sprite.id <= range.max) then range.max = sprite.id
 #       else
 #         dstByteOffset = @_INT_BYTES * srcOffset
 #         length        = @_VTX_ELEMS
@@ -2022,9 +1980,9 @@ export test = (ctx, viewProjectionMatrix) ->
 #                            srcOffset, length 
 
 #     if USE_BULK_UPDATE
-#       srcOffset     = dirtyRange.min * @_VTX_ELEMS
+#       srcOffset     = range.min * @_VTX_ELEMS
 #       dstByteOffset = @_INT_BYTES * srcOffset
-#       length        = @_VTX_ELEMS * (dirtyRange.max - dirtyRange.min + 1)
+#       length        = @_VTX_ELEMS * (range.max - range.min + 1)
 #       arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
 #                          srcOffset, length 
 
