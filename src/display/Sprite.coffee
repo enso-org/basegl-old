@@ -859,7 +859,7 @@ export class Attribute extends Lazy
 ### AttributeScope ###
 ######################
 
-export class AttributeScope extends Lazy
+export class AttributeScope extends Logged
 
   ### Initialization ###
 
@@ -873,7 +873,7 @@ export class AttributeScope extends Lazy
     @_initValues cfg.data
     
   @getter 'size'       , -> @_indexPool.size
-  @getter 'dirtyElems' , -> @_lazyManager.elems
+  # @getter 'dirtyElems' , -> @_lazyManager.elems
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -899,8 +899,8 @@ export class AttributeScope extends Lazy
     attr.resizeToScopes()
     @data[name] = attr
     @_dataNames.set attr, name
-    attr.onDirty.addEventListener =>
-      @_lazyManager.handleChanged name
+    # attr.onDirty.addEventListener =>
+    #   @_lazyManager.handleChanged name
 
   _unsetDirtyChildren: (names) ->
     for name in names
@@ -919,7 +919,7 @@ export class AttributeScope extends Lazy
 ### UniformScope ###
 ####################
 
-class UniformScope extends Lazy
+class UniformScope extends Logged
   constructor: (cfg) ->
     super cfg
     @data = {}
@@ -936,7 +936,7 @@ class UniformScope extends Lazy
 ### Geometry ###
 ################
 
-export class Geometry extends Lazy
+export class Geometry extends Logged
 
   ### Initialization ###
 
@@ -951,7 +951,7 @@ export class Geometry extends Lazy
       @_initScopes cfg
 
   @getter 'scope'      , -> @_scope
-  @getter 'dirtyElems' , -> @_lazyManager.elems
+  # @getter 'dirtyElems' , -> @_lazyManager.elems
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -969,12 +969,14 @@ export class Geometry extends Lazy
           scope         = new cons {label, data}
           @_scope[name] = scope
           @[name]       = scope 
-          scope.onDirty.addEventListener =>
-            @_lazyManager.handleChanged name
+          # scope.onDirty.addEventListener =>
+          #   @_lazyManager.handleChanged name
 
   _unsetDirtyChildren: (names) ->
     for name in names
       @scope[name].unsetDirty()
+
+
 
 
 
@@ -1245,7 +1247,7 @@ export class RawMaterial extends Material
 ### Mesh ###
 ############
 
-export class Mesh extends Lazy
+export class Mesh extends Logged
   constructor: (geometry, material) ->
     super
       label: "Mesh." + geometry.label
@@ -1254,8 +1256,8 @@ export class Mesh extends Lazy
     @_shader        = null
     @_bindings      = {}
     @_shaderBuilder = new ShaderBuilder 
-    @geometry.onDirty.addEventListener =>
-      @_lazyManager.handleChanged()
+    # @geometry.onDirty.addEventListener =>
+    #   @_lazyManager.handleChanged()
     @_bindVariables()
     @_generateShader()
 
@@ -1330,26 +1332,150 @@ export class Precision
 ### GPUMesh ###
 ###############
 
-export class GPUMesh extends Lazy
-  constructor: (@_ctx, mesh) ->
+class GPUAttribute extends Lazy
+
+  ### Properties ###
+
+  constructor: (@_gl, attribute, cfg) ->
+    super extend cfg,
+      label : "GPU.#{attribute.label}"
+    @_buffer    = @_gl.createBuffer()
+    @_targets   = new Set
+    @_attribute = attribute
+    @_attribute.onDirty.addEventListener =>
+      @_lazyManager.handleChanged()
+    @_init()
+
+  @getter 'buffer'  , -> @_buffer 
+  @getter 'isEmpty' , -> @_targets.size == 0
+
+  
+  ### Initialization ###
+
+  _init: ->
+    @_initVariables()
+    @_initData()
+
+  _initVariables: ->
+    maxChunkSize   = 4
+    size           = @_attribute.type.glType.size
+    itemByteSize   = @_attribute.type.glType.item.byteSize
+    @itemType      = @_attribute.type.glType.item.code
+    @chunksNum     = Math.ceil (size/maxChunkSize)
+    @chunkSize     = Math.min size, maxChunkSize
+    @chunkByteSize = @chunkSize * itemByteSize
+    @stride        = @chunksNum * @chunkByteSize
+
+  _initData: () ->
+    bufferRaw = @_attribute.data.rawArray
+    usage     = @_attribute.usage
+    withArrayBuffer @_gl, @_buffer, =>
+      @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
+
+  _unsetDirtyChildren: () ->
+    @_attribute.unsetDirty()  
+
+
+  ### API ###
+
+  addTarget    : (a) -> @_targets.add    a
+  removeTarget : (a) -> @_targets.delete a
+  dispose      :     -> @_gl.deleteBuffer @_buffer
+
+  bindToLoc: (loc, instanced=false) ->
+    normalize = false
+    for chunkIx in [0 ... @chunksNum]
+      offByteSize = chunkIx * @chunkByteSize
+      chunkLoc    = loc + chunkIx
+      @_gl.enableVertexAttribArray chunkLoc
+      @_gl.vertexAttribPointer chunkLoc, @chunkSize, @itemType,
+                               normalize, @stride, offByteSize
+      if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
+
+  update: ->
+    if @isDirty 
+      bufferRaw     = @_attribute.data.rawArray
+      dirtyRange    = @_attribute._lazyManager.dirtyRange # FIXME access to private @_attribute
+      srcOffset     = dirtyRange.min
+      byteSize      = @_attribute.type.glType.item.byteSize
+      dstByteOffset = byteSize * srcOffset
+      length        = dirtyRange.max - dirtyRange.min + 1
+      @logger.info "Updating #{length} elements"
+      arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
+                         srcOffset, length 
+
+
+
+class GPUBufferRegistry extends Lazy
+  constructor: (@_gl) ->
+    super
+      lazyManager : new EnumLazyManager        
+    @_attrMap = new Map
+  @getter 'dirtyAttrs', -> @_lazyManager.elems  
+
+  bindBuffer: (tgt, attr, f) -> 
+    attrGPU = @_attrMap.get attr
+    if attrGPU == undefined
+      @logger.info "Creating new binding to '#{attr.label}' buffer"
+      attrGPU = new GPUAttribute @_gl, attr
+      attrGPU.onDirty.addEventListener =>
+        @_lazyManager.handleChanged attrGPU
+    attrGPU.addTarget tgt
+    buffer = attrGPU.buffer
+    @_withArrayBuffer buffer, => f attrGPU    
+
+  unbindBuffer: (tgt, attr) ->
+    attrGPU = @_attrMap.get attr
+    if attrGPU != undefined
+      attrGPU.removeTarget tgt
+      if attrGPU.isEmpty
+        @logger.info "Removing binding to '#{attr.label}' buffer"
+        attrGPU.dispose()
+        @_attrMap.delete attr
+
+  update: ->
+    if @isDirty
+      @logger.group "Updating", =>
+        @dirtyAttrs.forEach (attr) =>
+          attr.update()
+        # @logger.group "Updating all GPU meshes", =>
+        #   @dirtyMeshes.forEach (mesh) =>
+        #     mesh.update()
+        @logger.group "Unsetting dirty flags", =>
+          @unsetDirty()
+    else @logger.info "Everything up to date"
+  
+  _withBuffer: (type, buffer, f) -> 
+    @_gl.bindBuffer type, buffer
+    out = f()
+    @_gl.bindBuffer type, null
+    out
+
+  _withArrayBuffer: (buffer, f) ->
+    @_withBuffer WebGLRenderingContext.ARRAY_BUFFER, buffer, f 
+    
+
+
+export class GPUMesh extends Logged
+  constructor: (@_gl, bufferRegistry, mesh) ->
     super
       label: "GPU.#{mesh.label}"
-    @mesh       = mesh
-    @varLoc     = {}
-    @buffer     = {}
-    @_program   = null
+    @_bufferRegistry = bufferRegistry
+    @mesh            = mesh
+    @varLoc          = {}
+    @buffer          = {}
+    @_program        = null
     @logger.group "Initializing", =>
       @_updateProgram()
       @_initVarLocations()
       @_initVAO()
-      @_initBuffers()
-      mesh.onDirty.addEventListener =>
-        @_lazyManager.handleChanged()
+      # mesh.onDirty.addEventListener =>
+      #   @_lazyManager.handleChanged()
 
   _updateProgram: ->
     @logger.group "Compiling shader program", =>
       shader = @mesh.shader
-      @_program = Program.from @_ctx, shader.vertex, shader.fragment
+      @_program = Program.from @_gl, shader.vertex, shader.fragment
     
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
@@ -1369,19 +1495,19 @@ export class GPUMesh extends Lazy
 
   _initVAO: () ->
     @logger.group 'Initializing Vertex Array Object (VAO)', =>
-      @_vao = @_ctx.createVertexArray()
-      @_initAttrs()
+      @_vao = @_gl.createVertexArray()
+      @_bindAttrsToProgram()
 
-  _initAttrs: () ->
-    withVAO @_ctx, @_vao, =>  
+  _bindAttrsToProgram: () ->
+    withVAO @_gl, @_vao, =>  
       for varName, spaceName of @mesh.bindings
-        @__initAttr spaceName, varName
+        @bindAttrToProgram spaceName, varName
       
-  _initAttr: (spaceName, varName) -> 
-    withVAO @_ctx, @_vao, =>  
-      @__initAttr spaceName, varName
+  _bindAttrToProgram: (spaceName, varName) -> 
+    withVAO @_gl, @_vao, =>  
+      @bindAttrToProgram spaceName, varName
 
-  __initAttr: (spaceName, varName) -> 
+  bindAttrToProgram: (spaceName, varName) -> 
     if spaceName != 'object'
       @logger.group "Binding variable '#{spaceName}.#{varName}'", =>
         space = @mesh.geometry[spaceName].data
@@ -1390,82 +1516,22 @@ export class GPUMesh extends Lazy
         if not @buffer[spaceName]?
           @buffer[spaceName] = {}
         if loc != undefined
-          withNewArrayBuffer @_ctx, (buffer) =>  
+          @_bufferRegistry.bindBuffer @, val, (bufferx) =>
+            buffer    = bufferx._buffer
+            instanced = (spaceName == 'instance')
             @buffer[spaceName][varName] = buffer 
-
-            maxChunkSize  = 4
-            normalize     = false
-            size          = val.type.glType.size
-            itemByteSize  = val.type.glType.item.byteSize
-            itemType      = val.type.glType.item.code
-            chunksNum     = Math.ceil (size/maxChunkSize)
-            chunkSize     = Math.min size, maxChunkSize
-            chunkByteSize = chunkSize * itemByteSize
-            stride        = chunksNum * chunkByteSize
-
-            for chunkIx in [0 ... chunksNum]
-              offByteSize = chunkIx * chunkByteSize
-              chunkLoc    = loc + chunkIx
-              @_ctx.enableVertexAttribArray chunkLoc
-              @_ctx.vertexAttribPointer chunkLoc, chunkSize, itemType,
-                                        normalize, stride, offByteSize
-              if spaceName == 'instance'
-                @_ctx.vertexAttribDivisor(chunkLoc, 1)
-            @logger.info "Variable '#{varName}' bound succesfully using 
-                        #{chunksNum} locations"
-            
-              
-        
-  _initBuffers: () ->
-    @logger.group "Initializing buffers", =>
-      console.log "!!!!", @buffer 
-      for spaceName,cfg of @buffer
-        space = bufferJS = @mesh.geometry[spaceName]
-        @logger.group "Initializing #{spaceName} buffers", =>    
-          for varName,bufferGL of cfg
-            variable = space.data[varName]
-            bufferJS = variable.data.rawArray
-            usage    = variable.usage
-            @logger.info "Initializing #{varName} buffer"  
-            withArrayBuffer @_ctx, bufferGL, =>
-              @_ctx.bufferData(@_ctx.ARRAY_BUFFER, bufferJS, usage)
+            bufferx.bindToLoc loc, instanced 
+            @logger.info "Variable bound succesfully using 
+                         #{bufferx.chunksNum} locations"
 
   _unsetDirtyChildren: ->
     @mesh.unsetDirty()
 
-  update: ->
-    @logger.group 'Updating', =>
-      if @mesh.isDirty
-        geometry = @mesh.geometry
-        if geometry.isDirty
-          for scopeName in geometry.dirtyElems
-            @_updateScope geometry, scopeName
-            
-  _updateScope: (geometry, scopeName) ->
-    @logger.group "Updating #{scopeName} scope", =>
-      scope       = geometry.scope[scopeName]
-      scopeBuffer = @buffer[scopeName]
-      for varName in scope.dirtyElems
-        bufferGL = scopeBuffer[varName]
-        if not bufferGL
-          @logger.info "Skipping #{varName} variable (missing in shader)"
-        else
-          variable      = scope.data[varName]
-          bufferJS      = variable.data.rawArray
-          dirtyRange    = variable._lazyManager.dirtyRange # FIXME access to private variable
-          srcOffset     = dirtyRange.min
-          byteSize      = variable.type.glType.item.byteSize
-          dstByteOffset = byteSize * srcOffset
-          length        = dirtyRange.max - dirtyRange.min + 1
-          @logger.info "Updating #{varName} variable (#{length} elements)"
-          arrayBufferSubData @_ctx, bufferGL, dstByteOffset, bufferJS, 
-                            srcOffset, length 
-
   draw: (viewProjectionMatrix) ->
     @logger.group "Drawing", =>
-      @_ctx.useProgram @_program.glProgram      
-      withVAO @_ctx, @_vao, =>
-        @_ctx.uniformMatrix4fv(@varLoc.matrix, false, viewProjectionMatrix)
+      @_gl.useProgram @_program.glProgram      
+      withVAO @_gl, @_vao, =>
+        @_gl.uniformMatrix4fv(@varLoc.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.size
         instanceCount = @mesh.geometry.instance.size
         if instanceCount > 0
@@ -1473,36 +1539,36 @@ export class GPUMesh extends Lazy
           @logger.info "Drawing #{instanceCount} " + instanceWord
           
           # offset = elemCount * @_SPRITE_VTX_COUNT
-          # @_ctx.drawElements(@_ctx.TRIANGLES, offset, @_ctx.UNSIGNED_SHORT, 0)
-          @_ctx.drawArraysInstanced(@_ctx.TRIANGLE_STRIP, 0, pointCount, instanceCount)
+          # @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
+          @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, pointCount, instanceCount)
         else 
           @logger.info "Drawing not instanced geometry"
-          @_ctx.drawArrays(@_ctx.TRIANGLE_STRIP, 0, pointCount)
+          @_gl.drawArrays(@_gl.TRIANGLE_STRIP, 0, pointCount)
           
 
 
-export class GPUMeshRegistry extends Lazy
+export class GPUMeshRegistry extends Logged
   constructor: ->
-    super
-      lazyManager : new EnumLazyManager    
+    super()
+      # lazyManager : new EnumLazyManager    
     @_meshes = new Set
 
-  @getter 'dirtyMeshes', -> @_lazyManager.elems
+  # @getter 'dirtyMeshes', -> @_lazyManager.elems
 
   add: (mesh) ->
     @_meshes.add mesh
-    mesh.onDirty.addEventListener =>
-      @_lazyManager.handleChanged mesh
+    # mesh.onDirty.addEventListener =>
+    #   @_lazyManager.handleChanged mesh
 
   update: ->
-    if @isDirty
-      @logger.group "Updating", =>
-        @logger.group "Updating all GPU meshes", =>
-          @dirtyMeshes.forEach (mesh) =>
-            mesh.update()
-        @logger.group "Unsetting dirty flags", =>
-          @unsetDirty()
-    else @logger.info "Everything up to date"
+    # if @isDirty
+    #   @logger.group "Updating", =>
+    #     @logger.group "Updating all GPU meshes", =>
+    #       @dirtyMeshes.forEach (mesh) =>
+    #         mesh.update()
+    #     @logger.group "Unsetting dirty flags", =>
+    #       @unsetDirty()
+    # else @logger.info "Everything up to date"
 
 
 
@@ -1552,7 +1618,7 @@ export test = (ctx, viewProjectionMatrix) ->
     object:
       matrix: mat4
 
-
+  bufferRegistry = new GPUBufferRegistry ctx
   meshRegistry = new GPUMeshRegistry
 
 
@@ -1579,7 +1645,7 @@ export test = (ctx, viewProjectionMatrix) ->
       color     : vec4 [0,1,0,1]
   mesh = new Mesh geo, mat1
 
-  m1 = new GPUMesh ctx, mesh
+  m1 = new GPUMesh ctx, bufferRegistry, mesh
   meshRegistry.add m1
 
 
@@ -1594,22 +1660,26 @@ export test = (ctx, viewProjectionMatrix) ->
   # console.log mat1.shader.fragment
 
   logger.group "FRAME 1", =>
-    meshRegistry.update()
+    bufferRegistry.update()
+    # meshRegistry.update()
   
   logger.group "FRAME 2", =>
     geo.point.data.position.read(1)[0] = 7
     geo.point.data.position.read(1)[0] = 7
     geo.point.data.position.read(1)[1] = 7
-    meshRegistry.update()
+    bufferRegistry.update()
+    # meshRegistry.update()
 
   logger.group "FRAME 3", =>
     geo.point.data.position.read(1)[0] = 8
     geo.point.data.uv.read(1)[0] = 8
     # geo.instance.data.color.read(0)[0] = 0.7
-    meshRegistry.update()
+    bufferRegistry.update()
+    # meshRegistry.update()
 
   logger.group "FRAME 4", =>
-    meshRegistry.update()
+    bufferRegistry.update()
+    # meshRegistry.update()
 
 
   m1.draw(viewProjectionMatrix)
