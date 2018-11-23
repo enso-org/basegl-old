@@ -80,6 +80,9 @@ export class Logger
     child._streams = @_streams
     child
 
+  # To be removed in release scripts
+  ifEnabled: (f) -> f()
+
 
 ###############
 ### Streams ###

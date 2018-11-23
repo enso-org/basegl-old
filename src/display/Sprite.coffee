@@ -307,26 +307,26 @@ export class Observable
 
   constructor: (@_array) -> 
   @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @_array.buffer
-  @getter 'length'   , -> @_array.length
-  @getter 'rawArray' , -> @_array.rawArray
+  @getter 'buffer'   , -> @array.buffer
+  @getter 'length'   , -> @array.length
+  @getter 'rawArray' , -> @array.rawArray
 
 
   ### Read / Write ###
 
-  read:         (ix)  -> @_array.read         ix
-  readMultiple: (ixs) -> @_array.readMultiple ixs 
+  read:         (ix)  -> @array.read         ix
+  readMultiple: (ixs) -> @array.readMultiple ixs 
   
   write: (ix, v) -> 
-    @_array.write ix, v
+    @array.write ix, v
     @onChanged ix
   
   writeMultiple: (ixs, vs) ->
-    @_array.writeMultiple ixs, vs 
+    @array.writeMultiple ixs, vs 
     @onChangedMultiple ixs
 
   set: (array, offset=0) ->
-    @_array.set array, offset
+    @array.set array, offset
     @onChangedRange offset, array.length
 
 
@@ -335,7 +335,7 @@ export class Observable
   resize: (newLength) ->
     oldLength = @_length
     if oldLength != newLength
-      @_array.resize newLength
+      @array.resize newLength
       @onResized oldLength, newLength
 
 
@@ -428,6 +428,10 @@ export class Vec3 extends BufferType
 
 export class Vec4 extends BufferType
   @glType: webGL.types.float_vec4
+  @default: ->
+    array = super.default()
+    array[3] = 1
+    array
 
 export class Mat2 extends BufferType
   @glType: webGL.types.float_mat2
@@ -435,7 +439,7 @@ export class Mat2 extends BufferType
     array = super.default()
     array[0] = 1
     array[3] = 1
-    new @ array
+    array
 
 export class Mat3 extends BufferType
   @glType: webGL.types.float_mat3
@@ -444,7 +448,7 @@ export class Mat3 extends BufferType
     array[0] = 1
     array[4] = 1
     array[8] = 1
-    new @ array
+    array
 
 export class Mat4 extends BufferType
   @glType: webGL.types.float_mat4
@@ -454,7 +458,7 @@ export class Mat4 extends BufferType
     array[5]  = 1
     array[10] = 1
     array[15] = 1
-    new @ array
+    array
 
 
 ### Smart constructors ###
@@ -466,13 +470,19 @@ mat2 = (args...) => Mat2.from args
 mat3 = (args...) => Mat3.from args
 mat4 = (args...) => Mat4.from args
 
+vec2.type = Vec2
+vec3.type = Vec3
+vec4.type = Vec4
+mat2.type = Mat2
+mat3.type = Mat3
+mat4.type = Mat4
+
 value = (a) ->
   switch a.constructor
     when Number then new Float a
     else a
 
 toGLSL = (a) -> value(a).toGLSL()
-
 
 
 ################################################################################
@@ -490,6 +500,7 @@ class Pool
     @size      = @_computeSquareSize required
     @free      = []
     @nextIndex = required
+  @getter 'dirtySize', -> @nextIndex
 
   _computeSquareSize: (required) =>
     if required == 0 
@@ -510,7 +521,6 @@ class Pool
     @nextIndex += 1
     n
 
-  dirtySize: () => @nextIndex
 
   free: (n) =>
     @free.push(n)
@@ -582,7 +592,6 @@ class LazyManager
 #######################
 
 class ListLazyManager extends LazyManager
-
   constructor: ->
     super() 
     @_elems = []
@@ -622,14 +631,14 @@ class RangedLazyManager extends LazyManager
       max: null
   @getter 'range', -> @_range
 
-  set: (ix) ->
+  setIndex: (ix) ->
     if @isDirty
       if      ix > @range.max then @range.max = ix
       else if ix < @range.min then @range.min = ix
     else
       @_range.min = ix
       @_range.max = ix
-      super.set()
+      @set()
 
   setRange: (offset, length) ->
     min = offset
@@ -640,17 +649,35 @@ class RangedLazyManager extends LazyManager
     else
       @_range.min = min
       @_range.max = max
-      super.set()
+      @set()
 
 
   
 ##############
+### Unique ###
+##############
+
+export class Unique
+  @_nextID = 0
+  @getID: ->
+    id = @_nextID 
+    @_nextID += 1
+    id
+
+  constructor: ->
+    @_id = @constructor.getID()
+  @getter 'id', -> @_id
+
+
+
+##############
 ### Logged ###
 ##############
 
-export class Logged
+export class Logged extends Unique
   constructor: (cfg={}) ->
-    @_label  = param('label', cfg) || @constructor.name
+    super()
+    @_label  = param('label', cfg) || "#{@constructor.name}.#{@id}"
     @_logger = logger.scoped @_label
   @getter 'label'  , -> @_label
   @getter 'logger' , -> @_logger
@@ -665,12 +692,34 @@ export class Lazy extends Logged
   constructor: (cfg={}) ->
     super cfg
     @_dirty = param('lazyManager',cfg) || new LazyManager 
-    @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
-    @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
+    @logger.ifEnabled =>
+      @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
+      @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
   @getter 'dirty', -> @_dirty
     
 
-  
+
+
+############################
+### AttributeLazyManager ###
+############################
+
+class AttributeLazyManager extends RangedLazyManager
+  constructor: ->
+    super()
+    @_isResized = false
+  @getter 'isResized', -> @_isResized
+
+  setResized: ->
+    @_isResized = true
+    @set()
+
+  unset: ->
+    @_isResized = false
+    super.unset()
+
+
+
 #################
 ### Attribute ###
 #################
@@ -720,28 +769,22 @@ export class Lazy extends Logged
 #             0.5, -0.5, 0 ]
 
 export class Attribute extends Lazy
-  # TODO: to be used when no label provided + make label optional
-  @_nextID = 0
-  @getID: ->
-    id = @_nextID 
-    @_nextID += 1
-    id
 
   ### Properties ###
 
-  constructor: (label, @_type, @_size, cfg) -> 
-    super
-      label       : label
-      lazyManager : param('lazyManager',cfg) || new RangedLazyManager 
+  constructor: (cfg) -> 
+    super extend cfg,
+      lazyManager: new AttributeLazyManager
     
     @logger.info "Allocating space for #{@_size} elements"
+    @_type    = param('type',cfg)    || throw 'Type required' 
+    @_size    = param('size',cfg)    || throw 'Size required'
     @_default = param('default',cfg) || null
     @_usage   = param('usage',cfg)   || usage.dynamic
     @_scopes  = new Set
     @_data    = new Observable (@type.glType.newBuffer @size)
 
     @_initEventHandlers()
-    Object.freeze @
 
   @getter 'type'    , -> @_type
   @getter 'size'    , -> @_size
@@ -759,9 +802,9 @@ export class Attribute extends Lazy
   ### Initialization ###
 
   _initEventHandlers: ->
-    @data.onChanged      = (args...) => @dirty.set      args...
-    @data.onChangedRange = (args...) => @dirty.setRange args...
-    # @_data.onResized      = (args...) => @dirty.setResized      args...
+    @data.onChanged      = (args...) => @dirty.setIndex   args...
+    @data.onChangedRange = (args...) => @dirty.setRange   args...
+    @data.onResized      = (args...) => @dirty.setResized args...
 
 
   ### Smart Constructors ###
@@ -779,22 +822,25 @@ export class Attribute extends Lazy
     if a.constructor == Array
       type = expType || @_inferArrType a
       size = a.length
-      attr = new Attribute label, type, size, cfg
+      attr = new Attribute extend cfg, {label, type, size}
       attr.set a
       attr.dirty.unset()
       attr
     else if ArrayBuffer.isView a
-      throw "fixme"
       type = expType?.type
       if not type?
         throw "You have to provide explicit type when using TypedArray
               initializator for '#{label}' attribute."
-      size = a.length / type.size
-      attr = new Attribute label, type, size, cfg
+      size = a.length / type.glType.size
+      attr = new Attribute extend cfg, {label, type, size}
       attr.set a
       attr.dirty.unset()
       attr
-    else new Attribute label, a.type, 0, cfg
+    else new Attribute extend cfg,
+      label : label
+      type  : a.type
+      size  : 0
+
 
 
   ### Size Management ###
@@ -802,9 +848,9 @@ export class Attribute extends Lazy
   resizeToScopes: ->
     sizes = (scope.size for scope from @_scopes)
     size  = arrayMax sizes
-    @resize size
+    @_resize size
 
-  resize: (newSize) ->
+  _resize: (newSize) ->
     oldSize = @size
     if oldSize != newSize
       @logger.info "Resizing to handle up to #{newSize} elements"
@@ -849,8 +895,8 @@ export class AttributeScope extends Logged
     @_initIndexPool()
     @_initValues cfg.data
     
-  @getter 'size'       , -> @_indexPool.size
-  # @getter 'dirtyElems' , -> @dirty.elems
+  @getter 'size'   , -> @_indexPool.size
+  @getter 'length' , -> @_indexPool.dirtySize
 
   _initIndexPool: () ->
     @_indexPool = new Pool
@@ -876,8 +922,6 @@ export class AttributeScope extends Logged
     attr.resizeToScopes()
     @data[name] = attr
     @_dataNames.set attr, name
-    # attr.onSet.addEventListener =>
-    #   @dirty.set name
 
 
   ### Handlers ###
@@ -1064,8 +1108,10 @@ class ShaderBuilder
     if @constants
       addSection 'Constants'
       for name,cfg of @constants
-        vertexCode.addDefinition   cfg.type, name, cfg.value
-        fragmentCode.addDefinition cfg.type, name, cfg.value
+        vertexName   = @mkVertexName   name
+        fragmentName = @mkFragmentName name
+        vertexCode.addDefinition   cfg.type, vertexName   , cfg.value
+        fragmentCode.addDefinition cfg.type, fragmentName , cfg.value
 
     if @attributes
       addSection 'Attributes shared between vertex and fragment shaders'
@@ -1322,7 +1368,7 @@ class GPUAttribute extends Lazy
 
   _init: ->
     @_initVariables()
-    @_initData()
+    @_updateAll()
 
   _initVariables: ->
     maxChunkSize   = 4
@@ -1333,12 +1379,6 @@ class GPUAttribute extends Lazy
     @chunkSize     = Math.min size, maxChunkSize
     @chunkByteSize = @chunkSize * itemByteSize
     @stride        = @chunksNum * @chunkByteSize
-
-  _initData: () ->
-    bufferRaw = @_attribute.data.rawArray
-    usage     = @_attribute.usage
-    withArrayBuffer @_gl, @_buffer, =>
-      @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
 
 
   ### API ###
@@ -1357,17 +1397,27 @@ class GPUAttribute extends Lazy
                                normalize, @stride, offByteSize
       if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
 
+  _updateAll: () ->
+    @logger.info "Updating all elements"    
+    bufferRaw = @_attribute.data.rawArray
+    usage     = @_attribute.usage
+    withArrayBuffer @_gl, @_buffer, =>
+      @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
+
   update: ->
     if @dirty.isDirty 
-      bufferRaw     = @_attribute.data.rawArray
-      range    = @_attribute._dirty.range # FIXME access to private @_attribute
-      srcOffset     = range.min
-      byteSize      = @_attribute.type.glType.item.byteSize
-      dstByteOffset = byteSize * srcOffset
-      length        = range.max - range.min + 1
-      @logger.info "Updating #{length} elements"
-      arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
-                         srcOffset, length 
+      if @_attribute.dirty.isResized
+        @_updateAll()
+      else
+        bufferRaw     = @_attribute.data.rawArray
+        range         = @_attribute.dirty.range
+        srcOffset     = range.min
+        byteSize      = @_attribute.type.glType.item.byteSize
+        dstByteOffset = byteSize * srcOffset
+        length        = range.max - range.min + 1
+        @logger.info "Updating #{length} elements"
+        arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
+                          srcOffset, length 
 
 
 
@@ -1498,8 +1548,9 @@ export class GPUMesh extends Logged
       @_gl.useProgram @_program.glProgram      
       withVAO @_gl, @_vao, =>
         @_gl.uniformMatrix4fv(@varLoc.matrix, false, viewProjectionMatrix)
-        pointCount    = @mesh.geometry.point.size
-        instanceCount = @mesh.geometry.instance.size
+        pointCount    = @mesh.geometry.point.length
+        instanceCount = @mesh.geometry.instance.length
+        console.log ">>>", pointCount, instanceCount
         if instanceCount > 0
           instanceWord = if instanceCount > 1 then "instances" else "instance"
           @logger.info "Drawing #{instanceCount} " + instanceWord
@@ -1563,6 +1614,14 @@ export test = (ctx, viewProjectionMatrix) ->
           (vec2 1,1),
           (vec2 1,0)] 
 
+      # color: 
+      #   type: vec4
+      #   data: new Float32Array [
+      #     1,0,0,1,
+      #     0,1,0,1,
+      #     0,0,1,1,
+      #     1,1,1,1]
+
       # color: [
       #   (vec4 1,0,0,1),
       #   (vec4 0,1,0,1),
@@ -1578,8 +1637,8 @@ export test = (ctx, viewProjectionMatrix) ->
       
     instance:
       color: [
-        (vec4 1,0,0,1) ]
-      transform: [mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100]
+        (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
+      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100)]
 
     object:
       matrix: mat4
@@ -1630,15 +1689,18 @@ export test = (ctx, viewProjectionMatrix) ->
     # meshRegistry.update()
   
   logger.group "FRAME 2", =>
-    geo.point.data.position.read(1)[0] = 7
-    geo.point.data.position.read(1)[0] = 7
-    geo.point.data.position.read(1)[1] = 7
+    geo.point.data.position.read(0)[0] = 7
+    geo.point.data.position.read(0)[0] = 7
+    geo.point.data.position.read(0)[1] = 7
     bufferRegistry.update()
     # meshRegistry.update()
 
   logger.group "FRAME 3", =>
-    geo.point.data.position.read(1)[0] = 8
-    geo.point.data.uv.read(1)[0] = 8
+    # geo.point.data.position.read(1)[0] = 8
+    # geo.point.data.uv.read(1)[0] = 8
+    # geo.instance.add({color: vec4(0,0,1,1)})
+    geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
+    geo.instance.add({color: vec4(0,0,0,1)})
     # geo.instance.data.color.read(0)[0] = 0.7
     bufferRegistry.update()
     # meshRegistry.update()
@@ -1650,6 +1712,10 @@ export test = (ctx, viewProjectionMatrix) ->
 
   m1.draw(viewProjectionMatrix)
   
+  # console.log geo.instance.data.transform.read(0).array._array._array._array
+  # console.log geo.point.data.position.read(1).array._array._array._array
+  # console.log geo.point.data.position
+  # console.log geo.point.data.color
 
     # console.log "Dirty:", geo.point.dirtyChildren
     # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.range

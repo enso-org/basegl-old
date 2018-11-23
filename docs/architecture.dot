@@ -1,0 +1,101 @@
+digraph G {
+
+  node  [style="rounded,filled" shape=box fillcolor="#e5e5e5" fontcolor="#333333" color=white penwidth=10 margin=0.2]
+  graph [fontname="QuickSand" fontsize=9 outputorder="nodesfirst"];
+  node  [fontname="QuickSand" fontsize=9 pin=true];
+  edge  [fontname="QuickSand" fontsize=9 arrowsize=.5, penwidth=2, color="#666666"];
+  
+  
+  attr1 [label="Attribute" pos="1.0,5.0!"]
+  attr2 [label="Attribute" pos="2.2,5.0!"]
+  attr3 [label="Attribute" pos="3.4,5.0!"]
+  attr4 [label="Attribute" pos="4.6,5.0!"]
+  attr5 [label="Attribute" pos="5.8,5.0!"]
+  attr6 [label="Attribute" pos="7.0,5.0!"]
+  attr7 [label="Attribute" pos="8.2,5.0!"]
+  
+  subgraph GPU {
+      node [fillcolor="#b2d6ef" fontcolor="#0c7cba"]
+      edge [color="#83bbe5"]
+      
+      bufferRegistry [label="GPUBufferRegistry" pos="4.6,7.0!"]
+      gpuAttr1 [label="GPUAttribute1" pos="1.0,6.0!"]
+      gpuAttr2 [label="GPUAttribute2" pos="2.2,6.0!"]
+      gpuAttr3 [label="GPUAttribute"  pos="3.4,6.0!"]
+      gpuAttr4 [label="GPUAttribute"  pos="4.6,6.0!"]
+      gpuAttr5 [label="GPUAttribute"  pos="5.8,6.0!"]
+      gpuAttr6 [label="GPUAttribute"  pos="7.0,6.0!"]
+      gpuAttr7 [label="GPUAttribute"  pos="8.2,6.0!"]
+      
+      prog1 [label="Program", pos="3.4,2.0!"]
+      prog2 [label="Program", pos="5.8,2.0!"]
+      
+      gpuMesh1 [label="GPUMesh", pos="2.75,1.0!"]
+      gpuMesh2 [label="GPUMesh", pos="6.45,1.0!"]
+      
+      bufferRegistry -> gpuAttr1
+      bufferRegistry -> gpuAttr2
+      bufferRegistry -> gpuAttr3
+      bufferRegistry -> gpuAttr4
+      bufferRegistry -> gpuAttr5
+      bufferRegistry -> gpuAttr6
+      bufferRegistry -> gpuAttr7
+      
+      gpuAttr1 -> attr1
+      gpuAttr2 -> attr2
+      gpuAttr3 -> attr3
+      gpuAttr4 -> attr4
+      gpuAttr5 -> attr5
+      gpuAttr6 -> attr6
+      gpuAttr7 -> attr7
+      
+      gpuMesh1 -> prog1
+      gpuMesh2 -> prog2
+  }
+  
+  
+  scope1 [label="Scope" pos="1.0,4.0!"]
+  scope2 [label="Scope" pos="2.2,4.0!"]
+  scope3 [label="Scope" pos="3.4,4.0!"]
+  scope4 [label="Scope" pos="5.8,4.0!"]
+  scope5 [label="Scope" pos="7.0,4.0!"]
+  scope6 [label="Scope" pos="8.2,4.0!"]
+  
+  geo1 [label="Geometry" pos="2.2,3.0!"]
+  geo2 [label="Geometry" pos="7.0,3.0!"]
+  
+  mesh1 [label="Mesh" pos="2.2,2.0!"]
+  mesh2 [label="Mesh" pos="7.0,2.0!"]
+  
+  mat [label="Material", pos="4.6,3.0!"]
+
+  
+  gpuMesh1 -> mesh1
+  gpuMesh2 -> mesh2
+  
+
+  
+  attr1 -> scope1 [dir=both]
+  attr2 -> scope2 [dir=both]
+  attr3 -> scope3 [dir=both]
+  attr4 -> scope3 [dir=both]
+  attr4 -> scope4 [dir=both]
+  attr5 -> scope4 [dir=both]
+  attr6 -> scope5 [dir=both]
+  attr7 -> scope6 [dir=both]
+  
+  scope1 -> geo1 [dir=back]
+  scope2 -> geo1 [dir=back]
+  scope3 -> geo1 [dir=back]
+  
+  scope4 -> geo2 [dir=back]
+  scope5 -> geo2 [dir=back]
+  scope6 -> geo2 [dir=back]
+  
+  geo1 -> mesh1 [dir=back]
+  geo2 -> mesh2 [dir=back]
+  
+  mat -> mesh1 [dir=back]
+  mat -> mesh2 [dir=back]
+  
+}

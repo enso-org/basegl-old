@@ -30,20 +30,20 @@ export class Program
   attachShader       : (shader) -> @_gl.attachShader @_glProgram, shader
   getAttribLocation  : (attr)   -> @_gl.getAttribLocation  @_glProgram, attr
   getUniformLocation : (attr)   -> @_gl.getUniformLocation @_glProgram, attr
-  loadVertexShader   : (code)   -> @loadShader @_gl.VERTEX_SHADER   , code 
-  loadFragmentShader : (code)   -> @loadShader @_gl.FRAGMENT_SHADER , code 
-  loadShader: (type, code) ->
-    shader = loadShader @_gl, code, type
+  loadVertexShader   : (code)   -> @loadShader 'vertex'   , @_gl.VERTEX_SHADER   , code 
+  loadFragmentShader : (code)   -> @loadShader 'fragment' , @_gl.FRAGMENT_SHADER , code 
+  loadShader: (name, type, code) ->
+    shader = loadShader @_gl, name, code, type
     @attachShader shader
 
-export loadShader = (gl, shaderSource, shaderType) ->
+export loadShader = (gl, name, shaderSource, shaderType) ->
   shader = gl.createShader shaderType
   gl.shaderSource shader, shaderSource
   gl.compileShader shader
   compiled = gl.getShaderParameter shader, gl.COMPILE_STATUS
   if not compiled
     lastError = gl.getShaderInfoLog shader
-    console.error ("*** Error compiling shader '" + shader + "':" + lastError)
+    console.error ("*** Error compiling #{name} shader:" + lastError)
     gl.deleteShadershader
     return null
   return shader
