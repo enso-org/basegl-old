@@ -30,6 +30,14 @@ window.Benchmark = Benchmark;
 arrayMin = (arr) -> arr.reduce (p, v) -> if p < v then p else v
 arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
 
+shallowCompare = (a, b) ->
+  if (a == b) then return true
+  for k,v of a
+    if b[k] != v then return false
+  for k,v of b
+    if a[k] != v then return false
+  return true
+
 # class Foo
 #   @_nextID = 0
 #   @getID: ->
@@ -102,7 +110,10 @@ arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
 
 param = (name, cfg) ->
   if cfg
-    cfg[name] || param(name, cfg._)
+    out = cfg[name]
+    if out == undefined
+      param(name, cfg._)
+    else out
   else
     cfg
 
@@ -118,16 +129,7 @@ extend = (base, ext) ->
 
 CTX = WebGLRenderingContext
 
-export usage = 
-  static      : CTX.STATIC_DRAW
-  dynamic     : CTX.DYNAMIC_DRAW
-  stream      : CTX.STREAM_DRAW
-  staticRead  : CTX.STATIC_READ
-  dynamicRead : CTX.DYNAMIC_READ
-  streamRead  : CTX.STREAM_READ
-  staticCopy  : CTX.STATIC_COPY
-  dynamicCopy : CTX.DYNAMIC_COPY
-  streamCopy  : CTX.STREAM_COPY
+
 
 webGL =
   glsl:
@@ -136,6 +138,16 @@ webGL =
       medium: 'mediump'
       high:   'highp'
   types: {}
+  usage:
+    static      : CTX.STATIC_DRAW
+    dynamic     : CTX.DYNAMIC_DRAW
+    stream      : CTX.STREAM_DRAW
+    staticRead  : CTX.STATIC_READ
+    dynamicRead : CTX.DYNAMIC_READ
+    streamRead  : CTX.STREAM_READ
+    staticCopy  : CTX.STATIC_COPY
+    dynamicCopy : CTX.DYNAMIC_COPY
+    streamCopy  : CTX.STREAM_COPY
 
 
 
@@ -160,11 +172,11 @@ class GLType
       @size       = 1
       @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
 
-  newBuffer: (elems=1) ->
-    new Buffer @bufferType, (elems * @size)
+  newBuffer: (elems=1, cfg) ->
+    new Buffer @bufferType, (elems * @size), cfg
 
-  newBufferfromArray: (array) ->
-    new Buffer @bufferType, array
+  newBufferfromArray: (array, cfg) ->
+    new Buffer @bufferType, array, cfg
 
 
 ### Batch preparation ###
@@ -239,11 +251,33 @@ withNewArrayBuffer = (gl, f) ->
 # write functions that can be overriden instead of inflexible index-based
 # interface.
 
+
+patternArray = (t, pat, tgtLen) -> 
+  pat  = new t pat
+  arr  = new t tgtLen
+  len  = pat.length
+  buff = arr.buffer
+  view = new t pat.buffer, 0, Math.min(len, tgtLen)
+  arr.set view
+  while true
+    if len >= tgtLen then break
+    view = new t buff, 0, Math.min(len, tgtLen-len)
+    arr.set view, len
+    len <<= 1
+  arr
+
+
 export class Buffer
 
   ### Properties ###
-  constructor: (@type, args...) ->
-    @_array = new @type args...
+  constructor: (@type, arg, cfg={}) ->
+    @_default = param 'default', cfg
+    @_array   = @_newArray arg
+
+  _newArray: (arg) ->
+    if @_default && arg.constructor == Number
+      patternArray @type, @_default, arg
+    else new @type arg
 
   @getter 'array'    , -> @_array
   @getter 'buffer'   , -> @_array.buffer
@@ -258,7 +292,7 @@ export class Buffer
 
   ### Size Management ###
   resize: (newLength) ->
-    newArray  = new @type newLength
+    newArray  = @_newArray newLength
     arrayView = if @length <= newLength then @_array else
       new @type @_array.buffer, 0, newLength
     newArray.set arrayView
@@ -364,12 +398,21 @@ export class Observable
 ### BufferType ###
 ##################
 
+notImplementError = (cons, fn) -> 
+  throw "Type #{cons} does not implement '#{fn}' method"
 # BufferType is a base-class for buffer-like attribute types.
 
 ### Abstraction ###
 
-export class BufferType
-  constructor: (@array) ->
+export class Type
+  @default : -> notImplementError @name, 'default'
+  
+  toGLSL   : -> notImplementError @constructor.name, 'toGLSL'
+  @getter 'rawArray', -> notImplementError @constructor.name, 'rawArray'
+
+export class BufferType extends Type
+  constructor: (@array) -> super()
+  @getter 'type'     , -> @constructor
   @getter 'length'   , -> @glType.size
   @getter 'buffer'   , -> @array.buffer
   @getter 'rawArray' , -> @array.rawArray
@@ -415,9 +458,13 @@ Property.addIndexFields2    BufferType, 16
 
 ### Basic types ###
 
-export class Float
-  @glType: webGL.types.float
-  constructor: (@number) ->
+export class Float extends Type
+  @glType  : webGL.types.float
+  @default : -> new Float 0
+
+  constructor: (@number) -> super()
+  @getter 'rawArray', -> new Float32Array [@number]
+
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
 export class Vec2 extends BufferType
@@ -482,6 +529,11 @@ value = (a) ->
     when Number then new Float a
     else a
 
+xtype = (a) -> 
+  switch a.constructor
+    when Number   then Float
+    else a.type
+
 toGLSL = (a) -> value(a).toGLSL()
 
 
@@ -542,7 +594,7 @@ class Pool
     @onResized oldSize, newSize
 
   reserveFromBeginning: (required) =>
-    @nextIndex = required
+    @nextIndex = Math.max @nextIndex, required
     @growTo required
 
   ### Events ###
@@ -768,6 +820,11 @@ class AttributeLazyManager extends RangedLazyManager
 #             0.5,  0.5, 0 ,
 #             0.5, -0.5, 0 ]
 
+rawArray = (a) ->
+  if      ArrayBuffer.isView a   then a
+  else if a.constructor == Array then a
+  else    a.rawArray
+  
 export class Attribute extends Lazy
 
   ### Properties ###
@@ -775,14 +832,20 @@ export class Attribute extends Lazy
   constructor: (cfg) -> 
     super extend cfg,
       lazyManager: new AttributeLazyManager
-    
-    @logger.info "Allocating space for #{@_size} elements"
-    @_type    = param('type',cfg)    || throw 'Type required' 
-    @_size    = param('size',cfg)    || throw 'Size required'
-    @_default = param('default',cfg) || null
-    @_usage   = param('usage',cfg)   || usage.dynamic
+
+    @_type    = param('type',cfg) 
+    @_size    = param('size',cfg)
+    @_default = param('default',cfg) || @_type.default()
+    @_usage   = param('usage',cfg)   || webGL.usage.dynamic
     @_scopes  = new Set
-    @_data    = new Observable (@type.glType.newBuffer @size)
+
+    if @_type == undefined then throw 'Type required' 
+    if @_size == undefined then throw 'Size required' 
+
+    console.warn ">>", @label, @_default
+
+    @logger.info "Allocating space for #{@_size} elements"
+    @_data = new Observable (@type.glType.newBuffer @size, {default: rawArray @_default})
 
     @_initEventHandlers()
 
@@ -809,38 +872,35 @@ export class Attribute extends Lazy
 
   ### Smart Constructors ###
 
-  # TODO: Function `from` should not expect label as separate argument.
-  #       It should be optional argument in its config.
-  @from = (label, a) ->
-    if a.constructor == Object
-      @_from label, a.data, a.type, a
+  @_inferArrType = (arr) -> xtype arr[0]
+  @from = (cfg) ->
+    data  = param 'data'    , cfg
+    def   = param 'default' , cfg
+    type  = param('type',cfg)?.type
+    array = false
+    cons  = data?.constructor
+    if ArrayBuffer.isView data
+      array = true
+      size  = data.length / type.glType.size
+    else if cons == Array
+      array = true
+      type  = type || @_inferArrType data
+      size  = data.length
+    else if cons == Function
+      type = type || data.type
+      size = 0
     else
-      @_from label, a 
-
-  @_inferArrType = (arr) -> arr[0].constructor
-  @_from = (label, a, expType, cfg={}) ->
-    if a.constructor == Array
-      type = expType || @_inferArrType a
-      size = a.length
-      attr = new Attribute extend cfg, {label, type, size}
-      attr.set a
+      type = type || data.type
+      size = 0
+      def  = def || data
+    if not type?
+      label = param('label', cfg) || 'unnamed'
+      throw "Cannot infer '#{label}' attribute type."
+    attr = new Attribute extend cfg, {type, size, default: def}
+    if array
+      attr.set data
       attr.dirty.unset()
-      attr
-    else if ArrayBuffer.isView a
-      type = expType?.type
-      if not type?
-        throw "You have to provide explicit type when using TypedArray
-              initializator for '#{label}' attribute."
-      size = a.length / type.glType.size
-      attr = new Attribute extend cfg, {label, type, size}
-      attr.set a
-      attr.dirty.unset()
-      attr
-    else new Attribute extend cfg,
-      label : label
-      type  : a.type
-      size  : 0
-
+    attr
 
 
   ### Size Management ###
@@ -866,10 +926,11 @@ export class Attribute extends Lazy
   set: (data) ->
     if data.constructor == Array
       typeSize = @type.glType.size
-      buffer   = @type.glType.newBuffer data.length
+      buffer   = @type.glType.newBuffer data.length, {default: @_default.rawArray}
       for i in [0 ... data.length]
+        val    = value data[i]
         offset = i * typeSize
-        buffer.set data[i].rawArray, offset
+        buffer.set val.rawArray, offset
       @data.set buffer.rawArray
     else if ArrayBuffer.isView data
       @data.set data
@@ -882,13 +943,34 @@ export class Attribute extends Lazy
 ### AttributeScope ###
 ######################
 
-export class AttributeScope extends Logged
+class AttributeScopeLazyManager extends LazyManager
+  constructor: ->
+    super() 
+    @_addedAttributes   = []
+    @_removedAttributes = []
+  @getter 'addedAttributes', -> @_addedAttributes
+
+  setAddedAttribute: (attr) ->
+    @_addedAttributes.push attr
+    @set()
+
+  setRemovedAttribute: (attr) -> 
+    @_removedAttributes.push attr
+    @set()
+
+  unset: ->
+    @_addedAttributes   = []
+    @_removedAttributes = []
+    super.unset()
+
+
+export class AttributeScope extends Lazy
 
   ### Initialization ###
 
   constructor: (cfg) ->
     super extend cfg,
-      lazyManager : new ListLazyManager
+      lazyManager : new AttributeScopeLazyManager
     @data       = {}
     @_dataNames = new Map
 
@@ -905,23 +987,35 @@ export class AttributeScope extends Logged
   _initValues: (data) -> 
     for name,attrCfg of data
       @addAttribute name, attrCfg
+      @data[name].dirty.unset()
+      @dirty.unset()
 
 
   ### Attribute Management ###
 
   add: (data) ->
-    ix = @_indexPool.reserve()
-    for name, val of data
-      @data[name].write(ix,val)
+    @logger.group "Adding new attribute values", =>
+      ix = @_indexPool.reserve()
+      for name, val of data
+        tgt = @data[name]
+        if tgt == undefined 
+          @logger.info "Skipping inexisting attribute '#{name}'"
+        else
+          @data[name].write(ix,val)
 
   addAttribute: (name, data) ->
     label = @logger.scope + '.' + name
-    attr  = Attribute.from label, data
+    if data.constructor == Object
+      cfg = extend data, {label}
+    else
+      cfg = {label, data}
+    attr  = Attribute.from cfg
     @_indexPool.reserveFromBeginning attr.size
     attr.registerScope @
     attr.resizeToScopes()
     @data[name] = attr
     @_dataNames.set attr, name
+    @dirty.setAddedAttribute name
 
 
   ### Handlers ###
@@ -937,7 +1031,7 @@ export class AttributeScope extends Logged
 ### UniformScope ###
 ####################
 
-class UniformScope extends Logged
+class UniformScope extends Lazy
   constructor: (cfg) ->
     super cfg
     @data = {}
@@ -954,7 +1048,7 @@ class UniformScope extends Logged
 ### Geometry ###
 ################
 
-export class Geometry extends Logged
+export class Geometry extends Lazy
 
   ### Initialization ###
 
@@ -987,8 +1081,8 @@ export class Geometry extends Logged
           scope         = new cons {label, data}
           @_scope[name] = scope
           @[name]       = scope 
-          # scope.onSet.addEventListener =>
-          #   @dirty.set name
+          scope.dirty.onSet.addEventListener =>
+            @dirty.set name
 
 
 
@@ -1068,11 +1162,17 @@ class GLSLBuilder
 
 
 class ShaderBuilder
-  constructor: (@material, cfg={}) ->
-    @constants  = cfg.constants  || {}
-    @attributes = cfg.attributes || {}
-    @uniforms   = cfg.uniforms   || {}
-    @outputs    = cfg.outputs    || {}
+  constructor: (@material) ->
+    @resetVariables()
+    @resetPrecision()
+    
+  resetVariables: ->
+    @constants  = {}
+    @attributes = {}
+    @uniforms   = {}
+    @outputs    = {}
+
+  resetPrecision: ->
     @precision =
       vertex   : new Precision
       fragment : new Precision
@@ -1263,7 +1363,7 @@ export class RawMaterial extends Material
 ### Mesh ###
 ############
 
-export class Mesh extends Logged
+export class Mesh extends Lazy
   constructor: (geometry, material) ->
     super
       label: "Mesh." + geometry.label
@@ -1272,10 +1372,9 @@ export class Mesh extends Logged
     @_shader        = null
     @_bindings      = {}
     @_shaderBuilder = new ShaderBuilder 
-    # @geometry.onSet.addEventListener =>
-    #   @dirty.set()
+    @geometry.dirty.onSet.addEventListener =>
+      @dirty.set()
     @_bindVariables()
-    @_generateShader()
 
   @getter 'geometry' , -> @_geometry
   @getter 'material' , -> @_material
@@ -1283,33 +1382,54 @@ export class Mesh extends Logged
   @getter 'bindings' , -> @_bindings
 
   _bindVariables: ->
-    for varName, varDef of @material.variable.input 
+    @logger.group "Binding variables", =>
+      {bindings, missing} = @_matchVariables()
+      if not shallowCompare @bindings, bindings
+        @_bindings = bindings
+        @_shaderBuilder.resetVariables()
+        @_fillMatches bindings 
+        @_fillMissing missing
+        @_generateShader()
+
+  _fillMatches: (matches) ->
+    for varName, scopeName of matches
+      varDef   = @material.variable.input[varName]
       glType   = varDef.glType
       glslType = glType.name
-      @logger.info "Binding variable '#{varName}'"
+      @logger.info "Using variable '#{varName}' from #{scopeName} scope"
+      if scopeName == 'point' || scopeName == 'instance'
+        @_shaderBuilder.attributes[varName] = glslType
+      else if scopeName == 'object'
+        @_shaderBuilder.uniforms[varName] = glslType
+      else
+        throw "Unsupported scope #{scopeName}"
+  
+  _fillMissing: (missing) ->
+    for varName in missing      
+      @logger.info "Using default value for variable '#{varName}'"
+      varDef   = @material.variable.input[varName]
+      @_shaderBuilder.constants[varName] =
+        type  : varDef.glType.name
+        value : varDef.toGLSL()
+
+  _matchVariables: ->
+    bindings = {}
+    missing  = []
+    for varName, varDef of @material.variable.input 
       scopeName = @_lookupAttrScope varName
       if scopeName
-        @logger.info "Using variable '#{varName}' from #{scopeName} scope"
-        @_bindings[varName] = scopeName
-        if scopeName == 'point' || scopeName == 'instance'
-          @_shaderBuilder.attributes[varName] = glslType
-        else if scopeName == 'object'
-          @_shaderBuilder.uniforms[varName] = glslType
-        else
-          throw "Unsupported scope #{scopeName}"
+        bindings[varName] = scopeName
       else
-        @_shaderBuilder.constants[varName] =
-          type  : varDef.glType.name
-          value : varDef.toGLSL()
+        missing.push varName
+    {bindings, missing}
          
-
   _generateShader: ->
     @logger.info 'Generating shader'
     vcode = @material.vertexCode()
     fcode = @material.fragmentCode()
     @_shader = @_shaderBuilder.compute vcode, fcode
-    console.log @_shader.vertex
-    console.log @_shader.fragment
+    # console.log @_shader.vertex
+    # console.log @_shader.fragment
 
   _lookupAttrScope: (name) ->
     for scopeName of @geometry.scope
@@ -1317,9 +1437,10 @@ export class Mesh extends Logged
         return scopeName
     return null
 
+  update: ->
+    @_bindVariables()
 
 export class Precision
-  high = 'high'
   constructor: ->
     @float                = webGL.glsl.precision.medium
     @int                  = webGL.glsl.precision.medium
@@ -1400,7 +1521,7 @@ class GPUAttribute extends Lazy
   _updateAll: () ->
     @logger.info "Updating all elements"    
     bufferRaw = @_attribute.data.rawArray
-    usage     = @_attribute.usage
+    usage     = @_attribute.usage 
     withArrayBuffer @_gl, @_buffer, =>
       @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
 
@@ -1472,29 +1593,34 @@ class GPUBufferRegistry extends Lazy
     
 
 
-export class GPUMesh extends Logged
+export class GPUMesh extends Lazy
   constructor: (@_gl, bufferRegistry, mesh) ->
     super
       label: "GPU.#{mesh.label}"
     @_bufferRegistry = bufferRegistry
     @mesh            = mesh
-    @varLoc          = {}
+    @_varLoc         = {}
     @buffer          = {}
     @_program        = null
+    mesh.dirty.onSet.addEventListener =>
+      @dirty.set()
+    @_init()
+
+  _init: ->
     @logger.group "Initializing", =>
       @_updateProgram()
       @_initVarLocations()
       @_initVAO()
-      # mesh.onSet.addEventListener =>
-      #   @_dirty.set()
 
   _updateProgram: ->
     @logger.group "Compiling shader program", =>
-      shader = @mesh.shader
+      @_program?.delete()
+      shader    = @mesh.shader
       @_program = Program.from @_gl, shader.vertex, shader.fragment
     
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
+      @_varLoc = {}
       for varName, spaceName of @mesh.bindings
         @_initSpaceVarLocation spaceName, varName
 
@@ -1507,10 +1633,11 @@ export class GPUMesh extends Logged
         @logger.info "Variable '" + varName + "' not used in shader"
       else
         @logger.info "Variable '" + varName + "' bound successfully"
-        @varLoc[varName] = loc
+        @_varLoc[varName] = loc
 
   _initVAO: () ->
     @logger.group 'Initializing Vertex Array Object (VAO)', =>
+      if @_vao then @_gl.deleteVertexArray @_vao
       @_vao = @_gl.createVertexArray()
       @_bindAttrsToProgram()
 
@@ -1528,7 +1655,7 @@ export class GPUMesh extends Logged
       @logger.group "Binding variable '#{spaceName}.#{varName}'", =>
         space = @mesh.geometry[spaceName].data
         val   = space[varName]
-        loc   = @varLoc[varName]
+        loc   = @_varLoc[varName]
         if not @buffer[spaceName]?
           @buffer[spaceName] = {}
         if loc != undefined
@@ -1543,14 +1670,24 @@ export class GPUMesh extends Logged
   _unsetDirtyChildren: ->
     @mesh.dirty.unset()
 
+  update: ->
+    @logger.group "Update", =>
+      oldShader = @mesh.shader
+      @mesh.update()
+      newShader = @mesh.shader
+      if oldShader == newShader
+        @logger.info "Shader did not change"
+      else
+        @_init()
+      
+
   draw: (viewProjectionMatrix) ->
     @logger.group "Drawing", =>
       @_gl.useProgram @_program.glProgram      
       withVAO @_gl, @_vao, =>
-        @_gl.uniformMatrix4fv(@varLoc.matrix, false, viewProjectionMatrix)
+        @_gl.uniformMatrix4fv(@_varLoc.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length
-        console.log ">>>", pointCount, instanceCount
         if instanceCount > 0
           instanceWord = if instanceCount > 1 then "instances" else "instance"
           @logger.info "Drawing #{instanceCount} " + instanceWord
@@ -1564,22 +1701,24 @@ export class GPUMesh extends Logged
           
 
 
-export class GPUMeshRegistry extends Logged
+export class GPUMeshRegistry extends Lazy
   constructor: ->
-    super()
-      # lazyManager : new ListLazyManager    
+    super
+      lazyManager : new ListLazyManager    
     @_meshes = new Set
 
   # @getter 'dirtyMeshes', -> @_dirty.elems
 
   add: (mesh) ->
     @_meshes.add mesh
-    # mesh.onSet.addEventListener =>
-    #   @_dirty.set mesh
+    mesh.dirty.onSet.addEventListener =>
+      @dirty.set mesh
 
   update: ->
-    # if @dirty.isDirty
-    #   @logger.group "Updating", =>
+    if @dirty.isDirty
+      @logger.group "Updating", =>
+        @dirty.elems.forEach (mesh) =>
+          mesh.update()
     #     @logger.group "Updating all GPU meshes", =>
     #       @dirtyMeshes.forEach (mesh) =>
     #         mesh.update()
@@ -1600,7 +1739,7 @@ export test = (ctx, viewProjectionMatrix) ->
     label: "Geo1"
     point:
       position: 
-        usage : usage.static
+        usage : webGL.usage.static
         data  : [
           (vec3 -100,  100, 0),
           (vec3 -100, -100, 0),
@@ -1628,6 +1767,10 @@ export test = (ctx, viewProjectionMatrix) ->
       #   (vec4 0,0,1,1),
       #   (vec4 1,1,1,1)
       # ]
+
+      # color: 
+      #   type: vec4
+      #   default: [1,0,0,1,0,1,0,1]
       
       # transform: [
       #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100) ,
@@ -1636,9 +1779,14 @@ export test = (ctx, viewProjectionMatrix) ->
       #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ]
       
     instance:
-      color: [
-        (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
-      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100)]
+      color: vec4
+      # color: [
+      #   (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
+      # color: 
+      #   data: vec4(1,0,0,1)
+      #   default: [1,0,1]
+      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
+      # foo: [1,2]
 
     object:
       matrix: mat4
@@ -1685,381 +1833,38 @@ export test = (ctx, viewProjectionMatrix) ->
   # console.log mat1.shader.fragment
 
   logger.group "FRAME 1", =>
+    # geo.point.data.position.read(0)[0] = 7
+    # console.log geo.instance.data.color
+    # geo.instance.addAttribute 'color', 
+    #   type: vec4
+    #   default: vec4(1,0,0,1)
+    # geo.instance.data.color.read(0).rgba = [1,0,0,1]
+    # geo.instance.data.color.read(1).rgba = [0,1,0,1]
+    meshRegistry.update()
     bufferRegistry.update()
     # meshRegistry.update()
   
-  logger.group "FRAME 2", =>
-    geo.point.data.position.read(0)[0] = 7
-    geo.point.data.position.read(0)[0] = 7
-    geo.point.data.position.read(0)[1] = 7
-    bufferRegistry.update()
-    # meshRegistry.update()
+  # logger.group "FRAME 2", =>
+    # geo.point.data.position.read(0)[0] = 7
+  #   geo.point.data.position.read(0)[0] = 7
+  #   geo.point.data.position.read(0)[1] = 7
+  #   bufferRegistry.update()
+  #   # meshRegistry.update()
 
-  logger.group "FRAME 3", =>
-    # geo.point.data.position.read(1)[0] = 8
-    # geo.point.data.uv.read(1)[0] = 8
-    # geo.instance.add({color: vec4(0,0,1,1)})
-    geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
-    geo.instance.add({color: vec4(0,0,0,1)})
-    # geo.instance.data.color.read(0)[0] = 0.7
-    bufferRegistry.update()
-    # meshRegistry.update()
+  # logger.group "FRAME 3", =>
+  #   # geo.point.data.position.read(1)[0] = 8
+  #   # geo.point.data.uv.read(1)[0] = 8
+  #   # geo.instance.add({color: vec4(0,0,1,1)})
+  #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
+  #   # geo.instance.add({color: vec4(0,0,0,1)})
+  #   # geo.instance.data.color.read(0)[0] = 0.7
+  #   bufferRegistry.update()
+  #   # meshRegistry.update()
 
-  logger.group "FRAME 4", =>
-    bufferRegistry.update()
-    # meshRegistry.update()
+  # logger.group "FRAME 4", =>
+  #   bufferRegistry.update()
+  #   # meshRegistry.update()
 
 
   m1.draw(viewProjectionMatrix)
   
-  # console.log geo.instance.data.transform.read(0).array._array._array._array
-  # console.log geo.point.data.position.read(1).array._array._array._array
-  # console.log geo.point.data.position
-  # console.log geo.point.data.color
-
-    # console.log "Dirty:", geo.point.dirtyChildren
-    # # console.log "position.dirty =", geo.point.attrs.position.dirtyManager.range
-    # # console.log ">>>", geo.point.attrs.position.size
-
-    # console.log geo.point.attrs.position
-    # console.log geo.point.attrs.uv
-
-    # console.warn "END"    
-    
-
-
-
-
-# ###############################################################################
-# ### OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE OBSOLETE ###
-# ###############################################################################
-
-# class Pool_old 
-#   constructor: (@size=0) -> 
-#     @free      = []
-#     @nextIndex = 0
-
-#   reserve: () =>
-#     n = @free.shift()
-#     if n != undefined      then return n
-#     if @nextIndex == @size then return undefined
-#     n = @nextIndex
-#     @nextIndex += 1
-#     n
-
-#   dirtySize: () => @nextIndex
-
-#   free: (n) =>
-#     @free.push(n)
-
-#   resize: (newSize) => 
-#     @size = newSize
-
-
-# WebGL = 
-#   SIZE_OF_FLOAT: 4
-
-# BufferUsage = 
-#   STATIC_DRAW  : 'STATIC_DRAW'
-#   DYNAMIC_DRAW : 'DYNAMIC_DRAW'
-#   STREAM_DRAW  : 'STREAM_DRAW'
-#   STATIC_READ  : 'STATIC_READ'
-#   DYNAMIC_READ : 'DYNAMIC_READ'
-#   STREAM_READ  : 'STREAM_READ'
-#   STATIC_COPY  : 'STATIC_COPY'
-#   DYNAMIC_COPY : 'DYNAMIC_COPY'
-#   STREAM_COPY  : 'STREAM_COPY'
-
-# patternFloat32Array = (iterations, pattern) ->
-#   chunks = 1 << (iterations - 1)
-#   length = chunks * pattern.length
-#   arr = new Float32Array length
-#   for i in [0 .. pattern.length - 1]
-#     arr[i] = pattern[i]
-#   p = pattern.length
-#   for i in [1 .. iterations - 1]
-#     arr.copyWithin p, 0, p
-#     p <<= 1
-#   arr 
-
-# # xarr = patternFloat32Array 8, [1,2,3,4]
-# # console.log xarr
-
-
-# class Pool_old 
-#   constructor: (@size=0) -> 
-#     @free      = []
-#     @nextIndex = 0
-
-#   reserve: () ->
-#     n = @free.shift()
-#     if n != undefined      then return n
-#     if @nextIndex == @size then return undefined
-#     n = @nextIndex
-#     @nextIndex += 1
-#     n
-
-#   dirtySize: () -> @nextIndex
-
-#   free: (n) ->
-#     @free.push(n)
-
-#   resize: (newSize) -> 
-#     @size = newSize
-
-
-# applyDef = (cfg, defCfg) ->
-#   if not cfg? then return defCfg
-#   for key of defCfg
-#     if cfg[key] == undefined
-#       cfg[key] = defCfg[key]
-
-
-# export class Sprite extends Composable
-#   @DEFAULT_SIZE = 10
-#   cons: (cfg) -> 
-#     @mixin displayObjectMixin, [], cfg
-#     ds       = Sprite.DEFAULT_SIZE
-#     @_id     = null
-#     @_buffer = null
-#     @configure cfg
-
-#     @_displayObject.onTransformed = => @onTransformed()
-
-#     @variables = 
-#       color: new Vector [0,0,0], => 
-#         @_buffer.setVariable @_id, 'color', @variables.color
-
-
-#   onTransformed: () => 
-#     if not @dirty.isDirty then @_buffer.markDirty @
-
-
-
-
-# export class SpriteBuffer
-#   constructor: (@name, @_gl, @_program, @_variables) ->
-#     @_SPRITE_IND_COUNT = 4
-#     @_SPRITE_VTX_COUNT = 6
-#     @_INT_BYTES        = 4
-#     @_VTX_DIM          = 3
-#     @_VTX_ELEMS        = @_SPRITE_IND_COUNT * @_VTX_DIM
-#     @_sizeExp          = 1
-
-#     @_ixPool           = new Pool_old
-#     @_vao              = @_gl.createVertexArray()
-#     @_locs             = @_program.lookupVariables @_variables  
-#     @__dirty           = []
-#     @_buffers          = {}
-
-#     @initVAO()
-            
-#   initVAO: () => @logGroup 'VAO initialization', =>
-#     @__indexBuffer = @_gl.createBuffer()
-
-#     @resize(@_sizeExp)
-#     varSpace = @_variables.attribute
-#     locSpace = @_locs.attribute
-#     withVAO @_gl, @_vao, =>  
-#       for varName of varSpace
-#         @log "Enabling attribute '" + varName + "'"
-#         variable = varSpace[varName]
-#         varLoc   = locSpace[varName]      
-#         buffer   = @_buffers[varName]
-#         if varLoc == -1
-#           @log "Attribute '" + varName + "' not used in shader"
-#         else withArrayBuffer @_gl, buffer.gl, =>   
-#           @_gl.enableVertexAttribArray varLoc
-#           normalize = false
-#           stride    = 0
-#           offset    = 0
-#           type      = variable.value.webGLRepr.type.glType(@_gl)
-#           @_gl.vertexAttribPointer(
-#             varLoc, variable.value.webGLRepr.size, type, normalize, stride, offset)
-#           if variable.instanced
-#             @_gl.vertexAttribDivisor(varLoc, 1)
-
-
-
-#   resize: (newSizeExp) =>
-#     @_sizeExp = newSizeExp
-#     @_size    = 1 << (@_sizeExp - 1)
-#     @_ixPool.resize @_size
-#     @log "Resizing to 2^" + @_sizeExp + ' elements'
-
-#     # # Indexing geometry
-#     # indices = @_buildIndices()
-#     # withBuffer @_gl, @_gl.ELEMENT_ARRAY_BUFFER, @__indexBuffer, =>
-#     #   @_gl.bufferData(@_gl.ELEMENT_ARRAY_BUFFER, indices, @_gl.STATIC_DRAW)
-
-#     # Updating attribute buffers
-#     varSpace = @_variables.attribute   
-#     for varName of varSpace
-#       variable       = varSpace[varName]
-#       # defaultPattern = variable.defaultPattern #FIXME: handle patterns of wring sizes
-#       # patternLength  = variable.value.webGLRepr.size * @_SPRITE_IND_COUNT
-#       bufferUsage    = variable.usage || BufferUsage.DYNAMIC_DRAW
-      
-#       bufferJS = null
-#       if variable.instanced
-#         bufferJS = new Float32Array(variable.value.webGLRepr.size * @_size)
-#         if variable.value?
-#           bufferJS.fill variable.value
-#       else
-#         bufferJS = new Float32Array(variable.value.webGLRepr.size * @_SPRITE_IND_COUNT)
-#         bufferJS.set variable.initData
-
-#       # bufferJS = if not variable.defaultPattern?
-#       #       new Float32Array(patternLength * @_size)
-#       #     else patternFloat32Array @_sizeExp, defaultPattern
-      
-#       buffer = @_buffers[varName]
-#       if not buffer?
-#         buffer =
-#           js: bufferJS
-#           gl: @_gl.createBuffer()
-#       else
-#         bufferJS.set buffer.js
-#         buffer.js = bufferJS
-#       @_buffers[varName] = buffer
-
-#       withArrayBuffer @_gl, buffer.gl, =>
-#         @_gl.bufferData(@_gl.ARRAY_BUFFER, buffer.js, @_gl[bufferUsage])
-
-#   markDirty: (sprite) ->
-#     @__dirty.push(sprite)
-
-#   draw: (viewProjectionMatrix) ->
-#     @update() 
-#     withVAO @_gl, @_vao, =>
-#       @_gl.uniformMatrix4fv(@_locs.uniform.matrix, false, viewProjectionMatrix)
-#       elemCount = @_ixPool.dirtySize()
-#       if elemCount > 0
-#         # offset = elemCount * @_SPRITE_VTX_COUNT
-#         # @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
-#         @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, @_SPRITE_IND_COUNT, 1)
-
-#   create: => @logGroup "Creating sprite", =>
-#     ix = @_ixPool.reserve()
-#     if not ix?
-#       @resize(@_sizeExp * 2)
-#       ix = @_ixPool.reserve()
-#     @log "New sprite", ix
-#     new Sprite
-#       buffer : @
-#       id     : ix
-
-#   log: (args...) ->
-#     logger.info ("[SpriteBuffer." + @name + "]"), args...
-  
-#   logGroup: (s,f) ->
-#     logger.group ("[SpriteBuffer." + @name + "] " + s), f
-
-
-#   setVariable: (id, name, val) ->
-#     # console.log '!!!!!', name, id
-#     buffer = @_buffers[name]
-#     components = val.components
-#     offset = id * 3
-#     for componentIx in [0 ... 3]
-#       buffer.js[offset + componentIx] = components[componentIx]
-#       # console.log "set", (offset + componentIx)
-
-#     dstByteOffset = @_INT_BYTES * offset
-#     length        = 3
-
-#     arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
-#                        offset, length 
-
-#   # setVariable: (id, name, val) ->
-#   #   console.log '!!!!!', name, id
-#   #   buffer = @_buffers[name]
-
-#   #   srcOffset  = id * @_VTX_ELEMS   
-#   #   components = val.components
-
-#   #   for vtxIx in [0 ... @_SPRITE_IND_COUNT]
-#   #     offset = srcOffset + vtxIx * 3
-#   #     for componentIx in [0 ... 3]
-#   #       buffer.js[offset + componentIx] = components[componentIx]
-
-#   #   dstByteOffset = @_INT_BYTES * srcOffset
-#   #   length        = @_VTX_ELEMS
-
-#   #   arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
-#   #                      srcOffset, length 
-                       
-
-#   update: () ->
-#     # TODO: check on real use case if bulk update is faster
-#     USE_BULK_UPDATE = false
-
-#     range = null
-
-#     if USE_BULK_UPDATE
-#       range =
-#         min : undefined
-#         max : undefined
-
-#     buffer = @_buffers.position
-
-#     for sprite in @__dirty
-#       sprite.update()
-
-#       srcOffset = sprite.id * @_VTX_ELEMS   
-#       p = Matrix.vec4.create(); p[3] = 1
-#       ds = 0.5
-
-#       p[0] = -ds
-#       p[1] = ds 
-#       p[2] = 0
-#       Matrix.vec4.transformMat4 p, p, sprite.xform
-#       buffer.js[srcOffset]     = p[0]
-#       buffer.js[srcOffset + 1] = p[1]
-#       buffer.js[srcOffset + 2] = p[2]
-      
-#       p[0] = -ds 
-#       p[1] = -ds
-#       p[2] = 0
-#       Matrix.vec4.transformMat4 p, p, sprite.xform
-#       buffer.js[srcOffset + 3] = p[0]
-#       buffer.js[srcOffset + 4] = p[1]
-#       buffer.js[srcOffset + 5] = p[2]
-      
-#       p[0] = ds
-#       p[1] = ds
-#       p[2] = 0
-#       Matrix.vec4.transformMat4 p, p, sprite.xform
-#       buffer.js[srcOffset + 6] = p[0]
-#       buffer.js[srcOffset + 7] = p[1]
-#       buffer.js[srcOffset + 8] = p[2]
-      
-#       p[0] = ds
-#       p[1] = -ds
-#       p[2] = 0
-#       Matrix.vec4.transformMat4 p, p, sprite.xform
-#       buffer.js[srcOffset + 9]  = p[0]
-#       buffer.js[srcOffset + 10] = p[1]
-#       buffer.js[srcOffset + 11] = p[2]
-
-#       console.log ">>>", buffer.js
-      
-#       if USE_BULK_UPDATE
-#         if not (sprite.id >= range.min) then range.min = sprite.id
-#         if not (sprite.id <= range.max) then range.max = sprite.id
-#       else
-#         dstByteOffset = @_INT_BYTES * srcOffset
-#         length        = @_VTX_ELEMS
-#         arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
-#                            srcOffset, length 
-
-#     if USE_BULK_UPDATE
-#       srcOffset     = range.min * @_VTX_ELEMS
-#       dstByteOffset = @_INT_BYTES * srcOffset
-#       length        = @_VTX_ELEMS * (range.max - range.min + 1)
-#       arrayBufferSubData @_gl, buffer.gl, dstByteOffset, buffer.js, 
-#                          srcOffset, length 
-
-#     __dirty = []
-      
-
