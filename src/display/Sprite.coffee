@@ -392,14 +392,14 @@ export class Observable
 ################################################################################
 ################################################################################
 
+notImplementError = (cons, fn) -> 
+  throw "Type #{cons} does not implement '#{fn}' method"
 
 
 ##################
 ### BufferType ###
 ##################
 
-notImplementError = (cons, fn) -> 
-  throw "Type #{cons} does not implement '#{fn}' method"
 # BufferType is a base-class for buffer-like attribute types.
 
 ### Abstraction ###
