@@ -38,7 +38,7 @@ module.exports =
   , devtool: "eval-source-map"
   , devServer: { contentBase: path.resolve(__dirname, project, 'dist') }
   , resolve:
-    { extensions: ['.js', '.coffee']
+    { extensions: ['.js', '.coffee', '.tsx', '.ts']
     , modules:
       [ libPath
       , "node_modules"
@@ -56,6 +56,7 @@ module.exports =
       [ { use: [{loader: path.resolve('./basegl-loader.js')}, 'coffee-loader']  , test: /\.(coffee)$/                                   }
       , { use: 'raw-loader'     , test: /\.(glsl|vert|frag)$/ , exclude: /node_modules/ }
       , { use: 'glslify-loader' , test: /\.(glsl|vert|frag)$/ , exclude: /node_modules/ }
+      , { use: 'ts-loader'      , test: /\.tsx?$/             , exclude: /node_modules/ }
       ]
     }
   , plugins:

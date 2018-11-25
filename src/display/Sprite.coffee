@@ -11,6 +11,19 @@ import * as basegl from 'basegl'
 import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
 import * as Color     from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
+import {shallowCompare} from 'basegl/object/compare'
+import * as Config from 'basegl/object/config'
+
+import {vec2, vec3, vec4, mat2, mat3, mat4} from 'basegl/core/data/vector'
+import * as Buffer          from 'basegl/core/data/buffer'
+import * as Pool            from 'basegl/core/data/pool'
+import * as GL              from 'basegl/core/gl/utils'
+import * as EventDispatcher from 'basegl/event/dispatcher'
+import * as Lazy            from 'basegl/object/lazy'
+import * as Unique          from 'basegl/object/unique'
+import * as Logged          from 'basegl/object/logged'
+import {Attribute} from 'basegl/core/geometry/attribute'
+
 
 # import * as Benchmark from 'benchmark'
 
@@ -22,21 +35,12 @@ Benchmark = benchmark.runInContext({ _, process });
 window.Benchmark = Benchmark;
 
 
-
 #############
 ### UTILS ###
 #############
 
-arrayMin = (arr) -> arr.reduce (p, v) -> if p < v then p else v
-arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
 
-shallowCompare = (a, b) ->
-  if (a == b) then return true
-  for k,v of a
-    if b[k] != v then return false
-  for k,v of b
-    if a[k] != v then return false
-  return true
+
 
 # class Foo
 #   @_nextID = 0
@@ -104,22 +108,7 @@ shallowCompare = (a, b) ->
 # bench()
 
 
-##########################
-### Extensible Configs ###
-##########################
 
-param = (name, cfg) ->
-  if cfg
-    out = cfg[name]
-    if out == undefined
-      param(name, cfg._)
-    else out
-  else
-    cfg
-
-extend = (base, ext) -> 
-  ext._ = base
-  ext
 
 
 
@@ -151,87 +140,11 @@ webGL =
 
 
 
-##############
-### GLType ###
-##############
-
-### Definition ###
-
-class GLType
-  constructor: (@id, cfg) ->
-    @name = cfg.name
-    @code = CTX[@id]
-    if cfg.item
-      @item       = cfg.item
-      @size       = cfg.size
-      @byteSize   = @size * @item.byteSize
-      @bufferType = @item.bufferType
-    else
-      @bufferType = cfg.bufferType    
-      @item       = null
-      @size       = 1
-      @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
-
-  newBuffer: (elems=1, cfg) ->
-    new Buffer @bufferType, (elems * @size), cfg
-
-  newBufferfromArray: (array, cfg) ->
-    new Buffer @bufferType, array, cfg
-
-
-### Batch preparation ###
-
-typesCfg =
-  float        : {name: 'float' , bufferType: Float32Array}
-  int          : {name: 'int'   , bufferType: Int32Array}
-  float_vec2   : {name: 'vec2'  , item: 'float' , size: 2}
-  float_vec3   : {name: 'vec3'  , item: 'float' , size: 3}
-  float_vec4   : {name: 'vec4'  , item: 'float' , size: 4}
-  int_vec2     : {name: 'ivec2' , item: 'int'   , size: 2}
-  int_vec3     : {name: 'ivec3' , item: 'int'   , size: 3}
-  int_vec4     : {name: 'ivec4' , item: 'int'   , size: 4}
-  float_mat2   : {name: 'mat2'  , item: 'float' , size: 4}
-  float_mat3   : {name: 'mat3'  , item: 'float' , size: 9}
-  float_mat4   : {name: 'mat4'  , item: 'float' , size: 16}
-
-for name,cfg of typesCfg
-  if cfg.item?
-    cfg.item = webGL.types[cfg.item]
-  glName = name.toUpperCase()
-  webGL.types[name] = new GLType glName, cfg
 
 
 
 
 
-###################
-### WebGL Utils ###
-###################
-
-withVAO = (gl, vao, f) -> 
-  gl.bindVertexArray vao
-  out = f()
-  gl.bindVertexArray null
-  out
-
-
-withBuffer = (gl, type, buffer, f) -> 
-  gl.bindBuffer type, buffer
-  out = f()
-  gl.bindBuffer type, null
-  out
-
-withArrayBuffer = (gl, buffer, f) ->
-  withBuffer gl, gl.ARRAY_BUFFER, buffer, f 
-  
-arrayBufferSubData = (gl, buffer, dstByteOffset, srcData, srcOffset, length) ->
-  withArrayBuffer gl, buffer, =>
-    gl.bufferSubData gl.ARRAY_BUFFER, dstByteOffset, srcData, srcOffset, length
-      
-
-withNewArrayBuffer = (gl, f) ->
-  buffer = gl.createBuffer()
-  withArrayBuffer gl, buffer, => f buffer
   
 
 
@@ -243,298 +156,11 @@ withNewArrayBuffer = (gl, f) ->
 
 
 
-##############
-### Buffer ###
-##############
-
-# Buffer is a wrapper over any array-like object and exposes element read /
-# write functions that can be overriden instead of inflexible index-based
-# interface.
-
-
-patternArray = (t, pat, tgtLen) -> 
-  pat  = new t pat
-  arr  = new t tgtLen
-  len  = pat.length
-  buff = arr.buffer
-  view = new t pat.buffer, 0, Math.min(len, tgtLen)
-  arr.set view
-  while true
-    if len >= tgtLen then break
-    view = new t buff, 0, Math.min(len, tgtLen-len)
-    arr.set view, len
-    len <<= 1
-  arr
-
-
-export class Buffer
-
-  ### Properties ###
-  constructor: (@type, arg, cfg={}) ->
-    @_default = param 'default', cfg
-    @_array   = @_newArray arg
-
-  _newArray: (arg) ->
-    if @_default && arg.constructor == Number
-      patternArray @type, @_default, arg
-    else new @type arg
-
-  @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @_array.buffer
-  @getter 'length'   , -> @_array.length
-  @getter 'rawArray' , -> @_array
-
-  ### Read / Write ###
-  read:          (ix)      -> @_array[ix]
-  write:         (ix, v)   -> @_array[ix] = v 
-  readMultiple:  (ixs)     -> @_array[ix] for ix from ixs
-  writeMultiple: (ixs, vs) -> @_array[ix] = vs[i] for ix,i in ixs
-
-  ### Size Management ###
-  resize: (newLength) ->
-    newArray  = @_newArray newLength
-    arrayView = if @length <= newLength then @_array else
-      new @type @_array.buffer, 0, newLength
-    newArray.set arrayView
-    @_array = newArray
-
-  ### Redirect ###
-  set: (args...) -> @_array.set args...
-
-
-
-############
-### View ###
-############
-
-# View is a wrapper over any buffer-like object allowing to view the array with
-# a defined elements shift.
-
-class View
-
-  ### Properties ###
-  constructor: (@_array, @_offset=0, @_length=0) ->
-  @getter 'array'  , -> @_array
-  @getter 'buffer' , -> @_array.buffer
-  @getter 'length' , -> @_length
-  @getter 'offset' , -> @_offset
-
-  ### Read / Write ###
-  read:          (x)    -> @_array.read          (x + @_offset)
-  write:         (x, v) -> @_array.write         (x + @_offset), v
-  readMultiple:  (x)    -> @_array.readMultiple  (x + @_offset for x from x)
-  writeMultiple: (x, v) -> @_array.writeMultiple (x + @_offset for x from x), v
-
-  
-
-
-##################
-### Observable ###
-##################
-
-# Observable is a wrapper over any buffer-like object allowing to subscribe to
-# changes by monkey-patching its methods.
-
-export class Observable
-
-  ### Properties ###
-
-  constructor: (@_array) -> 
-  @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'length'   , -> @array.length
-  @getter 'rawArray' , -> @array.rawArray
-
-
-  ### Read / Write ###
-
-  read:         (ix)  -> @array.read         ix
-  readMultiple: (ixs) -> @array.readMultiple ixs 
-  
-  write: (ix, v) -> 
-    @array.write ix, v
-    @onChanged ix
-  
-  writeMultiple: (ixs, vs) ->
-    @array.writeMultiple ixs, vs 
-    @onChangedMultiple ixs
-
-  set: (array, offset=0) ->
-    @array.set array, offset
-    @onChangedRange offset, array.length
-
-
-  ### Size Management ###
-
-  resize: (newLength) ->
-    oldLength = @_length
-    if oldLength != newLength
-      @array.resize newLength
-      @onResized oldLength, newLength
-
-
-  ### Events ###  
-
-  onResized: (oldSize, newSize) ->
-  onChanged: (ix) ->
-
-  onChangedMultiple: (ixs) ->
-    for ix in ixs
-      @onChanged ix
-  
-  onChangedRange: (offset, length) ->
-    for ix in [offset ... offset + length]
-      @onChanged ix
-
-
-
 ################################################################################
 ################################################################################
 ################################################################################
 
-notImplementError = (cons, fn) -> 
-  throw "Type #{cons} does not implement '#{fn}' method"
 
-
-##################
-### BufferType ###
-##################
-
-# BufferType is a base-class for buffer-like attribute types.
-
-### Abstraction ###
-
-export class Type
-  @default : -> notImplementError @name, 'default'
-  
-  toGLSL   : -> notImplementError @constructor.name, 'toGLSL'
-  @getter 'rawArray', -> notImplementError @constructor.name, 'rawArray'
-
-export class BufferType extends Type
-  constructor: (@array) -> super()
-  @getter 'type'     , -> @constructor
-  @getter 'length'   , -> @glType.size
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'rawArray' , -> @array.rawArray
-  @getter 'glType'   , -> @constructor.glType
-  
-  @from: (args) ->
-    len = args.length
-    if len == 0
-      @default() 
-    else if len == @glType.size
-      new @ (@glType.newBufferfromArray args)
-    else
-      buffer = @default()
-      buffer.array.set args 
-      buffer
-
-  @default: -> new @ @glType.newBuffer()
-
-  # View another buffer as desired type without copying.
-  @view: (base, offset=0) ->
-    arr = new View base, offset, @size
-    new @ arr
-
-  read:          (ix)      -> @array.read          ix
-  write:         (ix,v)    -> @array.write         ix, v
-  readMultiple:  (ixs)     -> @array.readMultiple  ixs
-  writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
-
-  set: (src) ->
-    for i in [0 ... @glType.size]
-      @write i, src.read(i)
-
-  toGLSL: ->
-    name = @glType.name
-    args = @rawArray.join ','
-    args = (toGLSL a for a in @rawArray)
-    "#{name}(#{args.join(',')})"
-    
-Property.swizzleFieldsXYZW2 BufferType
-Property.swizzleFieldsRGBA2 BufferType
-Property.addIndexFields2    BufferType, 16
-
-
-### Basic types ###
-
-export class Float extends Type
-  @glType  : webGL.types.float
-  @default : -> new Float 0
-
-  constructor: (@number) -> super()
-  @getter 'rawArray', -> new Float32Array [@number]
-
-  toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
-
-export class Vec2 extends BufferType
-  @glType: webGL.types.float_vec2
-
-export class Vec3 extends BufferType
-  @glType: webGL.types.float_vec3
-
-export class Vec4 extends BufferType
-  @glType: webGL.types.float_vec4
-  @default: ->
-    array = super.default()
-    array[3] = 1
-    array
-
-export class Mat2 extends BufferType
-  @glType: webGL.types.float_mat2
-  @default: ->
-    array = super.default()
-    array[0] = 1
-    array[3] = 1
-    array
-
-export class Mat3 extends BufferType
-  @glType: webGL.types.float_mat3
-  @default: ->
-    array = super.default()
-    array[0] = 1
-    array[4] = 1
-    array[8] = 1
-    array
-
-export class Mat4 extends BufferType
-  @glType: webGL.types.float_mat4
-  @default: ->
-    array = super.default()
-    array[0]  = 1
-    array[5]  = 1
-    array[10] = 1
-    array[15] = 1
-    array
-
-
-### Smart constructors ###
-
-vec2 = (args...) => Vec2.from args
-vec3 = (args...) => Vec3.from args
-vec4 = (args...) => Vec4.from args
-mat2 = (args...) => Mat2.from args
-mat3 = (args...) => Mat3.from args
-mat4 = (args...) => Mat4.from args
-
-vec2.type = Vec2
-vec3.type = Vec3
-vec4.type = Vec4
-mat2.type = Mat2
-mat3.type = Mat3
-mat4.type = Mat4
-
-value = (a) ->
-  switch a.constructor
-    when Number then new Float a
-    else a
-
-xtype = (a) -> 
-  switch a.constructor
-    when Number   then Float
-    else a.type
-
-toGLSL = (a) -> value(a).toGLSL()
 
 
 ################################################################################
@@ -543,399 +169,19 @@ toGLSL = (a) -> value(a).toGLSL()
 
 
 
-##################
-### Index Pool ###
-##################
 
-class Pool
-  constructor: (required=0) -> 
-    @size      = @_computeSquareSize required
-    @free      = []
-    @nextIndex = required
-  @getter 'dirtySize', -> @nextIndex
 
-  _computeSquareSize: (required) =>
-    if required == 0 
-      size = 0
-    else 
-      size = 1
-      while true
-        if size < required
-          size <<= 1
-        else break
-    size
 
-  reserve: () =>
-    n = @free.shift()
-    if n != undefined      then return n
-    if @nextIndex == @size then @grow()
-    n = @nextIndex
-    @nextIndex += 1
-    n
 
 
-  free: (n) =>
-    @free.push(n)
 
-  resize: (newSize) => 
-    @size = newSize
 
-  growTo: (required) => 
-    newSize = @_computeSquareSize required
-    oldSize = @size
-    if newSize > oldSize 
-      @size = newSize
-      @onResized oldSize, newSize
 
-  grow: () =>
-    oldSize = @size
-    newSize = if oldSize == 0 then 1 else oldSize << 1
-    @size   = newSize
-    @onResized oldSize, newSize
 
-  reserveFromBeginning: (required) =>
-    @nextIndex = Math.max @nextIndex, required
-    @growTo required
 
-  ### Events ###
-  onResized: (oldSize, newSize) =>
 
 
 
-#######################
-### EventDispatcher ###
-#######################
-
-class EventDispatcher
-  constructor         :         -> @_listeners = new Set
-  addEventListener    : (f)     -> @_listeners.add    f
-  removeEventListener : (f)     -> @_listeners.delete f
-  dispatch            : (xs...) -> @_listeners.forEach (f) => f xs...
-
-
-
-###################
-### LazyManager ###
-###################
-
-class LazyManager
-  constructor: () ->
-    @_onSet   = new EventDispatcher 
-    @_onUnset = new EventDispatcher 
-    @_isDirty = false
-  @getter 'onSet'   , -> @_onSet
-  @getter 'onUnset' , -> @_onUnset
-  @getter 'isDirty' , -> @_isDirty
-
-  set: ->
-    if not @isDirty
-      @_isDirty = true
-      @onSet.dispatch()
-
-  unset: ->
-    if @isDirty
-      @_isDirty = false
-      @onUnset.dispatch()
-
-
-
-#######################
-### ListLazyManager ###
-#######################
-
-class ListLazyManager extends LazyManager
-  constructor: ->
-    super() 
-    @_elems = []
-  @getter 'elems', -> @_elems
-
-  set: (elem) ->
-    @_elems.push elem
-    super.set()
-
-  unset: ->
-    @_elems = []
-    super.unset()
-
-
-
-###############################
-### HierarchicalLazyManager ###
-###############################
-
-class HierarchicalLazyManager extends ListLazyManager
-  unset: ->
-    for elem in @elems
-      elem.dirty.unset()
-    super.unset()
-
-
-
-#########################
-### RangedLazyManager ###
-#########################
-
-class RangedLazyManager extends LazyManager
-  constructor: ->
-    super()
-    @_range = 
-      min: null
-      max: null
-  @getter 'range', -> @_range
-
-  setIndex: (ix) ->
-    if @isDirty
-      if      ix > @range.max then @range.max = ix
-      else if ix < @range.min then @range.min = ix
-    else
-      @_range.min = ix
-      @_range.max = ix
-      @set()
-
-  setRange: (offset, length) ->
-    min = offset
-    max = min + length - 1
-    if @isDirty
-      if max > @range.max then @range.max = max
-      if min < @range.min then @range.min = min
-    else
-      @_range.min = min
-      @_range.max = max
-      @set()
-
-
-  
-##############
-### Unique ###
-##############
-
-export class Unique
-  @_nextID = 0
-  @getID: ->
-    id = @_nextID 
-    @_nextID += 1
-    id
-
-  constructor: ->
-    @_id = @constructor.getID()
-  @getter 'id', -> @_id
-
-
-
-##############
-### Logged ###
-##############
-
-export class Logged extends Unique
-  constructor: (cfg={}) ->
-    super()
-    @_label  = param('label', cfg) || "#{@constructor.name}.#{@id}"
-    @_logger = logger.scoped @_label
-  @getter 'label'  , -> @_label
-  @getter 'logger' , -> @_logger
-
-
-
-############
-### Lazy ###
-############
-
-export class Lazy extends Logged
-  constructor: (cfg={}) ->
-    super cfg
-    @_dirty = param('lazyManager',cfg) || new LazyManager 
-    @logger.ifEnabled =>
-      @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
-      @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
-  @getter 'dirty', -> @_dirty
-    
-
-
-
-############################
-### AttributeLazyManager ###
-############################
-
-class AttributeLazyManager extends RangedLazyManager
-  constructor: ->
-    super()
-    @_isResized = false
-  @getter 'isResized', -> @_isResized
-
-  setResized: ->
-    @_isResized = true
-    @set()
-
-  unset: ->
-    @_isResized = false
-    super.unset()
-
-
-
-#################
-### Attribute ###
-#################
-
-# Attribute is a data associated with geometry. It is stored as typed array
-# buffer under the hood. There are several ways to initialize an Attribute when
-# using the Attribute.from smart constructor.
-
-# ### Initialization ###
-#
-# 1. BufferType hint initialization. In its shortest form, it takes only the type name
-#    and initializes to an empty buffer of the given type.
-#
-#        position: vec3
-#
-# 2. Simple initialization. In its shortest form it takes only a list of values
-#    and automatically infers the needed type.
-#
-#        position: [
-#         (vec3 [-0.5,  0.5, 0]) ,
-#         (vec3 [-0.5, -0.5, 0]) ,
-#         (vec3 [ 0.5,  0.5, 0]) ,
-#         (vec3 [ 0.5, -0.5, 0]) ]
-#
-# 3. Explicite initialization. This form allows providing additional parameters.
-#
-#        position: 
-#          usage : usage.static
-#          data  : [
-#            (vec3 [-0.5,  0.5, 0]) ,
-#            (vec3 [-0.5, -0.5, 0]) ,
-#            (vec3 [ 0.5,  0.5, 0]) ,
-#            (vec3 [ 0.5, -0.5, 0]) ]
-#
-# 4. Typed array initialization. This form has the best performance, but is less
-#    readable than previous ones. Unless you are providing very big chunks of
-#    data you will not see any performance difference here. Using this form you
-#    have to provide the type explicitly.
-#
-#        position: 
-#          usage : usage.static
-#          type  : vec3
-#          data  : new Float32Array [
-#            -0.5,  0.5, 0 ,
-#            -0.5, -0.5, 0 ,
-#             0.5,  0.5, 0 ,
-#             0.5, -0.5, 0 ]
-
-rawArray = (a) ->
-  if      ArrayBuffer.isView a   then a
-  else if a.constructor == Array then a
-  else    a.rawArray
-  
-export class Attribute extends Lazy
-
-  ### Properties ###
-
-  constructor: (cfg) -> 
-    super extend cfg,
-      lazyManager: new AttributeLazyManager
-
-    @_type    = param('type',cfg) 
-    @_size    = param('size',cfg)
-    @_default = param('default',cfg) || @_type.default()
-    @_usage   = param('usage',cfg)   || webGL.usage.dynamic
-    @_scopes  = new Set
-
-    if @_type == undefined then throw 'Type required' 
-    if @_size == undefined then throw 'Size required' 
-
-    console.warn ">>", @label, @_default
-
-    @logger.info "Allocating space for #{@_size} elements"
-    @_data = new Observable (@type.glType.newBuffer @size, {default: rawArray @_default})
-
-    @_initEventHandlers()
-
-  @getter 'type'    , -> @_type
-  @getter 'size'    , -> @_size
-  @getter 'data'    , -> @_data
-  @getter 'usage'   , -> @_usage
-  @getter 'default' , -> @_default
-
-
-  ### Scope management ###
-
-  registerScope: (scope) ->
-    @_scopes.add scope
-
-
-  ### Initialization ###
-
-  _initEventHandlers: ->
-    @data.onChanged      = (args...) => @dirty.setIndex   args...
-    @data.onChangedRange = (args...) => @dirty.setRange   args...
-    @data.onResized      = (args...) => @dirty.setResized args...
-
-
-  ### Smart Constructors ###
-
-  @_inferArrType = (arr) -> xtype arr[0]
-  @from = (cfg) ->
-    data  = param 'data'    , cfg
-    def   = param 'default' , cfg
-    type  = param('type',cfg)?.type
-    array = false
-    cons  = data?.constructor
-    if ArrayBuffer.isView data
-      array = true
-      size  = data.length / type.glType.size
-    else if cons == Array
-      array = true
-      type  = type || @_inferArrType data
-      size  = data.length
-    else if cons == Function
-      type = type || data.type
-      size = 0
-    else
-      type = type || data.type
-      size = 0
-      def  = def || data
-    if not type?
-      label = param('label', cfg) || 'unnamed'
-      throw "Cannot infer '#{label}' attribute type."
-    attr = new Attribute extend cfg, {type, size, default: def}
-    if array
-      attr.set data
-      attr.dirty.unset()
-    attr
-
-
-  ### Size Management ###
-
-  resizeToScopes: ->
-    sizes = (scope.size for scope from @_scopes)
-    size  = arrayMax sizes
-    @_resize size
-
-  _resize: (newSize) ->
-    oldSize = @size
-    if oldSize != newSize
-      @logger.info "Resizing to handle up to #{newSize} elements"
-      @_size = newSize
-      @data.resize (@size * @type.glType.size)
-      
-
-  ### Indexing ###
-
-  read  : (ix)    -> @type.view @data, ix*@type.glType.size 
-  write : (ix, v) -> @read(ix).set v
-
-  set: (data) ->
-    if data.constructor == Array
-      typeSize = @type.glType.size
-      buffer   = @type.glType.newBuffer data.length, {default: @_default.rawArray}
-      for i in [0 ... data.length]
-        val    = value data[i]
-        offset = i * typeSize
-        buffer.set val.rawArray, offset
-      @data.set buffer.rawArray
-    else if ArrayBuffer.isView data
-      @data.set data
-    else
-      throw "Unsupported attribute initializer '#{data.constructor.name}'"
 
 
 
@@ -943,7 +189,7 @@ export class Attribute extends Lazy
 ### AttributeScope ###
 ######################
 
-class AttributeScopeLazyManager extends LazyManager
+class AttributeScopeLazyManager extends Lazy.Manager
   constructor: ->
     super() 
     @_addedAttributes   = []
@@ -964,12 +210,12 @@ class AttributeScopeLazyManager extends LazyManager
     super.unset()
 
 
-export class AttributeScope extends Lazy
+export class AttributeScope extends Lazy.Object
 
   ### Initialization ###
 
   constructor: (cfg) ->
-    super extend cfg,
+    super Config.extend cfg,
       lazyManager : new AttributeScopeLazyManager
     @data       = {}
     @_dataNames = new Map
@@ -981,7 +227,7 @@ export class AttributeScope extends Lazy
   @getter 'length' , -> @_indexPool.dirtySize
 
   _initIndexPool: () ->
-    @_indexPool = new Pool
+    @_indexPool = Pool.create()
     @_indexPool.onResized = @_handlePoolResized.bind @
   
   _initValues: (data) -> 
@@ -1006,7 +252,7 @@ export class AttributeScope extends Lazy
   addAttribute: (name, data) ->
     label = @logger.scope + '.' + name
     if data.constructor == Object
-      cfg = extend data, {label}
+      cfg = Config.extend data, {label}
     else
       cfg = {label, data}
     attr  = Attribute.from cfg
@@ -1031,7 +277,7 @@ export class AttributeScope extends Lazy
 ### UniformScope ###
 ####################
 
-class UniformScope extends Lazy
+class UniformScope extends Lazy.Object
   constructor: (cfg) ->
     super cfg
     @data = {}
@@ -1048,15 +294,15 @@ class UniformScope extends Lazy
 ### Geometry ###
 ################
 
-export class Geometry extends Lazy
+export class Geometry extends Lazy.Object
 
   ### Initialization ###
 
   constructor: (cfg) ->
-    label = param('label',cfg) || "Unnamed"
+    label = Config.get('label',cfg) || "Unnamed"
     super
       label       : "Geometry.#{label}"
-      lazyManager : new ListLazyManager
+      lazyManager : new Lazy.ListManager
     
     @logger.group 'Initialization', =>
       @_scope = {}
@@ -1278,7 +524,7 @@ class ShaderBuilder
 
 
 
-class Material extends Lazy
+class Material extends Lazy.Object
   constructor: (cfg) -> 
     super cfg 
     @_variable = 
@@ -1363,7 +609,7 @@ export class RawMaterial extends Material
 ### Mesh ###
 ############
 
-export class Mesh extends Lazy
+export class Mesh extends Lazy.Object
   constructor: (geometry, material) ->
     super
       label: "Mesh." + geometry.label
@@ -1466,14 +712,14 @@ export class Precision
 ### GPUMesh ###
 ###############
 
-class GPUAttribute extends Lazy
+class GPUAttribute extends Lazy.Object
 
   ### Properties ###
 
   constructor: (@_gl, attribute, cfg) ->
-    super extend cfg,
+    super Config.extend cfg,
       label       : "GPU.#{attribute.label}"
-      lazyManager : new HierarchicalLazyManager
+      lazyManager : new Lazy.HierarchicalManager
     @_buffer    = @_gl.createBuffer()
     @_targets   = new Set
     @_attribute = attribute
@@ -1522,7 +768,7 @@ class GPUAttribute extends Lazy
     @logger.info "Updating all elements"    
     bufferRaw = @_attribute.data.rawArray
     usage     = @_attribute.usage 
-    withArrayBuffer @_gl, @_buffer, =>
+    GL.withArrayBuffer @_gl, @_buffer, =>
       @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
 
   update: ->
@@ -1542,10 +788,10 @@ class GPUAttribute extends Lazy
 
 
 
-class GPUBufferRegistry extends Lazy
+class GPUBufferRegistry extends Lazy.Object
   constructor: (@_gl) ->
     super
-      lazyManager: new HierarchicalLazyManager        
+      lazyManager: new Lazy.HierarchicalManager        
     @_attrMap = new Map
   @getter 'dirtyAttrs', -> @_dirty.elems  
 
@@ -1593,7 +839,7 @@ class GPUBufferRegistry extends Lazy
     
 
 
-export class GPUMesh extends Lazy
+export class GPUMesh extends Lazy.Object
   constructor: (@_gl, bufferRegistry, mesh) ->
     super
       label: "GPU.#{mesh.label}"
@@ -1642,12 +888,12 @@ export class GPUMesh extends Lazy
       @_bindAttrsToProgram()
 
   _bindAttrsToProgram: () ->
-    withVAO @_gl, @_vao, =>  
+    GL.withVAO @_gl, @_vao, =>  
       for varName, spaceName of @mesh.bindings
         @bindAttrToProgram spaceName, varName
       
   _bindAttrToProgram: (spaceName, varName) -> 
-    withVAO @_gl, @_vao, =>  
+    GL.withVAO @_gl, @_vao, =>  
       @bindAttrToProgram spaceName, varName
 
   bindAttrToProgram: (spaceName, varName) -> 
@@ -1684,7 +930,7 @@ export class GPUMesh extends Lazy
   draw: (viewProjectionMatrix) ->
     @logger.group "Drawing", =>
       @_gl.useProgram @_program.glProgram      
-      withVAO @_gl, @_vao, =>
+      GL.withVAO @_gl, @_vao, =>
         @_gl.uniformMatrix4fv(@_varLoc.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length
@@ -1701,10 +947,10 @@ export class GPUMesh extends Lazy
           
 
 
-export class GPUMeshRegistry extends Lazy
+export class GPUMeshRegistry extends Lazy.Object
   constructor: ->
     super
-      lazyManager : new ListLazyManager    
+      lazyManager : new Lazy.ListManager    
     @_meshes = new Set
 
   # @getter 'dirtyMeshes', -> @_dirty.elems
@@ -1780,8 +1026,8 @@ export test = (ctx, viewProjectionMatrix) ->
       
     instance:
       color: vec4
-      # color: [
-      #   (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
+      color: [
+        (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
       # color: 
       #   data: vec4(1,0,0,1)
       #   default: [1,0,1]
