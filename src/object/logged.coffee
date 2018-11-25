@@ -11,7 +11,7 @@ import {logger} from 'logger'
 export class Logged extends Unique.Unique
   constructor: (cfg={}) ->
     super()
-    @_label  = Config.get('label', cfg) || "#{@constructor.name}.#{@id}"
+    @_label  = cfg.label || "#{@constructor.name}.#{@id}"
     @_logger = logger.scoped @_label
   @getter 'label'  , -> @_label
   @getter 'logger' , -> @_logger

@@ -3,7 +3,7 @@ import * as Lazy        from 'basegl/object/lazy'
 import * as Material    from 'basegl/display/symbol/3D/material'
 import {shallowCompare} from 'basegl/object/compare'
 import {Program}        from 'basegl/render/webgl'
-
+import * as _           from 'lodash'
 
 ############
 ### Mesh ###
@@ -192,10 +192,12 @@ export class GPUMesh extends Lazy.Object
         @_gl.uniformMatrix4fv(@_varLoc.matrix, false, viewProjectionMatrix)
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length
-        if instanceCount > 0
-          instanceWord = if instanceCount > 1 then "instances" else "instance"
+        isInstanced   = not _.isEmpty(@mesh.geometry.instance.data)
+        if isInstanced
+          instanceWord = if instanceCount == 1 then "instance" else "instances"
           @logger.info "Drawing #{instanceCount} " + instanceWord
-          @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, pointCount, instanceCount)
+          if instanceCount != 0
+            @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, pointCount, instanceCount)
         else 
           @logger.info "Drawing not instanced geometry"
           @_gl.drawArrays(@_gl.TRIANGLE_STRIP, 0, pointCount)

@@ -13,7 +13,7 @@ export class Geometry extends Lazy.Object
   ### Initialization ###
 
   constructor: (cfg) ->
-    label = Config.get('label',cfg) || "Unnamed"
+    label = cfg.label || "Unnamed"
     super
       label       : "Geometry.#{label}"
       lazyManager : new Lazy.HierarchicalManager 

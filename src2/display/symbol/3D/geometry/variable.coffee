@@ -116,18 +116,17 @@ export class Attribute extends Lazy.Object
     super Config.extend cfg,
       lazyManager: new AttributeLazyManager
 
-    @_type    = Config.get('type',cfg) 
-    @_size    = Config.get('size',cfg)
-    @_default = Config.get('default',cfg) || @_type.default()
-    @_usage   = Config.get('usage',cfg)   || usage.dynamic
+    @_type    = cfg.type 
+    @_size    = cfg.size
+    @_default = cfg.default || @_type.default()
+    @_usage   = cfg.usage   || usage.dynamic
     @_scopes  = new Set
 
     if @_type == undefined then throw 'Type required' 
     if @_size == undefined then throw 'Size required' 
-
     @logger.info "Allocating space for #{@_size} elements"
     @_data = new Buffer.Observable (@type.glType.newBuffer @size, {default: rawArray @_default})
-
+    
     @_initEventHandlers()
 
   @getter 'type'    , -> @_type
@@ -155,9 +154,9 @@ export class Attribute extends Lazy.Object
 
   @_inferArrType = (arr) -> Type.type arr[0]
   @from = (cfg) ->
-    data  = Config.get 'data'    , cfg
-    def   = Config.get 'default' , cfg
-    type  = Config.get('type',cfg)?.type
+    data  = cfg.data
+    def   = cfg.default
+    type  = cfg.type?.type
     array = false
     cons  = data?.constructor
     if ArrayBuffer.isView data
@@ -175,7 +174,7 @@ export class Attribute extends Lazy.Object
       size = 0
       def  = def || data
     if not type?
-      label = Config.get('label', cfg) || 'unnamed'
+      label = cfg.label || 'unnamed'
       throw "Cannot infer '#{label}' attribute type."
     attr = new Attribute Config.extend cfg, {type, size, default: def}
     if array
@@ -383,8 +382,8 @@ export class GPUAttribute extends Lazy.Object
       if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
 
   _updateAll: () ->
-    @logger.info "Updating all elements"
     bufferRaw = @_attribute.data.rawArray
+    @logger.info "Updating all elements"
     attrUsage = @_attribute.usage 
     GL.withArrayBuffer @_gl, @_buffer, =>
       @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, attrUsage)

@@ -1,5 +1,5 @@
 import * as Config from 'basegl/object/config'
-
+import {assert} from 'basegl/lib/runtime-check/assert'
 
 ##############
 ### Buffer ###
@@ -29,7 +29,7 @@ export class Buffer
 
   ### Properties ###
   constructor: (@type, arg, cfg={}) ->
-    @_default = Config.get 'default', cfg
+    @_default = cfg.default
     @_array   = @_newArray arg
 
   _newArray: (arg) ->
@@ -43,10 +43,21 @@ export class Buffer
   @getter 'rawArray' , -> @_array
 
   ### Read / Write ###
-  read:          (ix)      -> @_array[ix]
-  write:         (ix, v)   -> @_array[ix] = v 
-  readMultiple:  (ixs)     -> @_array[ix] for ix from ixs
-  writeMultiple: (ixs, vs) -> @_array[ix] = vs[i] for ix,i in ixs
+  read: (ix) -> 
+    @_array[ix]
+  
+  write: (ix, v) -> 
+    assert (@_array.length > ix), =>
+      throw "Index #{ix} is too big, array has #{@_array.length} elements"
+    @_array[ix] = v
+    null
+  
+  readMultiple: (ixs) -> 
+    @_array[ix] for ix from ixs
+  
+  writeMultiple: (ixs, vs) -> 
+    @write(ix,vs[i]) for ix,i in ixs
+    null
 
   ### Size Management ###
   resize: (newLength) ->

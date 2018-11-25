@@ -1,16 +1,21 @@
+
+import * as _ from 'lodash'
+
 ##########################
 ### Extensible Configs ###
 ##########################
 
-export get = (name, cfg) ->
-  if cfg
-    out = cfg[name]
-    if out == undefined
-      get name, cfg._
-    else out
-  else
-    cfg
+export extend = (base, ext) ->
+  Object.assign {}, base, ext
 
-export extend = (base, ext) -> 
-  ext._ = base
-  ext
+export defaultsDeep = (base, ext) ->
+  newBase = Object.assign {}, base
+  _defaultsDeep newBase, ext
+  newBase
+
+_defaultsDeep = (base, ext) -> 
+  if ext.constructor == Object
+    for k,v of ext
+      if base[k] == undefined
+        base[k] = v
+      else _defaultsDeep base[k], v
