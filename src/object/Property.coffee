@@ -372,3 +372,125 @@ export extend = (obj, cfg) =>
 #
 #
 # throw "end"
+
+
+
+###############################################################################
+### NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW ###
+###############################################################################
+
+
+#############
+### mixin ###
+#############
+
+# Options:
+#
+#   - cfg.rename="foo" 
+#     Renames the mixin variable
+#
+#   - cfg.exportMixin=true
+#     Exports the mixin variable to variable scope 
+#
+#   - cfg.exportPrivate=true
+#     Exports private mixin fields
+
+embedMixin = (base, ext, cfg={}) ->
+  baseProto = base.prototype
+  extProto  = ext.prototype
+  oldInit   = baseProto[initMixinName]  
+  instName  = if cfg.rename then cfg.rename else lowerFirstChar ext.name
+  fields    = Object.getOwnPropertyNames extProto
+  baseProto.mixins = {}
+
+  if cfg.exportMixin
+    Object.defineProperty baseProto, instName, 
+      get: -> @mixins[instName]
+      configurable: true
+
+  checkField = (name) -> 
+    notCons = name != 'constructor'
+    notPriv = (not name.startsWith '_') || cfg.exportPrivate
+    notCons && notPriv
+      
+  for field in fields
+    if checkField field
+      Object.defineProperty baseProto, field, 
+        get:     -> @mixins[instName][field]
+        set: (v) -> @mixins[instName][field] = v
+        configurable: true
+  if not oldInit
+    baseProto[initMixinName] = (args...) ->
+      @mixins[instName] = new ext args...
+  else
+    baseProto[initMixinName] = (args...) ->
+      @mixins[instName] = new ext args...
+      oldInit.call @, args...
+
+  checkInit base
+
+mixin = (base, ext, cfg) -> 
+  embedMixin base, ext, cfg
+  generateAccessors base
+
+initMixinName = 'initMixins'
+
+lowerFirstChar = (string) ->
+    string.charAt(0).toLowerCase() + string.slice(1)
+
+checkInitPattern = new RegExp("this *. *#{initMixinName} *\\(", "i")
+checkInit = (base) ->
+  consStr = base.prototype.constructor.toString()
+  match   = consStr.match checkInitPattern
+  if not match
+    throw "Please use `#{initMixinName}` function to initialize mixins."
+
+Function::mixin = (ext, cfg) -> mixin @, ext, cfg
+
+
+
+#########################
+### generateAccessors ###
+#########################
+
+# The `generateAccessors` function analyses the provided class constructor and 
+# for each field generates getters / setters according to the following rules:
+#
+#   - If the field was prefixed with double underscore, like `__foo`, then it is 
+#     meant not to be seen from outside and pair of `_foo` getter / setter is 
+#     generated.
+#
+#   - If the field was prefixed with single underscore, like `_foo`, then it is
+#     considered a private field, but accessible from outside and only `foo` 
+#     getter is generated.
+
+generateAccessors = (base) ->
+  proto     = base.prototype
+  protoCons = proto.constructor
+  if not protoCons.generatedAccessors
+    protoCons.generatedAccessors = true
+    consStr   = base.prototype.constructor.toString()
+    fields    = getMatches consStr, accessorPattern
+    for field in fields
+      if field.startsWith '__'
+        name = field.slice(1)
+        Object.defineProperty proto, name, 
+          get:     -> @[field]
+          set: (v) -> @[field] = v
+          configurable: false
+      else if field.startsWith '_'
+        name = field.slice(1)
+        Object.defineProperty proto, name, 
+          get: -> @[field]
+          configurable: false
+
+accessorPattern = /this *. *([^ =]+) *=/gm
+
+getMatches = (string, regex) ->
+  matches = []
+  match
+  while (match = regex.exec(string))
+    matches.push(match[1]);
+  matches
+
+Function::generateAccessors = (args...) -> generateAccessors @, args...

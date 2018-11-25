@@ -2,6 +2,8 @@
 import * as Config   from 'basegl/object/config'
 import * as Lazy     from 'basegl/object/lazy'
 import * as Variable from 'basegl/display/symbol/3D/geometry/variable'
+import * as Vector   from 'basegl/data/vector'
+import {vec2, vec3}  from 'basegl/data/vector'
 
 
 ################
@@ -46,3 +48,36 @@ export class Geometry extends Lazy.Object
 
 
 export create = (args...) -> new Geometry args...
+
+
+
+####################
+### Basic shapes ###
+####################
+
+export rectangle = (cfg) ->
+  width  = cfg.width  || 10
+  height = cfg.height || 10
+  w2     = width  / 2
+  h2     = height / 2
+  
+  opts = 
+    point:
+      position: 
+        usage : Variable.usage.static
+        data  : [
+          (vec3 -w2,  h2, 0) ,
+          (vec3 -w2, -h2, 0) ,
+          (vec3  w2,  h2, 0) ,
+          (vec3  w2, -h2, 0) ]
+      
+      uv:
+        usage : Variable.usage.static
+        data  : [
+          (vec2 0,1) ,
+          (vec2 0,0) ,
+          (vec2 1,1) ,
+          (vec2 1,0) ]
+
+  geoCfg = Config.defaultsDeep cfg, opts
+  create geoCfg

@@ -3,45 +3,21 @@ import * as Variable from 'basegl/display/symbol/3D/geometry/variable'
 import * as Geometry from 'basegl/display/symbol/3D/geometry'
 import * as Material from 'basegl/display/symbol/3D/material'
 import * as Mesh     from 'basegl/display/symbol/3D/mesh'
+import * as Lazy     from 'basegl/object/lazy'
+import * as Property from 'basegl/object/Property'
 
 import {logger}                             from 'logger'
 import {vec2, vec3, vec4, mat2, mat3, mat4} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 
-rectangle = (cfg) ->
-  width  = cfg.width  || 10
-  height = cfg.height || 10
-  w2     = width  / 2
-  h2     = height / 2
-  
-  opts = 
-    point:
-      position: 
-        usage : Variable.usage.static
-        data  : [
-          (vec3 -w2,  h2, 0) ,
-          (vec3 -w2, -h2, 0) ,
-          (vec3  w2,  h2, 0) ,
-          (vec3  w2, -h2, 0) ]
-      
-      uv:
-        usage : Variable.usage.static
-        data  : [
-          (vec2 0,1) ,
-          (vec2 0,0) ,
-          (vec2 1,1) ,
-          (vec2 1,0) ]
 
-  geoCfg = Config.defaultsDeep cfg, opts
+import * as Display from 'basegl/display/object'
 
-  console.warn geoCfg
-  Geometry.create geoCfg
-  
 
-export test = (ctx, viewProjectionMatrix) ->
+export test2 = (ctx, viewProjectionMatrix) ->
 
-  geo = rectangle
+  geo = Geometry.rectangle
     label    : "Geo1"
     width    : 200
     height   : 200
@@ -192,3 +168,238 @@ export test = (ctx, viewProjectionMatrix) ->
 
   m1.draw(viewProjectionMatrix)
   
+
+
+class Camera
+  @mixin Lazy.Object
+  constructor: (cfg={}) ->
+    @_fov = cfg.fov || 60
+    @initMixins()
+
+class Camera2
+  constructor: (cfg={}) ->
+    @_fov    = cfg.fov || 60
+    @_object = new Lazy.Object
+
+  @getter 'dirty', -> @_object.dirty
+  @setter 'dirty', (v) -> @_object.dirty = v
+
+class Camera3 extends Lazy.Object
+  constructor: (cfg={}) ->
+    super cfg
+    @_fov    = cfg.fov || 60
+    @_object = new Lazy.Object
+
+
+
+  # @getter 'dirty', -> @_object.dirty
+  # @setter 'dirty', (v) -> @_object.dirty = v
+  
+
+a = new Camera
+console.log a
+
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera2
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera3
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C3", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   a = new Camera
+#   a.dirty.set()
+#   a.dirty.unset()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera2
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera3
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C3", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   a = new Camera
+#   a.dirty.set()
+#   a.dirty.unset()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera2
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera3
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C3", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   a = new Camera
+#   a.dirty.set()
+#   a.dirty.unset()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera2
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   b = new Camera3
+#   b.dirty.set()
+#   b.dirty.unset()
+# t2 = performance.now()
+# console.log "C3", (t2-t1)
+
+# t1 = performance.now()
+# for i in [1..100000] by 1 
+#   a = new Camera
+#   a.dirty.set()
+#   a.dirty.unset()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+
+throw "!"
+
+
+export test = (ctx, viewProjectionMatrix) ->
+
+  geo = Geometry.rectangle
+    label    : "Geo1"
+    width    : 200
+    height   : 200
+    instance :
+      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
+    object:
+      matrix: mat4
+      
+
+  attrRegistry = new Variable.GPUAttributeRegistry ctx
+  meshRegistry = new Mesh.GPUMeshRegistry
+
+
+  vertexShaderSource = '''
+  void main() {
+    gl_Position = matrix * v_position;
+    gl_Position.x += v_transform[3][3];
+  }
+  '''
+
+  fragmentShaderSource = '''
+  out vec4 output_color;  
+  void main() {
+    output_color = color;
+  }'''
+
+  fragmentShaderSource2 = '''
+  out vec4 output_color;  
+  void main() {
+    output_color = vec4(0,1,0,1);
+  }'''
+
+  mat1 = new Material.Raw
+    vertex   : vertexShaderSource
+    fragment : fragmentShaderSource
+    input:
+      position  : vec4()
+      transform : mat4()
+      matrix    : mat4()
+      color     : vec4 0,1,0,1
+  mesh = Mesh.create geo, mat1
+
+  m1 = new Mesh.GPUMesh ctx, attrRegistry, mesh
+  meshRegistry.add m1
+
+
+
+  # console.log mat1.shader
+  # mat1.writePointVariable 'position', (vec4 [0,0,0,0])
+  # mat1.writePointVariable 'color', (vec4 [0,0,0,1])
+  # mat1.writePointVariable 'uv', (vec2 [0,0])
+  # mat1.writeObjectVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
+  # mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
+  # console.log mat1.shader.vertex
+  # console.log mat1.shader.fragment
+
+  logger.group "FRAME 1", =>
+    # geo.point.data.position.read(0)[0] = 7
+    # console.log geo.instance.data.color
+    geo.instance.addAttribute 'color', 
+      type: vec4
+      default: vec4(1,0,0,1)
+    # mat1.fragment = fragmentShaderSource2
+    meshRegistry.update()
+    attrRegistry.update()
+    # meshRegistry.update()
+  
+  logger.group "FRAME 2", =>
+    geo.instance.data.color.read(0).rgba = [1,1,0,1]
+    geo.instance.data.color.read(1).rgba = [0,1,0,1]
+    # geo.point.data.position.read(0)[0] = 7
+  #   geo.point.data.position.read(0)[0] = 7
+  #   geo.point.data.position.read(0)[1] = 7
+    attrRegistry.update()
+    meshRegistry.update()
+
+  logger.group "FRAME 3", =>
+  #   # geo.point.data.position.read(1)[0] = 8
+  #   # geo.point.data.uv.read(1)[0] = 8
+  #   # geo.instance.add({color: vec4(0,0,1,1)})
+  #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
+  #   # geo.instance.add({color: vec4(0,0,0,1)})
+  #   # geo.instance.data.color.read(0)[0] = 0.7
+    attrRegistry.update()
+    meshRegistry.update()
+
+  # logger.group "FRAME 4", =>
+  #   attrRegistry.update()
+  #   # meshRegistry.update()
+
+
+  m1.draw(viewProjectionMatrix)
+  
+
+
+# class Sprite
+#   constructor: ->
+#     @_geometry = 
+
+

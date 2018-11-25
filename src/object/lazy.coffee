@@ -109,8 +109,8 @@ export class Object extends Logged.Logged
   constructor: (cfg={}) ->
     super cfg
     @_dirty = cfg.lazyManager || new Manager 
-    @logger.ifEnabled =>
-      @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
-      @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
+    # @logger.ifEnabled =>
+    #   @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
+    #   @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
   @getter 'dirty', -> @_dirty
     
