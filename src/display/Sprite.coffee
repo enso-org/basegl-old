@@ -54,9 +54,9 @@ export test = (ctx, viewProjectionMatrix) ->
       #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ]
       
     instance:
-      color: vec4
-      color: [
-        (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
+      # color: vec4
+      # color: [
+      #   (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
       # color: 
       #   data: vec4(1,0,0,1)
       #   default: [1,0,1]
@@ -66,8 +66,8 @@ export test = (ctx, viewProjectionMatrix) ->
     object:
       matrix: mat4
 
-  bufferRegistry = new Variable.GPUAttributeRegistry ctx
-  meshRegistry   = new Mesh.GPUMeshRegistry
+  attrRegistry = new Variable.GPUAttributeRegistry ctx
+  meshRegistry = new Mesh.GPUMeshRegistry
 
 
   vertexShaderSource = '''
@@ -83,6 +83,12 @@ export test = (ctx, viewProjectionMatrix) ->
     output_color = color;
   }'''
 
+  fragmentShaderSource2 = '''
+  out vec4 output_color;  
+  void main() {
+    output_color = vec4(0,1,0,1);
+  }'''
+
   mat1 = new Material.Raw
     vertex   : vertexShaderSource
     fragment : fragmentShaderSource
@@ -93,7 +99,7 @@ export test = (ctx, viewProjectionMatrix) ->
       color     : vec4 0,1,0,1
   mesh = Mesh.create geo, mat1
 
-  m1 = new Mesh.GPUMesh ctx, bufferRegistry, mesh
+  m1 = new Mesh.GPUMesh ctx, attrRegistry, mesh
   meshRegistry.add m1
 
 
@@ -110,21 +116,22 @@ export test = (ctx, viewProjectionMatrix) ->
   logger.group "FRAME 1", =>
     # geo.point.data.position.read(0)[0] = 7
     # console.log geo.instance.data.color
-    # geo.instance.addAttribute 'color', 
-    #   type: vec4
-    #   default: vec4(1,0,0,1)
-    # geo.instance.data.color.read(0).rgba = [1,0,0,1]
-    # geo.instance.data.color.read(1).rgba = [0,1,0,1]
+    geo.instance.addAttribute 'color', 
+      type: vec4
+      default: vec4(1,0,0,1)
+    # mat1.fragment = fragmentShaderSource2
     meshRegistry.update()
-    bufferRegistry.update()
+    attrRegistry.update()
     # meshRegistry.update()
   
-  # logger.group "FRAME 2", =>
+  logger.group "FRAME 2", =>
+    geo.instance.data.color.read(0).rgba = [1,1,0,1]
+    geo.instance.data.color.read(1).rgba = [0,1,0,1]
     # geo.point.data.position.read(0)[0] = 7
   #   geo.point.data.position.read(0)[0] = 7
   #   geo.point.data.position.read(0)[1] = 7
-  #   bufferRegistry.update()
-  #   # meshRegistry.update()
+    attrRegistry.update()
+    meshRegistry.update()
 
   # logger.group "FRAME 3", =>
   #   # geo.point.data.position.read(1)[0] = 8
@@ -133,11 +140,11 @@ export test = (ctx, viewProjectionMatrix) ->
   #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
   #   # geo.instance.add({color: vec4(0,0,0,1)})
   #   # geo.instance.data.color.read(0)[0] = 0.7
-  #   bufferRegistry.update()
+  #   attrRegistry.update()
   #   # meshRegistry.update()
 
   # logger.group "FRAME 4", =>
-  #   bufferRegistry.update()
+  #   attrRegistry.update()
   #   # meshRegistry.update()
 
 

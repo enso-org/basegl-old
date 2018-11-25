@@ -3,6 +3,7 @@ import * as Config from 'basegl/object/config'
 import * as Lazy   from 'basegl/object/lazy'
 import * as Pool   from 'basegl/data/pool'
 import * as GL     from 'basegl/lib/webgl/utils'
+import * as Type   from 'basegl/data/vector'
 
 
 
@@ -36,17 +37,6 @@ arrayMin = (arr) -> arr.reduce (p, v) -> if p < v then p else v
 arrayMax = (arr) -> arr.reduce (p, v) -> if p > v then p else v
 
 
-value = (a) ->
-  switch a.constructor
-    when Number then new Float a
-    else a
-
-xtype = (a) -> 
-  switch a.constructor
-    when Number   then Float
-    else a.type
-
-toGLSL = (a) -> value(a).toGLSL()
 
 
 
@@ -163,7 +153,7 @@ export class Attribute extends Lazy.Object
 
   ### Smart Constructors ###
 
-  @_inferArrType = (arr) -> xtype arr[0]
+  @_inferArrType = (arr) -> Type.type arr[0]
   @from = (cfg) ->
     data  = Config.get 'data'    , cfg
     def   = Config.get 'default' , cfg
@@ -219,10 +209,8 @@ export class Attribute extends Lazy.Object
       typeSize = @type.glType.size
       buffer   = @type.glType.newBuffer data.length, {default: @_default.rawArray}
       for i in [0 ... data.length]
-        val    = value data[i]
+        val    = Type.value data[i]
         offset = i * typeSize
-        console.log "!!!", val
-        console.log "!!!", val.rawArray
         buffer.set val.rawArray, offset
       @data.set buffer.rawArray
     else if ArrayBuffer.isView data
@@ -280,8 +268,9 @@ export class AttributeScope extends Lazy.Object
   _initValues: (data) -> 
     for name,attrCfg of data
       @addAttribute name, attrCfg
+    for name of data
       @data[name].dirty.unset()
-      @dirty.unset()
+    @dirty.unset()
 
 
   ### Attribute Management ###
@@ -314,7 +303,7 @@ export class AttributeScope extends Lazy.Object
   ### Handlers ###
 
   _handlePoolResized: (oldSize, newSize) ->
-    @logger.info "Resizing to handle up to #{newSize} elements"
+    @logger.info "Resizing scope to handle up to #{newSize} elements"
     for name,attr of @data
       attr.resizeToScopes()
       
@@ -353,7 +342,7 @@ export class GPUAttribute extends Lazy.Object
     @_targets   = new Set
     @_attribute = attribute
     @_attribute.dirty.onSet.addEventListener =>
-      @dirty.set @_attribute
+      @dirty.setElem @_attribute
     @_init()
 
   @getter 'buffer'  , -> @_buffer 
@@ -394,14 +383,15 @@ export class GPUAttribute extends Lazy.Object
       if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
 
   _updateAll: () ->
-    @logger.info "Updating all elements"    
+    @logger.info "Updating all elements"
     bufferRaw = @_attribute.data.rawArray
     attrUsage = @_attribute.usage 
     GL.withArrayBuffer @_gl, @_buffer, =>
       @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, attrUsage)
+    @_attribute.dirty.unset()
 
   update: ->
-    if @dirty.isDirty 
+    if @dirty.isSet 
       if @_attribute.dirty.isResized
         @_updateAll()
       else
@@ -412,8 +402,10 @@ export class GPUAttribute extends Lazy.Object
         dstByteOffset = byteSize * srcOffset
         length        = range.max - range.min + 1
         @logger.info "Updating #{length} elements"
-        arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
-                          srcOffset, length 
+        GL.arrayBufferSubData @_gl, @_buffer, dstByteOffset, bufferRaw, 
+                              srcOffset, length 
+        @_attribute.dirty.unset()
+      
 
 
 
@@ -424,7 +416,7 @@ export class GPUAttribute extends Lazy.Object
 export class GPUAttributeRegistry extends Lazy.Object
   constructor: (@_gl) ->
     super
-      lazyManager: new Lazy.HierarchicalManager        
+      lazyManager: new Lazy.HierarchicalManager     
     @_attrMap = new Map
   @getter 'dirtyAttrs', -> @_dirty.elems  
 
@@ -434,7 +426,7 @@ export class GPUAttributeRegistry extends Lazy.Object
       @logger.info "Creating new binding to '#{attr.label}' buffer"
       attrGPU = new GPUAttribute @_gl, attr
       attrGPU.dirty.onSet.addEventListener =>
-        @_dirty.set attrGPU
+        @dirty.setElem attrGPU
     attrGPU.addTarget tgt
     buffer = attrGPU.buffer
     @_withArrayBuffer buffer, => f attrGPU    
@@ -449,7 +441,7 @@ export class GPUAttributeRegistry extends Lazy.Object
         @_attrMap.delete attr
 
   update: ->
-    if @dirty.isDirty
+    if @dirty.isSet
       @logger.group "Updating", =>
         @dirtyAttrs.forEach (attr) =>
           attr.update()

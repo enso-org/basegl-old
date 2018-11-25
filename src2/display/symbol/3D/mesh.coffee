@@ -12,14 +12,15 @@ import {Program}        from 'basegl/render/webgl'
 export class Mesh extends Lazy.Object
   constructor: (geometry, material) ->
     super
-      label: "Mesh." + geometry.label
+      label       : "Mesh." + geometry.label
+      lazyManager : new Lazy.HierarchicalManager 
     @_geometry      = geometry
     @_material      = material
     @_shader        = null
     @_bindings      = {}
     @_shaderBuilder = new Material.ShaderBuilder 
-    @geometry.dirty.onSet.addEventListener =>
-      @dirty.set()
+    @geometry.dirty.onSet.addEventListener => @dirty.setElem @geometry
+    @material.dirty.onSet.addEventListener => @dirty.setElem @material
     @_bindVariables()
 
   @getter 'geometry' , -> @_geometry
@@ -28,9 +29,11 @@ export class Mesh extends Lazy.Object
   @getter 'bindings' , -> @_bindings
 
   _bindVariables: ->
-    @logger.group "Binding variables", =>
-      {bindings, missing} = @_matchVariables()
-      if not shallowCompare @bindings, bindings
+    {bindings, missing} = @_matchVariables()
+    bindingsChanged     = not shallowCompare @bindings, bindings
+    materialChanged     = @material.dirty.isSet
+    if bindingsChanged || materialChanged
+      @logger.group "Binding variables", =>
         @_bindings = bindings
         @_shaderBuilder.resetVariables()
         @_fillMatches bindings 
@@ -97,14 +100,14 @@ export create = (args...) -> new Mesh args...
 export class GPUMesh extends Lazy.Object
   constructor: (@_gl, bufferRegistry, mesh) ->
     super
-      label: "GPU.#{mesh.label}"
+      label       : "GPU.#{mesh.label}"
+      lazyManager : new Lazy.HierarchicalManager 
     @_bufferRegistry = bufferRegistry
     @mesh            = mesh
     @_varLoc         = {}
     @buffer          = {}
     @_program        = null
-    mesh.dirty.onSet.addEventListener =>
-      @dirty.set()
+    mesh.dirty.onSet.addEventListener => @dirty.setElem mesh
     @_init()
 
   _init: ->
@@ -168,8 +171,8 @@ export class GPUMesh extends Lazy.Object
             @logger.info "Variable bound succesfully using 
                          #{bufferx.chunksNum} locations"
 
-  _unsetDirtyChildren: ->
-    @mesh.dirty.unset()
+  # _unsetDirtyChildren: ->
+  #   @mesh.dirty.unset()
 
   update: ->
     @logger.group "Update", =>
@@ -192,9 +195,6 @@ export class GPUMesh extends Lazy.Object
         if instanceCount > 0
           instanceWord = if instanceCount > 1 then "instances" else "instance"
           @logger.info "Drawing #{instanceCount} " + instanceWord
-          
-          # offset = elemCount * @_SPRITE_VTX_COUNT
-          # @_gl.drawElements(@_gl.TRIANGLES, offset, @_gl.UNSIGNED_SHORT, 0)
           @_gl.drawArraysInstanced(@_gl.TRIANGLE_STRIP, 0, pointCount, instanceCount)
         else 
           @logger.info "Drawing not instanced geometry"
@@ -209,7 +209,7 @@ export class GPUMesh extends Lazy.Object
 export class GPUMeshRegistry extends Lazy.Object
   constructor: ->
     super
-      lazyManager : new Lazy.ListManager    
+      lazyManager : new Lazy.HierarchicalManager    
     @_meshes = new Set
 
   # @getter 'dirtyMeshes', -> @_dirty.elems
@@ -217,16 +217,13 @@ export class GPUMeshRegistry extends Lazy.Object
   add: (mesh) ->
     @_meshes.add mesh
     mesh.dirty.onSet.addEventListener =>
-      @dirty.set mesh
+      @dirty.setElem mesh
 
   update: ->
-    if @dirty.isDirty
+    if @dirty.isSet
       @logger.group "Updating", =>
         @dirty.elems.forEach (mesh) =>
           mesh.update()
-    #     @logger.group "Updating all GPU meshes", =>
-    #       @dirtyMeshes.forEach (mesh) =>
-    #         mesh.update()
-    #     @logger.group "Unsetting dirty flags", =>
-    #       @dirty.unset()
-    # else @logger.info "Everything up to date"
+        @logger.group "Unsetting dirty flags", =>
+          @dirty.unset()
+    else @logger.info "Everything up to date"

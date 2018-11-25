@@ -11,19 +11,19 @@ export class Manager
   constructor: () ->
     @_onSet   = EventDispatcher.create() 
     @_onUnset = EventDispatcher.create() 
-    @_isDirty = false
+    @_isSet   = false
   @getter 'onSet'   , -> @_onSet
   @getter 'onUnset' , -> @_onUnset
-  @getter 'isDirty' , -> @_isDirty
+  @getter 'isSet' , -> @_isSet
 
   set: ->
-    if not @isDirty
-      @_isDirty = true
+    if not @isSet
+      @_isSet = true
       @onSet.dispatch()
 
   unset: ->
-    if @isDirty
-      @_isDirty = false
+    if @isSet
+      @_isSet = false
       @onUnset.dispatch()
 
 
@@ -38,9 +38,9 @@ export class ListManager extends Manager
     @_elems = []
   @getter 'elems', -> @_elems
 
-  set: (elem) ->
+  setElem: (elem) ->
     @_elems.push elem
-    super.set()
+    @set()
 
   unset: ->
     @_elems = []
@@ -53,10 +53,17 @@ export class ListManager extends Manager
 ###########################
 
 export class HierarchicalManager extends ListManager
+
+  constructor: (@childAccessor) ->
+    super()
+    if not @childAccessor
+      @childAccessor = (a) -> a
+
   unset: ->
-    for elem in @elems
-      elem.dirty.unset()
+    dirtyElems = @elems
     super.unset()
+    for elem in dirtyElems
+      @childAccessor(elem).dirty.unset()
 
 
 
@@ -73,7 +80,7 @@ export class RangedManager extends Manager
   @getter 'range', -> @_range
 
   setIndex: (ix) ->
-    if @isDirty
+    if @isSet
       if      ix > @range.max then @range.max = ix
       else if ix < @range.min then @range.min = ix
     else
@@ -84,7 +91,7 @@ export class RangedManager extends Manager
   setRange: (offset, length) ->
     min = offset
     max = min + length - 1
-    if @isDirty
+    if @isSet
       if max > @range.max then @range.max = max
       if min < @range.min then @range.min = min
     else

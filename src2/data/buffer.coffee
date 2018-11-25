@@ -68,7 +68,7 @@ export class Buffer
 # View is a wrapper over any buffer-like object allowing to view the array with
 # a defined elements shift.
 
-class View
+export class View
 
   ### Properties ###
   constructor: (@_array, @_offset=0, @_length=0) ->

@@ -103,7 +103,7 @@ export class BufferType extends Type
 
   # View another buffer as desired type without copying.
   @view: (base, offset=0) ->
-    arr = new View base, offset, @size
+    arr = new Buffer.View base, offset, @size
     new @ arr
 
   read:          (ix)      -> @array.read          ix
@@ -194,3 +194,17 @@ mat2.type = Mat2
 mat3.type = Mat3
 mat4.type = Mat4
 
+
+
+
+export value = (a) ->
+  switch a.constructor
+    when Number then new Float a
+    else a
+
+export type = (a) -> 
+  switch a.constructor
+    when Number   then Float
+    else a.type
+
+export toGLSL = (a) -> value(a).toGLSL()

@@ -16,14 +16,14 @@ export class Geometry extends Lazy.Object
     label = Config.get('label',cfg) || "Unnamed"
     super
       label       : "Geometry.#{label}"
-      lazyManager : new Lazy.ListManager
+      lazyManager : new Lazy.HierarchicalManager 
+    @dirty.childAccessor = (name) => @scope[name]
     
     @logger.group 'Initialization', =>
       @_scope = {}
       @_initScopes cfg
 
-  @getter 'scope'      , -> @_scope
-  # @getter 'dirtyElems' , -> @dirty.elems
+  @getter 'scope', -> @_scope
 
   _initScopes: (cfg) -> 
     scopes = 
@@ -42,7 +42,7 @@ export class Geometry extends Lazy.Object
           @_scope[name] = scope
           @[name]       = scope 
           scope.dirty.onSet.addEventListener =>
-            @dirty.set name
+            @dirty.setElem name
 
 
 export create = (args...) -> new Geometry args...

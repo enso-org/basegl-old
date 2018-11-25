@@ -255,8 +255,12 @@ export class Material extends Lazy.Object
 export class Raw extends Material
   constructor: (cfg) ->
     super cfg
-    @vertex   = cfg.vertex
-    @fragment = cfg.fragment
+    @_vertex   = cfg.vertex
+    @_fragment = cfg.fragment
+  @getter 'vertex'   ,     -> @_vertex
+  @getter 'fragment' ,     -> @_fragment
+  @setter 'vertex'   , (v) -> @_vertex   = v; @dirty.set()
+  @setter 'fragment' , (v) -> @_fragment = v; @dirty.set()
 
   vertexCode:   -> @vertex
   fragmentCode: -> @fragment
