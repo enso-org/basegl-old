@@ -6,10 +6,6 @@ import * as GL     from 'basegl/lib/webgl/utils'
 
 
 
-CTX = WebGLRenderingContext
-
-
-
 webGL =
   glsl:
     precision:
@@ -17,16 +13,17 @@ webGL =
       medium: 'mediump'
       high:   'highp'
   types: {}
-  usage:
-    static      : CTX.STATIC_DRAW
-    dynamic     : CTX.DYNAMIC_DRAW
-    stream      : CTX.STREAM_DRAW
-    staticRead  : CTX.STATIC_READ
-    dynamicRead : CTX.DYNAMIC_READ
-    streamRead  : CTX.STREAM_READ
-    staticCopy  : CTX.STATIC_COPY
-    dynamicCopy : CTX.DYNAMIC_COPY
-    streamCopy  : CTX.STREAM_COPY
+
+export usage = 
+  static      : WebGLRenderingContext.STATIC_DRAW
+  dynamic     : WebGLRenderingContext.DYNAMIC_DRAW
+  stream      : WebGLRenderingContext.STREAM_DRAW
+  staticRead  : WebGLRenderingContext.STATIC_READ
+  dynamicRead : WebGLRenderingContext.DYNAMIC_READ
+  streamRead  : WebGLRenderingContext.STREAM_READ
+  staticCopy  : WebGLRenderingContext.STATIC_COPY
+  dynamicCopy : WebGLRenderingContext.DYNAMIC_COPY
+  streamCopy  : WebGLRenderingContext.STREAM_COPY
 
 rawArray = (a) ->
   if      ArrayBuffer.isView a   then a
@@ -132,7 +129,7 @@ export class Attribute extends Lazy.Object
     @_type    = Config.get('type',cfg) 
     @_size    = Config.get('size',cfg)
     @_default = Config.get('default',cfg) || @_type.default()
-    @_usage   = Config.get('usage',cfg)   || webGL.usage.dynamic
+    @_usage   = Config.get('usage',cfg)   || usage.dynamic
     @_scopes  = new Set
 
     if @_type == undefined then throw 'Type required' 
@@ -399,9 +396,9 @@ export class GPUAttribute extends Lazy.Object
   _updateAll: () ->
     @logger.info "Updating all elements"    
     bufferRaw = @_attribute.data.rawArray
-    usage     = @_attribute.usage 
+    attrUsage = @_attribute.usage 
     GL.withArrayBuffer @_gl, @_buffer, =>
-      @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, usage)
+      @_gl.bufferData(@_gl.ARRAY_BUFFER, bufferRaw, attrUsage)
 
   update: ->
     if @dirty.isDirty 
