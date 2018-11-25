@@ -1,6 +1,6 @@
 
 import * as Property from "basegl/object/Property"
-import * as Buffer   from 'basegl/core/data/buffer'
+import * as Buffer   from 'basegl/data/buffer'
 
 
 

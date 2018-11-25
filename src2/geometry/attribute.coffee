@@ -1,6 +1,6 @@
-import * as Lazy            from 'basegl/object/lazy'
+import * as Lazy   from 'basegl/object/lazy'
 import * as Config from 'basegl/object/config'
-import * as Buffer          from 'basegl/core/data/buffer'
+import * as Buffer from 'basegl/data/buffer'
 
 
 

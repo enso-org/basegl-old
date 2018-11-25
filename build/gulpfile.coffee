@@ -28,14 +28,16 @@ toSrcPath  = (s) -> "#{srcPath}/#{s}"
 ### Utils ###
 
 watchables = []
-watchableTask = (name, glob, fn) ->
+watchableTask = (name, basepath, pp, dst, fn) ->
+  glob      = "#{basepath}/#{pp}"
+  taskBase  = toRootPath basepath 
   watchName = "watch:#{name}"
-  srcGlob   = toSrcPath glob
+  srcGlob   = toRootPath glob
   watchables.push watchName
-  pipeOut = (t)    => t.pipe gulp.dest distPath
+  pipeOut = (t)    => t.pipe gulp.dest dst
   runner  = (done) => gulp.watch(srcGlob).on "change", (s) => pipeOut fn(task s, done)
   task    = (s)    =>
-    gulp.src s, {base: srcPath, sourcemaps: true}
+    gulp.src s, {base: taskBase, sourcemaps: true}
       .pipe plumber()
       .pipe debug {title: "Processing [#{name}]:"}
   runner.displayName = "#{watchName} runner"
@@ -45,14 +47,20 @@ watchableTask = (name, glob, fn) ->
 
 ### Transpilation ###
 
-watchableTask 'coffee', '**/*.coffee', (t) =>
+watchableTask 'coffee2', 'src2', '**/*.coffee', distPath, (t) =>
+  t .pipe coffee {bare: true}
+
+watchableTask 'coffee', 'src', '**/*.coffee', distPath, (t) =>
+  t .pipe coffee {bare: true}
+
+watchableTask 'lib', 'lib', '**/*.coffee', "#{distPath}/lib", (t) =>
   t .pipe coffee {bare: true}
     # .pipe transform 'utf8', (str) => jsnext.preprocessModule 'unknown.js', jsnextRules, str
-watchableTask 'glsl'  , '**/*.glsl'  , (t) =>
+watchableTask 'glsl'  , 'src', '**/*.glsl' , distPath, (t) =>
   t .pipe transform 'utf8', (str) => "var code = `\n#{str.replace(/`/g,"'")}`;\nexport default code;"
     .pipe rename (path) => path.extname = ".js"
   
-watchableTask 'js'  , '**/*.js'  , (t) => t
+watchableTask 'js'  , 'src', '**/*.js', distPath, (t) => t
 
 gulp.task 'watch', (gulp.parallel watchables...)
 
@@ -102,7 +110,7 @@ gulp.task 'copy:pkgCfg', -> gulp.src(pkgCfgPath).pipe gulp.dest distPath
 
 ### Group tasks ###
 
-gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'glsl', 'js'
+gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'coffee2', 'lib', 'glsl', 'js'
 gulp.task 'default' , gulp.series 'build'
 
 mkPublishTask = (tag, useTag=true) =>
