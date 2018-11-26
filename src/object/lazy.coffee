@@ -16,7 +16,6 @@ export class Manager
     @_isSet   = false
 
   set: ->
-    console.log "SET", @
     if not @isSet
       @_isSet = true
       @onSet.dispatch()
@@ -32,22 +31,6 @@ export class Manager
 ### ListManager ###
 ###################
 
-# export class ListManager extends Manager
-#   constructor: ->
-#     super() 
-#     @_elems = []
-#   @getter 'elems', -> @_elems
-
-#   setElem: (elem) ->
-#     @_elems.push elem
-#     @set()
-
-#   unset: ->
-#     @_elems = []
-#     super.unset()
-
-
-# console.log "vvv"
 export class ListManager
   @mixin Manager
   constructor: ->
@@ -61,28 +44,6 @@ export class ListManager
   unset: ->
     @_elems = []
     @_manager.unset()
-# console.log "^^^"
-
-
-# lm = new ListManager
-# lm.set()
-# console.log lm.isSet
-# window.lm = lm
-# throw "!"
-
-
-# sum = (a, b) ->
-#   a + b
-
-# handler =
-#   apply: (target, thisArg, argumentsList) ->
-#     console.log "Calculate sum: #{argumentsList}"
-#     10
-
-# proxy1 = new Proxy([], handler);
-
-# console.log(sum(1, 2)); 
-# console.log(proxy1(1, 2));
 
 
 
@@ -90,16 +51,17 @@ export class ListManager
 ### HierarchicalManager ###
 ###########################
 
-export class HierarchicalManager extends ListManager
+export class HierarchicalManager
+  @mixin ListManager
 
   constructor: (@childAccessor) ->
-    super()
+    @mixins.constructor()
     if not @childAccessor
       @childAccessor = (a) -> a
 
   unset: ->
     dirtyElems = @elems
-    super.unset()
+    @_listManager.unset()
     for elem in dirtyElems
       @childAccessor(elem).dirty.unset()
 
@@ -109,13 +71,13 @@ export class HierarchicalManager extends ListManager
 ### RangedManager ###
 #####################
 
-export class RangedManager extends Manager
+export class RangedManager
+  @mixin Manager
   constructor: ->
-    super()
+    @mixins.constructor()
     @_range = 
       min: null
       max: null
-  @getter 'range', -> @_range
 
   setIndex: (ix) ->
     if @isSet

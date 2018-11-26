@@ -520,7 +520,9 @@ embedMixin = (base, ext, cfg={}) ->
         baseProto._mixins_.fields.set field, instName 
 
         # Check if the target field is a function. If so, bind 'this'.
-        tgtProtoField = baseProto._mixins[instName].prototype[field]
+        tgtProto          = baseProto._mixins[instName].prototype
+        tgtProtoFieldDesc = Object.getOwnPropertyDescriptor tgtProto, field
+        tgtProtoField     = tgtProtoFieldDesc.value
         if tgtProtoField?.constructor == Function
           Object.defineProperty baseProto, field, 
             get: fastFunction {instName, field},
