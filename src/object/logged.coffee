@@ -1,5 +1,6 @@
-import * as Config from 'basegl/object/config'
-import * as Unique from 'basegl/object/unique'
+import * as Config   from 'basegl/object/config'
+import * as Unique   from 'basegl/object/unique'
+import * as Property from 'basegl/object/Property'
 
 import {logger} from 'logger'
 
@@ -8,10 +9,9 @@ import {logger} from 'logger'
 ### Logged ###
 ##############
 
-export class Logged extends Unique.Unique
+export class Logged
+  @mixin Unique.Unique
   constructor: (cfg={}) ->
-    super()
+    @mixins.constructor()
     @_label  = cfg.label || "#{@constructor.name}.#{@id}"
     @_logger = logger.scoped @_label
-  @getter 'label'  , -> @_label
-  @getter 'logger' , -> @_logger

@@ -235,7 +235,7 @@ splitOnClosingBrace =(txt) ->
 ### Material ###
 ################
 
-export class Material extends Lazy.Object
+export class Material extends Lazy.LazyManager
   constructor: (cfg) -> 
     super cfg 
     @_variable = 

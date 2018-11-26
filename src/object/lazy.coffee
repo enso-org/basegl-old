@@ -1,6 +1,7 @@
 import * as Config          from 'basegl/object/config'
 import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Logged          from 'basegl/object/logged'
+import * as Property        from 'basegl/object/Property'
 
 
 ###############
@@ -8,15 +9,14 @@ import * as Logged          from 'basegl/object/logged'
 ###############
 
 export class Manager
+  @generateAccessors()
   constructor: () ->
     @_onSet   = EventDispatcher.create() 
     @_onUnset = EventDispatcher.create() 
     @_isSet   = false
-  @getter 'onSet'   , -> @_onSet
-  @getter 'onUnset' , -> @_onUnset
-  @getter 'isSet' , -> @_isSet
 
   set: ->
+    console.log "SET", @
     if not @isSet
       @_isSet = true
       @onSet.dispatch()
@@ -32,11 +32,27 @@ export class Manager
 ### ListManager ###
 ###################
 
-export class ListManager extends Manager
+# export class ListManager extends Manager
+#   constructor: ->
+#     super() 
+#     @_elems = []
+#   @getter 'elems', -> @_elems
+
+#   setElem: (elem) ->
+#     @_elems.push elem
+#     @set()
+
+#   unset: ->
+#     @_elems = []
+#     super.unset()
+
+
+# console.log "vvv"
+export class ListManager
+  @mixin Manager
   constructor: ->
-    super() 
+    @mixins.constructor()
     @_elems = []
-  @getter 'elems', -> @_elems
 
   setElem: (elem) ->
     @_elems.push elem
@@ -44,7 +60,29 @@ export class ListManager extends Manager
 
   unset: ->
     @_elems = []
-    super.unset()
+    @_manager.unset()
+# console.log "^^^"
+
+
+# lm = new ListManager
+# lm.set()
+# console.log lm.isSet
+# window.lm = lm
+# throw "!"
+
+
+# sum = (a, b) ->
+#   a + b
+
+# handler =
+#   apply: (target, thisArg, argumentsList) ->
+#     console.log "Calculate sum: #{argumentsList}"
+#     10
+
+# proxy1 = new Proxy([], handler);
+
+# console.log(sum(1, 2)); 
+# console.log(proxy1(1, 2));
 
 
 
@@ -105,12 +143,12 @@ export class RangedManager extends Manager
 ### Object ###
 ##############
 
-export class Object extends Logged.Logged
+export class LazyManager
+  @mixin Logged.Logged
   constructor: (cfg={}) ->
-    super cfg
+    @mixins.constructor cfg
     @_dirty = cfg.lazyManager || new Manager 
-    # @logger.ifEnabled =>
-    #   @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
-    #   @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
-  @getter 'dirty', -> @_dirty
+    @logger.ifEnabled =>
+      @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
+      @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
     

@@ -108,7 +108,7 @@ export class AttributeLazyManager extends Lazy.RangedManager
 #             0.5,  0.5, 0 ,
 #             0.5, -0.5, 0 ]
 
-export class Attribute extends Lazy.Object
+export class Attribute extends Lazy.LazyManager
 
   ### Properties ###
 
@@ -244,7 +244,7 @@ class AttributeScopeLazyManager extends Lazy.Manager
     super.unset()
 
 
-export class AttributeScope extends Lazy.Object
+export class AttributeScope extends Lazy.LazyManager
 
   ### Initialization ###
 
@@ -312,7 +312,7 @@ export class AttributeScope extends Lazy.Object
 ### UniformScope ###
 ####################
 
-export class UniformScope extends Lazy.Object
+export class UniformScope extends Lazy.LazyManager
   constructor: (cfg) ->
     super cfg
     @data = {}
@@ -329,7 +329,7 @@ export class UniformScope extends Lazy.Object
 ### GPUAttribute ###
 ####################
 
-export class GPUAttribute extends Lazy.Object
+export class GPUAttribute extends Lazy.LazyManager
 
   ### Properties ###
 
@@ -412,7 +412,7 @@ export class GPUAttribute extends Lazy.Object
 ### GPUAttributeRegistry ###
 ############################
 
-export class GPUAttributeRegistry extends Lazy.Object
+export class GPUAttributeRegistry extends Lazy.LazyManager
   constructor: (@_gl) ->
     super
       lazyManager: new Lazy.HierarchicalManager     

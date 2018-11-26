@@ -9,7 +9,7 @@ import * as _           from 'lodash'
 ### Mesh ###
 ############
 
-export class Mesh extends Lazy.Object
+export class Mesh extends Lazy.LazyManager
   constructor: (geometry, material) ->
     super
       label       : "Mesh." + geometry.label
@@ -97,7 +97,7 @@ export create = (args...) -> new Mesh args...
 ### GPUMesh ###
 ###############
 
-export class GPUMesh extends Lazy.Object
+export class GPUMesh extends Lazy.LazyManager
   constructor: (@_gl, bufferRegistry, mesh) ->
     super
       label       : "GPU.#{mesh.label}"
@@ -208,7 +208,7 @@ export class GPUMesh extends Lazy.Object
 ### GPUMeshRegistry ###
 #######################
 
-export class GPUMeshRegistry extends Lazy.Object
+export class GPUMeshRegistry extends Lazy.LazyManager
   constructor: ->
     super
       lazyManager : new Lazy.HierarchicalManager    

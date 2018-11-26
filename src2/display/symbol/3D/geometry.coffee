@@ -10,22 +10,26 @@ import {vec2, vec3}  from 'basegl/data/vector'
 ### Geometry ###
 ################
 
-export class Geometry extends Lazy.Object
+export class Geometry # extends Lazy.LazyManager
+  @mixin Lazy.LazyManager
 
   ### Initialization ###
 
   constructor: (cfg) ->
     label = cfg.label || "Unnamed"
-    super
+    @mixins.constructor
       label       : "Geometry.#{label}"
       lazyManager : new Lazy.HierarchicalManager 
+
     @dirty.childAccessor = (name) => @scope[name]
-    
     @logger.group 'Initialization', =>
       @_scope = {}
       @_initScopes cfg
 
-  @getter 'scope', -> @_scope
+  @getter 'id', -> throw "!!!"
+    
+
+  # @getter 'scope', -> @_scope
 
   _initScopes: (cfg) -> 
     scopes = 

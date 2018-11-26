@@ -44,13 +44,13 @@ export swizzleFields = (cls, ref, fields) ->
   for [name,idxs] from fieldsAssoc
     if idxs.length == 1
       fget = (idxs) -> ()  -> @[ref][idxs[0]]
-      fset = (idxs) -> (v) -> @[ref][idxs[0]] = v; @.onChanged?()
+      fset = (idxs) -> (v) -> @[ref][idxs[0]] = v; @onChanged?()
     else
       fget = (idxs) -> ()  -> @[ref][idx] for idx from idxs
       fset = (idxs) -> (v) ->
         for idx from idxs
           @[ref][idx] = v[idx]
-          @.onChanged?()
+          @onChanged?()
     cls.getter name, fget idxs
     cls.setter name, fset idxs
 
@@ -380,6 +380,33 @@ export extend = (obj, cfg) =>
 ###############################################################################
 
 
+#############################
+### Fast Function builder ###
+#############################
+
+# The 'fastFunction' allows build highly-optimized functions, especially when
+# some parts contain string-based lookups. 
+#
+# WARNING!
+# Use only when necessary. Wrong usage can lead to performance bottlenecks. 
+# Every usage can invalidate the browser cache and runs JavaScript compiler.
+# Safe usages include generating getters / setters while metaprogramming, 
+# for example during class generation. 
+
+varPat = /\$[a-zA-Z0-9_]+/gi;
+
+fastFunction = (dict, f) ->
+  code1 = f.toString()
+  code2 = code1.replace varPat, (dkey) -> 
+    key = dkey.slice(1)
+    val = dict[key]
+    if val == undefined
+      throw "Key '#{key}' not found while building the function"
+    val
+  new Function("return #{code2};")()
+
+
+
 #########################
 ### generateAccessors ###
 #########################
@@ -400,22 +427,23 @@ generateAccessors = (base) ->
   protoCons = proto.constructor
   if not protoCons.generatedAccessors
     protoCons.generatedAccessors = true
-    consStr   = base.prototype.constructor.toString()
-    fields    = getMatches consStr, accessorPattern
-    for field in fields
+    consStr = base.prototype.constructor.toString()
+    fields  = getMatches consStr, accessorPattern
+    fields  = new Set fields
+    fields.forEach (field) =>
       if field.startsWith '__'
         name = field.slice(1)
         Object.defineProperty proto, name, 
-          get:     -> @[field]
-          set: (v) -> @[field] = v
+          get: fastFunction {field},     -> @$field
+          set: fastFunction {field}, (v) -> @$field = v
           configurable: false
       else if field.startsWith '_'
         name = field.slice(1)
         Object.defineProperty proto, name, 
-          get: -> @[field]
+          get: fastFunction {field}, -> @$field
           configurable: false
 
-accessorPattern = /this *. *([^ =]+) *=/gm
+accessorPattern = /this *. *([a-zA-Z0-9_]+) *=/gm
 
 getMatches = (string, regex) ->
   matches = []
@@ -437,13 +465,13 @@ Function::generateAccessors = (args...) -> generateAccessors @, args...
 #   - cfg.rename="foo" 
 #     Renames the mixin variable
 #
-#   - cfg.exportMixin=true
+#   - cfg.exportMixin [default: true]
 #     Exports the mixin variable to variable scope 
 #
-#   - cfg.exportPrivate=true
+#   - cfg.exportPrivate [default: false]
 #     Exports private mixin fields
 #
-#   - cfg.allowDuplicateFields=true
+#   - cfg.allowFieldsOverlap [defaukt: false]
 #     Allows mixin definition to override existing fields
 
 embedMixin = (base, ext, cfg={}) ->
@@ -454,8 +482,10 @@ embedMixin = (base, ext, cfg={}) ->
 
   # First mixin initialization
   if baseProto._mixins == undefined
-    baseProto._mixins = {}
-    baseProto._mixins_constructor = (args...) ->
+    baseProto._mixins  = {}
+    baseProto._mixins_ = {}
+    baseProto._mixins_.fields = new Map
+    baseProto._mixins_.constructor = (args...) ->
       mixins = @_mixins
       @_mixins = {}
       for n,f of mixins
@@ -468,28 +498,45 @@ embedMixin = (base, ext, cfg={}) ->
           "    @mixin MyMixin, {rename: 'foo'}"
   baseProto._mixins[instName] = ext
   
-  if cfg.exportMixin
-    Object.defineProperty baseProto, instName, 
-      get: -> @_mixins[instName]
+  if cfg.exportMixin != false
+    Object.defineProperty baseProto, "_#{instName}", 
+      get: fastFunction {instName}, -> @_mixins.$instName
       configurable: true
 
   # Making getters / setters for mixins
   fields.forEach (field) =>
     if checkMixinField field, cfg
-      if not cfg.allowDuplicateFields
-        if Object.getOwnPropertyDescriptor(baseProto,field) != undefined
-          throw "Trying to override '#{field}' field while expanding 
-                '#{instName}' mixin. Possible solution is to use
-                'allowDuplicateFields' option in the mixin definition:\n" +
-                "    @mixin MyMixin, {allowDuplicateFields: true}" 
-      Object.defineProperty baseProto, field, 
-        get:     -> @_mixins[instName][field]
-        set: (v) -> @_mixins[instName][field] = v
-        configurable: true
-  
+      fieldFree = Object.getOwnPropertyDescriptor(baseProto,field) == undefined
+      if fieldFree
+        if not cfg.allowFieldsOverlap
+          oldInstName = baseProto._mixins_.fields.get field
+          if oldInstName        
+            throw "Trying to override '#{field}' field inherited from 
+                  #{oldInstName} mixin while expanding '#{instName}' mixin. 
+                  Possible solution is to use 'allowFieldsOverlap' option in the 
+                  mixin definition:\n" +
+                  "    @mixin MyMixin, {allowFieldsOverlap: true}"
+        
+        baseProto._mixins_.fields.set field, instName 
+
+        # Check if the target field is a function. If so, bind 'this'.
+        tgtProtoField = baseProto._mixins[instName].prototype[field]
+        if tgtProtoField?.constructor == Function
+          Object.defineProperty baseProto, field, 
+            get: fastFunction {instName, field},
+                 -> @_mixins.$instName.$field.bind @_mixins.$instName
+            configurable: true
+        else
+          Object.defineProperty baseProto, field, 
+            get: fastFunction {instName, field},
+                 -> @_mixins.$instName.$field
+            set: fastFunction {instName, field}, 
+                 (v) -> @_mixins.$instName.$field = v
+            configurable: true
+    
   # Mixin utils accessor
   Object.defineProperty baseProto, 'mixins', 
-    get: -> {constructor: @_mixins_constructor.bind @}
+    get: -> {constructor: @_mixins_.constructor.bind @}
     configurable: true
 
   checkInit base
@@ -518,3 +565,65 @@ lowerFirstChar = (string) ->
     string.charAt(0).toLowerCase() + string.slice(1)
 
 Function::mixin = (ext, cfg) -> mixin @, ext, cfg
+
+
+
+
+
+
+# class Base
+#   @generateAccessors()
+#   constructor: ->
+#     @_field1 = 7
+
+#   fn1: -> @_field1 += 1
+
+
+# class C1
+#   @mixin Base
+#   constructor: ->
+#     @mixins.constructor()
+
+# console.log "^^^"
+# console.log ""
+
+# class C2
+#   constructor: ->
+#     @_base = new Base
+    
+#   @getter 'field1', -> @_base.field1 
+#   @getter 'fn1',    -> @_base.fn1.bind @_base 
+
+
+# window.C1 = C1
+# window.c1 = new C1
+# console.log c1
+# console.log c1.field1
+# c1.fn1()
+# console.log c1.field1
+
+# console.log "---"
+
+# window.c2 = new C2
+# console.log c2
+# console.log c2.field1
+# c2.fn1()
+# console.log c2.field1
+
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)

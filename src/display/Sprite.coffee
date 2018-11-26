@@ -169,6 +169,174 @@ export test2 = (ctx, viewProjectionMatrix) ->
   m1.draw(viewProjectionMatrix)
   
 
+# console.log "---"
+
+
+
+
+
+# class Base
+#   @generateAccessors()
+#   constructor: ->
+#     @_field1 = 7
+
+#   fn1: -> @_field1 += 1
+
+
+# class C1
+#   @mixin Base
+#   constructor: ->
+#     @mixins.constructor()
+
+# console.log "^^^"
+# console.log ""
+
+# class C2
+#   constructor: ->
+#     @_base = new Base
+    
+#   @getter 'field1', -> @_base.field1 
+#   @getter 'fn1',    -> @_base.fn1.bind @_base 
+
+
+# # C1 = eval "
+# # var C1;
+
+# # C1 = (function() {
+# #   class C1 {
+# #     constructor() {
+# #       this._base = new Base;
+# #     }
+
+# #   };
+
+# #   C1.getter('field1', function() {
+# #     return this._base.field1;
+# #   });
+
+# #   C1.getter('fn1', function() {
+# #     return this._base.fn1.bind(this._base);
+# #   });
+
+# #   return C1;
+
+# # }).call(this);
+# # "
+
+# window.C1 = C1
+# window.c1 = new C1
+# console.log c1
+# console.log c1.field1
+# c1.fn1()
+# console.log c1.field1
+
+# console.log "---"
+
+# window.c2 = new C2
+# console.log c2
+# console.log c2.field1
+# c2.fn1()
+# console.log c2.field1
+
+
+
+# # console.log C1.prototype.constructor
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c1.field1
+#   # c1.fn1()
+# t2 = performance.now()
+# console.log "C1", (t2-t1)
+
+# t1 = performance.now()
+# s  = 0
+# for i in [1..10000000] by 1 
+#   s += c2.field1
+#   # c2.fn1()
+# t2 = performance.now()
+# console.log "C2", (t2-t1)
+
+# throw "!"
+
 
 # class Camera
 #   @mixin Lazy.Object
