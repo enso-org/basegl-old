@@ -170,34 +170,53 @@ export test2 = (ctx, viewProjectionMatrix) ->
   
 
 
-class Camera
-  @mixin Lazy.Object
-  constructor: (cfg={}) ->
-    @_fov = cfg.fov || 60
-    @initMixins()
+# class Camera
+#   @mixin Lazy.Object
+#   constructor: (cfg={}) ->
+#     @_fov = cfg.fov || 60
+#     @mixins.constructor()
 
-class Camera2
-  constructor: (cfg={}) ->
-    @_fov    = cfg.fov || 60
-    @_object = new Lazy.Object
+# class Camera2
+#   constructor: (cfg={}) ->
+#     @_fov    = cfg.fov || 60
+#     @_object = new Lazy.Object
 
-  @getter 'dirty', -> @_object.dirty
-  @setter 'dirty', (v) -> @_object.dirty = v
+#   @getter 'dirty', -> @_object.dirty
+#   @setter 'dirty', (v) -> @_object.dirty = v
 
-class Camera3 extends Lazy.Object
-  constructor: (cfg={}) ->
-    super cfg
-    @_fov    = cfg.fov || 60
-    @_object = new Lazy.Object
+# class Camera3 extends Lazy.Object
+#   constructor: (cfg={}) ->
+#     super cfg
+#     @_fov    = cfg.fov || 60
+#     @_object = new Lazy.Object
 
 
+# class TT
+#   @mixin Camera
+#   constructor: (cfg) ->
+#     @mixins.constructor()
 
-  # @getter 'dirty', -> @_object.dirty
-  # @setter 'dirty', (v) -> @_object.dirty = v
-  
+# console.warn "Mk tt1"
+# tt1 = new TT 
+# console.warn "Mk tt2"
+# tt2 = new TT
+# console.warn "---"
 
-a = new Camera
-console.log a
+# window.tt1 = tt1 
+# window.tt2 = tt2
+
+
+# a = new Camera
+# console.log "---"
+# b = new Camera
+# console.log "---"
+
+# window.cam = a
+
+# console.log a
+# console.log b
+
+
 
 
 # t1 = performance.now()
@@ -224,80 +243,8 @@ console.log a
 # t2 = performance.now()
 # console.log "C1", (t2-t1)
 
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera2
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
 
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera3
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C3", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   a = new Camera
-#   a.dirty.set()
-#   a.dirty.unset()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera2
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera3
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C3", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   a = new Camera
-#   a.dirty.set()
-#   a.dirty.unset()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera2
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera3
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C3", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   a = new Camera
-#   a.dirty.set()
-#   a.dirty.unset()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-
-throw "!"
+# throw "!"
 
 
 export test = (ctx, viewProjectionMatrix) ->

@@ -380,75 +380,6 @@ export extend = (obj, cfg) =>
 ###############################################################################
 
 
-#############
-### mixin ###
-#############
-
-# Options:
-#
-#   - cfg.rename="foo" 
-#     Renames the mixin variable
-#
-#   - cfg.exportMixin=true
-#     Exports the mixin variable to variable scope 
-#
-#   - cfg.exportPrivate=true
-#     Exports private mixin fields
-
-embedMixin = (base, ext, cfg={}) ->
-  baseProto = base.prototype
-  extProto  = ext.prototype
-  oldInit   = baseProto[initMixinName]  
-  instName  = if cfg.rename then cfg.rename else lowerFirstChar ext.name
-  fields    = Object.getOwnPropertyNames extProto
-  baseProto.mixins = {}
-
-  if cfg.exportMixin
-    Object.defineProperty baseProto, instName, 
-      get: -> @mixins[instName]
-      configurable: true
-
-  checkField = (name) -> 
-    notCons = name != 'constructor'
-    notPriv = (not name.startsWith '_') || cfg.exportPrivate
-    notCons && notPriv
-      
-  for field in fields
-    if checkField field
-      Object.defineProperty baseProto, field, 
-        get:     -> @mixins[instName][field]
-        set: (v) -> @mixins[instName][field] = v
-        configurable: true
-  if not oldInit
-    baseProto[initMixinName] = (args...) ->
-      @mixins[instName] = new ext args...
-  else
-    baseProto[initMixinName] = (args...) ->
-      @mixins[instName] = new ext args...
-      oldInit.call @, args...
-
-  checkInit base
-
-mixin = (base, ext, cfg) -> 
-  embedMixin base, ext, cfg
-  generateAccessors base
-
-initMixinName = 'initMixins'
-
-lowerFirstChar = (string) ->
-    string.charAt(0).toLowerCase() + string.slice(1)
-
-checkInitPattern = new RegExp("this *. *#{initMixinName} *\\(", "i")
-checkInit = (base) ->
-  consStr = base.prototype.constructor.toString()
-  match   = consStr.match checkInitPattern
-  if not match
-    throw "Please use `#{initMixinName}` function to initialize mixins."
-
-Function::mixin = (ext, cfg) -> mixin @, ext, cfg
-
-
-
 #########################
 ### generateAccessors ###
 #########################
@@ -494,3 +425,96 @@ getMatches = (string, regex) ->
   matches
 
 Function::generateAccessors = (args...) -> generateAccessors @, args...
+
+
+
+#############
+### mixin ###
+#############
+
+# Options:
+#
+#   - cfg.rename="foo" 
+#     Renames the mixin variable
+#
+#   - cfg.exportMixin=true
+#     Exports the mixin variable to variable scope 
+#
+#   - cfg.exportPrivate=true
+#     Exports private mixin fields
+#
+#   - cfg.allowDuplicateFields=true
+#     Allows mixin definition to override existing fields
+
+embedMixin = (base, ext, cfg={}) ->
+  baseProto = base.prototype
+  extProto  = ext.prototype
+  instName  = if cfg.rename then cfg.rename else lowerFirstChar ext.name
+  fields    = Object.getOwnPropertyNames extProto
+
+  # First mixin initialization
+  if baseProto._mixins == undefined
+    baseProto._mixins = {}
+    baseProto._mixins_constructor = (args...) ->
+      mixins = @_mixins
+      @_mixins = {}
+      for n,f of mixins
+        do (n,f) =>
+          @_mixins[n] = new f args...
+
+  if baseProto._mixins[instName] != undefined
+    throw "Trying to override '#{instName}' mixin. Possible solution is to use 
+          'rename' option in the mixin definition:\n" + 
+          "    @mixin MyMixin, {rename: 'foo'}"
+  baseProto._mixins[instName] = ext
+  
+  if cfg.exportMixin
+    Object.defineProperty baseProto, instName, 
+      get: -> @_mixins[instName]
+      configurable: true
+
+  # Making getters / setters for mixins
+  fields.forEach (field) =>
+    if checkMixinField field, cfg
+      if not cfg.allowDuplicateFields
+        if Object.getOwnPropertyDescriptor(baseProto,field) != undefined
+          throw "Trying to override '#{field}' field while expanding 
+                '#{instName}' mixin. Possible solution is to use
+                'allowDuplicateFields' option in the mixin definition:\n" +
+                "    @mixin MyMixin, {allowDuplicateFields: true}" 
+      Object.defineProperty baseProto, field, 
+        get:     -> @_mixins[instName][field]
+        set: (v) -> @_mixins[instName][field] = v
+        configurable: true
+  
+  # Mixin utils accessor
+  Object.defineProperty baseProto, 'mixins', 
+    get: -> {constructor: @_mixins_constructor.bind @}
+    configurable: true
+
+  checkInit base
+
+checkMixinField = (name, cfg) -> 
+  notMagic = not (name in ['constructor', 'mixins'])
+  notPriv  = (not name.startsWith '_') || cfg.exportPrivate
+  notMagic && notPriv
+
+checkInitPattern = /this *. *mixins *\. *constructor *\(/gm
+checkInit = (base) ->
+  consStr = base.prototype.constructor.toString()
+  match   = consStr.match checkInitPattern
+  if not match
+    throw "Please initialize mixins with 'mixins.constructor' inside of 
+          '#{base.name}' class constructor"
+
+
+mixin = (base, ext, cfg) -> 
+  embedMixin base, ext, cfg
+  generateAccessors base
+
+initMixinName = 'initMixins'
+
+lowerFirstChar = (string) ->
+    string.charAt(0).toLowerCase() + string.slice(1)
+
+Function::mixin = (ext, cfg) -> mixin @, ext, cfg
