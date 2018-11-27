@@ -19,7 +19,7 @@ import * as Display from 'basegl/display/object'
 
 import {EventObject} from 'basegl/display/object/event'
 import {DisplayObject} from 'basegl/display/object'
-
+import {Logged} from 'basegl/object/logged'
 
 
 
@@ -216,6 +216,85 @@ class Camera extends DisplayObject
     @dirtyCfg.unset()
     
 
+class Sprite extends DisplayObject
+  @generateAccessors()
+
+  constructor: (@_system, @_id) ->
+    super()
+    @__varData = @system.geometry.instance.data
+
+    @_variable = new Proxy {},
+      get: (target, name)        => @getVariable name
+      set: (target, name, value) => @setVariable name, value
+
+  getVariable: (name) ->
+    @_varData[name].read(@id)
+
+  setVariable: (name, value) ->
+    @getVariable(name).set value
+
+  update: -> 
+    super.update()
+    # FIXME 1 : xform should be kept as Buffer
+    # FIXME 2 : @xform causes update loop, maybe mixins?
+    xf = new Buffer.Buffer Float32Array, @_xform
+    @_varData['transform'].read(@id).set xf
+
+
+
+spriteVertexShaderBase = '''
+vec4 xpos;
+void main() {
+  xpos = v_transform * v_position;
+  gl_Position = matrix * xpos;
+}
+'''
+
+spriteFragmentShaderBase = '''
+out vec4 output_color;  
+void main() {
+  output_color = color;
+}'''
+
+class SpriteSystem
+  @mixin Logged
+
+  constructor: ->
+    @mixins.constructor
+      label: @constructor.name
+
+    @logger.group "Initializing", =>
+      @_geometry = Geometry.rectangle
+        label    : "Sprite"
+        width    : 200
+        height   : 200
+        instance :
+          color:     vec4()
+          transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
+        object:
+          matrix: mat4
+
+      @_material = new Material.Raw
+        vertex   : spriteVertexShaderBase
+        fragment : spriteFragmentShaderBase
+        input:
+          position  : vec4()
+          transform : mat4()
+          matrix    : mat4()
+          color     : vec4 0,1,0,1
+
+      @_mesh = Mesh.create @_geometry, @_material
+
+  setVariable: (ix, name, data) ->
+    console.warn "SET", ix, name, data
+    @geometry.instance.data[name].read(ix).set data
+
+  create: -> 
+    ix = @geometry.instance.add({color: vec4(1,0,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20)})
+    new Sprite @, ix
+
+
+
 export test = (ctx) ->
 
   geo = Geometry.rectangle
@@ -265,6 +344,20 @@ export test = (ctx) ->
   meshRegistry.add m1
 
 
+  ss  = new SpriteSystem
+  ssm = new Mesh.GPUMesh ctx, attrRegistry, ss.mesh
+  meshRegistry.add ssm
+
+  sp1 = ss.create()
+  sp1.variable.color.rgb = [0,0,1]
+  
+
+  # sp1.position.x = 100
+  # ss.setVariable 0, 'color', vec4(0,1,0,1)
+
+  # console.warn ">>>"
+  # console.log sp1.getVariable 'color'
+
 
   # console.log mat1.shader
   # mat1.writePointVariable 'position', (vec4 [0,0,0,0])
@@ -310,6 +403,7 @@ export test = (ctx) ->
   #   # meshRegistry.update()
 
   aspect = ctx.canvas.clientWidth / ctx.canvas.clientHeight;
+
   
   camera = new Camera
     aspect: aspect
@@ -323,7 +417,15 @@ export test = (ctx) ->
       # ctx.clear(ctx.COLOR_BUFFER_BIT | ctx.DEPTH_BUFFER_BIT);
 
       camera.rotation.z += 0.1
-      m1.draw(camera.viewProjectionMatrix)
+      sp1.position.x += 10
+
+      sp1.update()
+      attrRegistry.update()
+      meshRegistry.update()
+
+
+
+      ssm.draw(camera.viewProjectionMatrix)
         
       if fms < 100
         fms += 1

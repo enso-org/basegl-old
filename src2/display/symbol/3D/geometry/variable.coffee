@@ -283,6 +283,7 @@ export class AttributeScope extends Lazy.LazyManager
           @logger.info "Skipping inexisting attribute '#{name}'"
         else
           @data[name].write(ix,val)
+      ix
 
   addAttribute: (name, data) ->
     label = @logger.scope + '.' + name

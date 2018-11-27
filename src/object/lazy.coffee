@@ -110,7 +110,7 @@ export class LazyManager
   constructor: (cfg={}) ->
     @mixins.constructor cfg
     @_dirty = cfg.lazyManager || new Manager 
-    # @logger.ifEnabled =>
-    #   @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
-    #   @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
+    @logger.ifEnabled =>
+      @_dirty.onSet.addEventListener   => @logger.info "Dirty flag set"
+      @_dirty.onUnset.addEventListener => @logger.info "Dirty flag unset"
     
