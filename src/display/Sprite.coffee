@@ -23,7 +23,7 @@ import {Logged} from 'basegl/object/logged'
 
 
 
-export test2 = (ctx, viewProjectionMatrix) ->
+export test2 = (gl, viewProjectionMatrix) ->
 
   geo = Geometry.rectangle
     label    : "Geo1"
@@ -92,7 +92,7 @@ export test2 = (ctx, viewProjectionMatrix) ->
   #     matrix: mat4
 
 
-  attrRegistry = new Variable.GPUAttributeRegistry ctx
+  attrRegistry = new Variable.GPUAttributeRegistry gl
   meshRegistry = new Mesh.GPUMeshRegistry
 
 
@@ -125,7 +125,7 @@ export test2 = (ctx, viewProjectionMatrix) ->
       color     : vec4 0,1,0,1
   mesh = Mesh.create geo, mat1
 
-  m1 = new Mesh.GPUMesh ctx, attrRegistry, mesh
+  m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
   meshRegistry.add m1
 
 
@@ -295,7 +295,10 @@ class SpriteSystem
 
 
 
-export test = (ctx) ->
+frameRequested = false
+
+
+export test = (gl) ->
 
   geo = Geometry.rectangle
     label    : "Geo1"
@@ -307,7 +310,7 @@ export test = (ctx) ->
       matrix: mat4
       
 
-  attrRegistry = new Variable.GPUAttributeRegistry ctx
+  attrRegistry = new Variable.GPUAttributeRegistry gl
   meshRegistry = new Mesh.GPUMeshRegistry
 
 
@@ -340,12 +343,12 @@ export test = (ctx) ->
       color     : vec4 0,1,0,1
   mesh = Mesh.create geo, mat1
 
-  m1 = new Mesh.GPUMesh ctx, attrRegistry, mesh
+  m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
   meshRegistry.add m1
 
 
   ss  = new SpriteSystem
-  ssm = new Mesh.GPUMesh ctx, attrRegistry, ss.mesh
+  ssm = new Mesh.GPUMesh gl, attrRegistry, ss.mesh
   meshRegistry.add ssm
 
   sp1 = ss.create()
@@ -402,7 +405,10 @@ export test = (ctx) ->
   #   attrRegistry.update()
   #   # meshRegistry.update()
 
-  aspect = ctx.canvas.clientWidth / ctx.canvas.clientHeight;
+  width  = gl.canvas.clientWidth 
+  height = gl.canvas.clientHeight
+
+  aspect = width / height
 
   
   camera = new Camera
@@ -411,31 +417,171 @@ export test = (ctx) ->
   camera.position.z = 300
 
   fms = 0
-  drawMe = ->
-    logger.group "FRAME #{fms}", =>
-      # ctx.clearColor(0, 0, 0, 0);
-      # ctx.clear(ctx.COLOR_BUFFER_BIT | ctx.DEPTH_BUFFER_BIT);
 
-      camera.rotation.z += 0.1
-      sp1.position.x += 10
+  # {pbo, array2, size} = testx(gl, width, height)
+  
+  # drawMe = ->
+  #   logger.group "FRAME #{fms}", =>
+  #     # gl.clearColor(0, 0, 0, 0);
+  #     # gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      sp1.update()
-      attrRegistry.update()
-      meshRegistry.update()
+  #     camera.rotation.z += 0.1
+  #     sp1.position.x += 10
 
-
-
-      ssm.draw(camera.viewProjectionMatrix)
+  #     sp1.update()
+  #     attrRegistry.update()
+  #     meshRegistry.update()
+  #     ssm.draw(camera.viewProjectionMatrix)
+  #     # if fms == 1
+  #     # demo(gl, sync, array2, size)
+  #     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+  #     gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0
+      
+  #     fence(gl).then =>
+  #       gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, size
+  #       # gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
+  #       gl.finish()
         
-      if fms < 100
-        fms += 1
-        window.requestAnimationFrame(drawMe)
-  drawMe()
+  #     if fms < 300
+  #       fms += 1
+  #       # setTimeout(drawMe, 1000)
+  #       window.requestAnimationFrame(drawMe)
+
+
+
+  # drawMe()
+  # window.drawMe = drawMe
+
+  {pbo, array2, size} = testx(gl, width, height)
+
+ 
+  renderloop = ->
+    window.requestAnimationFrame renderloop
+    if frameRequested then return
+    frameRequested = true
+    go()
+
+  go = ->
+    camera.rotation.z += 0.1
+    sp1.position.x += 10
+    sp1.update()
+    attrRegistry.update()
+    meshRegistry.update()
+
+    # a = 0
+    # for i in [0...1000000]
+    #   for j in [0...20]
+    #     a = i + j
+    
+    ssm.draw(camera.viewProjectionMatrix)
+    
+    gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
+    gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0
+    # gl.readPixels(mouse.x, pickingTexture.height - mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    fence(gl).then ->
+      gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, 4
+      gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
+      render()
+      gl.finish()
+
+  renderloop()
+
+
+render = ->
+  frameRequested = false
+  # renderer.render(scene, camera)  
+
+
+testx = (gl, width, height) ->
+  
+  bytesPerPixel = 4
+  bytesPerRow = width * bytesPerPixel
+  size = bytesPerRow * height
+  array  = new Uint8Array size
+  array2 = new Uint8Array size
+  pbo = gl.createBuffer()
+  offset = 0
+  gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
+  gl.bufferData gl.PIXEL_PACK_BUFFER, array, gl.DYNAMIC_READ
+  gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
+  {pbo, array2, size}
+  
+fence = (gl) ->
+  return new Promise (resolve) =>
+    sync = gl.fenceSync gl.SYNC_GPU_COMMANDS_COMPLETE, 0
+    gl.flush()
+    check = () ->
+      status = gl.getSyncParameter sync, gl.SYNC_STATUS
+      if status == gl.SIGNALED
+        gl.deleteSync sync
+        resolve()
+      else
+        setTimeout(check, 0);
+    setTimeout(check, 0);
+
+
+# flowBreak = ->
+#   new Promise (resolve) => 
+#     setTimeout(resolve, 0)
+
+# demo = (gl, sync, array2, size) ->
+#   # console.log 'Taking a break...'
+#   # console.log "START"
+#   await waitForComplete(gl)
+#   # max = gl.getParameter(gl.MAX_CLIENT_WAIT_TIMEOUT_WEBGL) || 0
+#   # await gl.clientWaitSync(sync, 0, max)
+#   # gl.waitSync(sync, 0, gl.TIMEOUT_IGNORED);
+#   gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, array2, 0, size)
+  
+  
+#   # console.log ">>", max  
+#   # console.log 'Two seconds later'
+#   # found = false
+#   # for i in array2
+#   #   if i != 0 then found = true
+#   # console.log found
+#   # console.log "END"
   
 
+# waitForComplete = (gl) ->
+#     sync   = gl.fenceSync gl.SYNC_GPU_COMMANDS_COMPLETE, 0
+#     status = gl.clientWaitSync sync, 0, 0
+
+#     while (status != gl.CONDITION_SATISFIED && status != gl.ALREADY_SIGNALED)
+#         # console.log "STILL WAITING"
+#         await promiseTimeout(1)
+#         status = gl.clientWaitSync(sync, 0, 0)
+#     # console.log "DONE!"
+    
+#     gl.deleteSync(sync)
+
+# promiseTimeout = (timeout) ->
+#     return new Promise (resolve, reject) =>
+#         setTimeout(resolve, timeout)
+
+
+
+
+  # console.log array
+  # gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, offset
+
+  # sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
+  # console.log "!!!", gl.isSync(sync)
+  # max = gl.getParameter(gl.MAX_CLIENT_WAIT_TIMEOUT_WEBGL) || 0
+  # out = gl.clientWaitSync(sync, 0, max)
+  # console.log "!!!", out, gl.TIMEOUT_EXPIRED
+  # # gl.waitSync(sync, 0, gl.TIMEOUT_IGNORED);
+  # gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, array2, 0, size)
+  
+
+  # demo(gl, sync, array2, size)
+
+  # found = false
+  # # array = new Uint8Array [7,8,9]
 
 # class Sprite
 #   constructor: ->
 #     @_geometry = 
+
 
 
