@@ -13,5 +13,6 @@ export class Logged
   @mixin Unique.Unique
   constructor: (cfg={}) ->
     @mixins.constructor()
-    @_label  = cfg.label || "#{@constructor.name}.#{@id}"
+    @_label  = cfg.label || "Unlabeled"
+    @_label  = "#{@_label}.#{@id}"
     @_logger = logger.scoped @_label

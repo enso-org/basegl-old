@@ -23,9 +23,14 @@ Function::getter   = (prop, f)    -> defineGetter2   @, prop, f
 Function::setter   = (prop, f)    -> defineSetter2   @, prop, f
 
 
+# OLD! Use `defineValue` instead
 export setObjectProperty = (a, name, value, configurable=true) ->
   Object.defineProperty(a, name , {value:value, configurable: configurable})
   a
+
+export defineValue = (obj, name, value, configurable=true) ->
+  Object.defineProperty obj, name, {value, configurable}
+  obj
 
 export consAlias = (a) -> (args...) -> new a args...
 
@@ -62,37 +67,6 @@ export swizzleFieldsRGB  = (cls, ref='array') -> swizzleFields cls, ref, ['r', '
 export swizzleFieldsSTPQ = (cls, ref='array') -> swizzleFields cls, ref, ['s', 't', 'p', 'q']
 export swizzleFieldsSTP  = (cls, ref='array') -> swizzleFields cls, ref, ['s', 't', 'p']
 
-export swizzleFields2 = (cls, fields) ->
-  fieldsAssoc   = []
-  fieldsAssoNew = []
-  for els in [1..fields.length]
-    for n,i in fields
-      if els == 1 then fieldsAssoc.push [n,[i]]
-      else for [an, ai],ii in fieldsAssoc
-        fieldsAssoNew.push [an+n, ai.concat [i]]
-    fieldsAssoc   = fieldsAssoc.concat fieldsAssoNew
-    fieldsAssoNew = []
-
-  fieldsAssoc.forEach ([name,ixs]) ->
-    if ixs.length == 1
-      ix = ixs[0]
-      fget =     -> @read  ix
-      fset = (v) -> @write ix, v
-    else
-      fget =     -> @readMultiple  ixs
-      fset = (v) -> @writeMultiple ixs, v
-    cls.getter name, fget
-    cls.setter name, fset
-
-export swizzleFieldsXYZW2 = (cls) -> swizzleFields2 cls, ['x', 'y', 'z', 'w']
-export swizzleFieldsXYZ2  = (cls) -> swizzleFields2 cls, ['x', 'y', 'z']
-export swizzleFieldsXY2   = (cls) -> swizzleFields2 cls, ['x', 'y']
-export swizzleFieldsRGBA2 = (cls) -> swizzleFields2 cls, ['r', 'g', 'b', 'a']
-export swizzleFieldsRGB2  = (cls) -> swizzleFields2 cls, ['r', 'g', 'b']
-export swizzleFieldsSTPQ2 = (cls) -> swizzleFields2 cls, ['s', 't', 'p', 'q']
-export swizzleFieldsSTP2  = (cls) -> swizzleFields2 cls, ['s', 't', 'p']
-
-
 export addIndexFields = (cls, ref, num) ->
   if ref == undefined then ref = 'array'
   if num == undefined then num = cls.size
@@ -105,14 +79,7 @@ export addIndexFields = (cls, ref, num) ->
 export addIndexFieldsStd = (cls, ref) -> addIndexFields cls, ref, 16
 
 
-export addIndexFields2 = (cls, num) ->
-  if num == undefined then num = cls.size
-  assert num?
-  fget = (i) -> ()  -> @read  i
-  fset = (i) -> (v) -> @write i, v
-  for i in [0..num-1]
-    cls.getter i, fget i
-    cls.setter i, fset i
+
 
 
 
@@ -140,7 +107,7 @@ forNonSelfField = (self, obj, f) =>
   for k in Object.getOwnPropertyNames obj
     if self[k] == undefined then f k
 
-embedMixin = (self, mx, fredirect) =>
+embedMixin_old = (self, mx, fredirect) =>
   proto = Object.getPrototypeOf mx
   forNonSelfField self, mx   , (key) => fredirect key, mx
   forNonSelfField self, proto, (key) => fredirect key, mx
@@ -150,7 +117,7 @@ embedIfMixin = (self,key) =>
   val = self[key]
   if val?.__isMixin__
     delete val.__isMixin__
-    self[key] = embedMixin self, val, (subredirect self, key)
+    self[key] = embedMixin_old self, val, (subredirect self, key)
     val.__isMixin__ = true
 
 subredirect = (self,mk) => (k) =>
@@ -177,7 +144,7 @@ export class Composable
       set
 
     embedMx = discoverEmbedMixins => @cons args...
-    embedMx.forEach (mx) => embedMixin @, mx, redirectSimple
+    embedMx.forEach (mx) => embedMixin_old @, mx, redirectSimple
 
     # Handle all keys after initialization
     for key in Object.keys @
@@ -425,8 +392,10 @@ fastFunction = (dict, f) ->
 generateAccessors = (base) ->
   proto     = base.prototype
   protoCons = proto.constructor
-  if not protoCons.generatedAccessors
-    protoCons.generatedAccessors = true
+  if protoCons.generatedAccessors == undefined
+    protoCons.generatedAccessors = new Set
+  if not protoCons.generatedAccessors.has base.name
+    protoCons.generatedAccessors.add base.name
     consStr = base.prototype.constructor.toString()
     fields  = getMatches consStr, accessorPattern
     fields  = new Set fields
@@ -436,12 +405,12 @@ generateAccessors = (base) ->
         Object.defineProperty proto, name, 
           get: fastFunction {field},     -> @$field
           set: fastFunction {field}, (v) -> @$field = v
-          configurable: false
+          configurable: true
       else if field.startsWith '_'
         name = field.slice(1)
         Object.defineProperty proto, name, 
           get: fastFunction {field}, -> @$field
-          configurable: false
+          configurable: true
 
 accessorPattern = /this *. *([a-zA-Z0-9_]+) *=/gm
 
@@ -569,9 +538,7 @@ lowerFirstChar = (string) ->
 Function::mixin = (ext, cfg) -> mixin @, ext, cfg
 
 
-
-
-
+### BENCH: ###
 
 # class Base
 #   @generateAccessors()
@@ -629,3 +596,55 @@ Function::mixin = (ext, cfg) -> mixin @, ext, cfg
 #   # c2.fn1()
 # t2 = performance.now()
 # console.log "C2", (t2-t1)
+
+
+
+#######################
+### Field swizzling ###
+#######################
+
+export swizzleFields2 = (cls, fields) ->
+  fieldsAssoc   = []
+  fieldsAssoNew = []
+  for els in [1..fields.length]
+    for n,i in fields
+      if els == 1 then fieldsAssoc.push [n,[i]]
+      else for [an, ai],ii in fieldsAssoc
+        fieldsAssoNew.push [an+n, ai.concat [i]]
+    fieldsAssoc   = fieldsAssoc.concat fieldsAssoNew
+    fieldsAssoNew = []
+
+  fieldsAssoc.forEach ([name,ixs]) ->
+    if ixs.length == 1
+      ix = ixs[0]
+      fget =     -> @read  ix
+      fset = (v) -> @write ix, v
+    else
+      fget =     -> @readMultiple  ixs
+      fset = (v) -> @writeMultiple ixs, v
+    cls.getter name, fget
+    cls.setter name, fset
+
+export swizzleFieldsXYZW2 = (cls) -> swizzleFields2 cls, ['x', 'y', 'z', 'w']
+export swizzleFieldsXYZ2  = (cls) -> swizzleFields2 cls, ['x', 'y', 'z']
+export swizzleFieldsXY2   = (cls) -> swizzleFields2 cls, ['x', 'y']
+export swizzleFieldsRGBA2 = (cls) -> swizzleFields2 cls, ['r', 'g', 'b', 'a']
+export swizzleFieldsRGB2  = (cls) -> swizzleFields2 cls, ['r', 'g', 'b']
+export swizzleFieldsSTPQ2 = (cls) -> swizzleFields2 cls, ['s', 't', 'p', 'q']
+export swizzleFieldsSTP2  = (cls) -> swizzleFields2 cls, ['s', 't', 'p']
+
+
+
+######################
+### Field indexing ###
+######################
+
+export addIndexFields2 = (cls, num) ->
+  if num == undefined then num = cls.size
+  assert num?
+  for i in [0..num-1]
+    do (i) =>
+      Object.defineProperty cls.prototype, i, 
+        get: fastFunction({i},     -> @read $i)
+        set: fastFunction({i}, (v) -> @write $i, v)
+        configurable: false

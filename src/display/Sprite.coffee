@@ -5,14 +5,22 @@ import * as Material from 'basegl/display/symbol/3D/material'
 import * as Mesh     from 'basegl/display/symbol/3D/mesh'
 import * as Lazy     from 'basegl/object/lazy'
 import * as Property from 'basegl/object/Property'
+import * as Buffer   from 'basegl/data/buffer'
 
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
+import * as M from 'gl-matrix'
 
 
 import * as Display from 'basegl/display/object'
+
+
+import {EventObject} from 'basegl/display/object/event'
+import {DisplayObject} from 'basegl/display/object'
+
+
 
 
 export test2 = (ctx, viewProjectionMatrix) ->
@@ -169,253 +177,46 @@ export test2 = (ctx, viewProjectionMatrix) ->
   m1.draw(viewProjectionMatrix)
   
 
-# console.log "---"
 
+class Camera extends DisplayObject
+  @generateAccessors()
 
+  constructor: (cfg={}) ->
+    super()
+    @_dirtyCfg = new Lazy.Manager
+    @_fov      = cfg.fov    || 60
+    @_aspect   = cfg.aspect || 1
+    @_near     = cfg.near   || 1
+    @_far      = cfg.far    || 2000
 
+    @__projectionMatrix     = M.mat4.create()
+    @__viewMatrix           = M.mat4.create()
+    @__viewProjectionMatrix = M.mat4.create()
 
+    @dirtyCfg.set()
+    @update()
 
-# class Base
-#   @generateAccessors()
-#   constructor: ->
-#     @_field1 = 7
+  @setter 'fov'    , (val) -> @_fov    = val; @dirtyCfg.set()
+  @setter 'aspect' , (val) -> @_aspect = val; @dirtyCfg.set()
+  @setter 'near'   , (val) -> @_near   = val; @dirtyCfg.set()
+  @setter 'far'    , (val) -> @_far    = val; @dirtyCfg.set()
+  @getter 'viewProjectionMatrix', ->
+    @update()
+    @__viewProjectionMatrix
 
-#   fn1: -> @_field1 += 1
+  update: ->
+    if @dirtyCfg.isSet
+      fovRad = @fov * Math.PI / 180
+      M.mat4.perspective @_projectionMatrix, fovRad, @aspect, @near, @far
 
-
-# class C1
-#   @mixin Base
-#   constructor: ->
-#     @mixins.constructor()
-
-# console.log "^^^"
-# console.log ""
-
-# class C2
-#   constructor: ->
-#     @_base = new Base
+    if @dirtyCfg.isSet || @dirty.isSet
+      super.update()
+      M.mat4.invert   @_viewMatrix, @_xform
+      M.mat4.multiply @_viewProjectionMatrix, @_projectionMatrix, @_viewMatrix
+    @dirtyCfg.unset()
     
-#   @getter 'field1', -> @_base.field1 
-#   @getter 'fn1',    -> @_base.fn1.bind @_base 
 
-
-# # C1 = eval "
-# # var C1;
-
-# # C1 = (function() {
-# #   class C1 {
-# #     constructor() {
-# #       this._base = new Base;
-# #     }
-
-# #   };
-
-# #   C1.getter('field1', function() {
-# #     return this._base.field1;
-# #   });
-
-# #   C1.getter('fn1', function() {
-# #     return this._base.fn1.bind(this._base);
-# #   });
-
-# #   return C1;
-
-# # }).call(this);
-# # "
-
-# window.C1 = C1
-# window.c1 = new C1
-# console.log c1
-# console.log c1.field1
-# c1.fn1()
-# console.log c1.field1
-
-# console.log "---"
-
-# window.c2 = new C2
-# console.log c2
-# console.log c2.field1
-# c2.fn1()
-# console.log c2.field1
-
-
-
-# # console.log C1.prototype.constructor
-
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c1.field1
-#   # c1.fn1()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c1.field1
-#   # c1.fn1()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c1.field1
-#   # c1.fn1()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c1.field1
-#   # c1.fn1()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c1.field1
-#   # c1.fn1()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-# t1 = performance.now()
-# s  = 0
-# for i in [1..10000000] by 1 
-#   s += c2.field1
-#   # c2.fn1()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-# throw "!"
-
-
-# class Camera
-#   @mixin Lazy.Object
-#   constructor: (cfg={}) ->
-#     @_fov = cfg.fov || 60
-#     @mixins.constructor()
-
-# class Camera2
-#   constructor: (cfg={}) ->
-#     @_fov    = cfg.fov || 60
-#     @_object = new Lazy.Object
-
-#   @getter 'dirty', -> @_object.dirty
-#   @setter 'dirty', (v) -> @_object.dirty = v
-
-# class Camera3 extends Lazy.Object
-#   constructor: (cfg={}) ->
-#     super cfg
-#     @_fov    = cfg.fov || 60
-#     @_object = new Lazy.Object
-
-
-# class TT
-#   @mixin Camera
-#   constructor: (cfg) ->
-#     @mixins.constructor()
-
-# console.warn "Mk tt1"
-# tt1 = new TT 
-# console.warn "Mk tt2"
-# tt2 = new TT
-# console.warn "---"
-
-# window.tt1 = tt1 
-# window.tt2 = tt2
-
-
-# a = new Camera
-# console.log "---"
-# b = new Camera
-# console.log "---"
-
-# window.cam = a
-
-# console.log a
-# console.log b
-
-
-
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera2
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C2", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   b = new Camera3
-#   b.dirty.set()
-#   b.dirty.unset()
-# t2 = performance.now()
-# console.log "C3", (t2-t1)
-
-# t1 = performance.now()
-# for i in [1..100000] by 1 
-#   a = new Camera
-#   a.dirty.set()
-#   a.dirty.unset()
-# t2 = performance.now()
-# console.log "C1", (t2-t1)
-
-
-# throw "!"
-
-
-export test = (ctx, viewProjectionMatrix) ->
+export test = (ctx) ->
 
   geo = Geometry.rectangle
     label    : "Geo1"
@@ -474,7 +275,7 @@ export test = (ctx, viewProjectionMatrix) ->
   # console.log mat1.shader.vertex
   # console.log mat1.shader.fragment
 
-  logger.group "FRAME 1", =>
+  logger.group "TEST FRAME 1", =>
     # geo.point.data.position.read(0)[0] = 7
     # console.log geo.instance.data.color
     geo.instance.addAttribute 'color', 
@@ -485,7 +286,7 @@ export test = (ctx, viewProjectionMatrix) ->
     attrRegistry.update()
     # meshRegistry.update()
   
-  logger.group "FRAME 2", =>
+  logger.group "TEST FRAME 2", =>
     geo.instance.data.color.read(0).rgba = [1,1,0,1]
     geo.instance.data.color.read(1).rgba = [0,1,0,1]
     # geo.point.data.position.read(0)[0] = 7
@@ -494,7 +295,7 @@ export test = (ctx, viewProjectionMatrix) ->
     attrRegistry.update()
     meshRegistry.update()
 
-  logger.group "FRAME 3", =>
+  logger.group "TEST FRAME 3", =>
   #   # geo.point.data.position.read(1)[0] = 8
   #   # geo.point.data.uv.read(1)[0] = 8
   #   # geo.instance.add({color: vec4(0,0,1,1)})
@@ -504,12 +305,30 @@ export test = (ctx, viewProjectionMatrix) ->
     attrRegistry.update()
     meshRegistry.update()
 
-  # logger.group "FRAME 4", =>
+  # logger.group "TEST FRAME 4", =>
   #   attrRegistry.update()
   #   # meshRegistry.update()
 
+  aspect = ctx.canvas.clientWidth / ctx.canvas.clientHeight;
+  
+  camera = new Camera
+    aspect: aspect
 
-  m1.draw(viewProjectionMatrix)
+  camera.position.z = 300
+
+  fms = 0
+  drawMe = ->
+    logger.group "FRAME #{fms}", =>
+      # ctx.clearColor(0, 0, 0, 0);
+      # ctx.clear(ctx.COLOR_BUFFER_BIT | ctx.DEPTH_BUFFER_BIT);
+
+      camera.rotation.z += 0.1
+      m1.draw(camera.viewProjectionMatrix)
+        
+      if fms < 100
+        fms += 1
+        window.requestAnimationFrame(drawMe)
+  drawMe()
   
 
 

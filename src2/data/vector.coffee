@@ -99,6 +99,11 @@ export class BufferType extends Type
       buffer.array.set args 
       buffer
 
+  @observableFrom: (args) ->
+    buffer = @from args
+    buffer.array = new Buffer.Observable buffer.array
+    buffer
+
   @default: -> new @ @glType.newBuffer()
 
   # View another buffer as desired type without copying.
@@ -120,6 +125,10 @@ export class BufferType extends Type
     args = @rawArray.join ','
     args = (toGLSL a for a in @rawArray)
     "#{name}(#{args.join(',')})"
+
+  # @getter 0, -> @read 0
+  # @getter 1, -> @read 1
+  # @getter 2, -> @read 2
     
 Property.swizzleFieldsXYZW2 BufferType
 Property.swizzleFieldsRGBA2 BufferType
