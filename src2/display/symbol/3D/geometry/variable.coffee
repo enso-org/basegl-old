@@ -416,7 +416,8 @@ export class GPUAttribute extends Lazy.LazyManager
 export class GPUAttributeRegistry extends Lazy.LazyManager
   constructor: (@_gl) ->
     super
-      lazyManager: new Lazy.HierarchicalManager     
+      label       : "GPUAttributeRegistry"
+      lazyManager : new Lazy.HierarchicalManager     
     @_attrMap = new Map
   @getter 'dirtyAttrs', -> @_dirty.elems  
 

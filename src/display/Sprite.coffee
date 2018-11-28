@@ -310,8 +310,9 @@ export test = (gl) ->
       matrix: mat4
       
 
-  attrRegistry = new Variable.GPUAttributeRegistry gl
-  meshRegistry = new Mesh.GPUMeshRegistry
+  # attrRegistry = new Variable.GPUAttributeRegistry gl
+  gpuRenderer = new GPURenderer gl
+  # meshRegistry = new Mesh.GPUMeshRegistry gl
 
 
   vertexShaderSource = '''
@@ -343,13 +344,12 @@ export test = (gl) ->
       color     : vec4 0,1,0,1
   mesh = Mesh.create geo, mat1
 
-  m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
-  meshRegistry.add m1
+  # m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
+  # meshRegistry.add m1
 
 
   ss  = new SpriteSystem
-  ssm = new Mesh.GPUMesh gl, attrRegistry, ss.mesh
-  meshRegistry.add ssm
+  ssm = gpuRenderer.addMesh ss
 
   sp1 = ss.create()
   sp1.variable.color.rgb = [0,0,1]
@@ -371,35 +371,35 @@ export test = (gl) ->
   # console.log mat1.shader.vertex
   # console.log mat1.shader.fragment
 
-  logger.group "TEST FRAME 1", =>
-    # geo.point.data.position.read(0)[0] = 7
-    # console.log geo.instance.data.color
-    geo.instance.addAttribute 'color', 
-      type: vec4
-      default: vec4(1,0,0,1)
-    # mat1.fragment = fragmentShaderSource2
-    meshRegistry.update()
-    attrRegistry.update()
-    # meshRegistry.update()
+  # logger.group "TEST FRAME 1", =>
+  #   # geo.point.data.position.read(0)[0] = 7
+  #   # console.log geo.instance.data.color
+  #   geo.instance.addAttribute 'color', 
+  #     type: vec4
+  #     default: vec4(1,0,0,1)
+  #   # mat1.fragment = fragmentShaderSource2
+  #   meshRegistry.update()
+  #   meshRegistry._attributeRegistry.update()
+  #   # meshRegistry.update()
   
-  logger.group "TEST FRAME 2", =>
-    geo.instance.data.color.read(0).rgba = [1,1,0,1]
-    geo.instance.data.color.read(1).rgba = [0,1,0,1]
-    # geo.point.data.position.read(0)[0] = 7
-  #   geo.point.data.position.read(0)[0] = 7
-  #   geo.point.data.position.read(0)[1] = 7
-    attrRegistry.update()
-    meshRegistry.update()
+  # logger.group "TEST FRAME 2", =>
+  #   geo.instance.data.color.read(0).rgba = [1,1,0,1]
+  #   geo.instance.data.color.read(1).rgba = [0,1,0,1]
+  #   # geo.point.data.position.read(0)[0] = 7
+  # #   geo.point.data.position.read(0)[0] = 7
+  # #   geo.point.data.position.read(0)[1] = 7
+  #   attrRegistry.update()
+  #   meshRegistry.update()
 
-  logger.group "TEST FRAME 3", =>
-  #   # geo.point.data.position.read(1)[0] = 8
-  #   # geo.point.data.uv.read(1)[0] = 8
-  #   # geo.instance.add({color: vec4(0,0,1,1)})
-  #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
-  #   # geo.instance.add({color: vec4(0,0,0,1)})
-  #   # geo.instance.data.color.read(0)[0] = 0.7
-    attrRegistry.update()
-    meshRegistry.update()
+  # logger.group "TEST FRAME 3", =>
+  # #   # geo.point.data.position.read(1)[0] = 8
+  # #   # geo.point.data.uv.read(1)[0] = 8
+  # #   # geo.instance.add({color: vec4(0,0,1,1)})
+  # #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
+  # #   # geo.instance.add({color: vec4(0,0,0,1)})
+  # #   # geo.instance.data.color.read(0)[0] = 0.7
+  #   attrRegistry.update()
+  #   meshRegistry.update()
 
   # logger.group "TEST FRAME 4", =>
   #   attrRegistry.update()
@@ -454,26 +454,39 @@ export test = (gl) ->
 
   {pbo, array2, size} = testx(gl, width, height)
 
+  maxloops = 5 
+  currentloop = 0
  
   renderloop = ->
+    currentloop += 1
+    # if currentloop > maxloops then return
+    # a = 0
+    # for i in [0...1000000]
+    #   for j in [0...20]
+    #     a = i + j
     window.requestAnimationFrame renderloop
     if frameRequested then return
     frameRequested = true
     go()
 
   go = ->
+    # console.log ""
+    # console.log "--- 1"
     camera.rotation.z += 0.1
     sp1.position.x += 10
+    # console.log "--- 2"
+    # cos jest nie ok, bo to caly czas sie przelicza:
     sp1.update()
-    attrRegistry.update()
-    meshRegistry.update()
+    # console.log "--- 3"
+    # meshRegistry.update()
+    gpuRenderer.update(camera.viewProjectionMatrix)
 
     # a = 0
     # for i in [0...1000000]
     #   for j in [0...20]
     #     a = i + j
     
-    ssm.draw(camera.viewProjectionMatrix)
+    # ssm.draw(camera.viewProjectionMatrix)
     
     gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
     gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0
@@ -520,68 +533,31 @@ fence = (gl) ->
     setTimeout(check, 0);
 
 
-# flowBreak = ->
-#   new Promise (resolve) => 
-#     setTimeout(resolve, 0)
+class GPURenderer
+  @mixin Lazy.LazyManager
 
-# demo = (gl, sync, array2, size) ->
-#   # console.log 'Taking a break...'
-#   # console.log "START"
-#   await waitForComplete(gl)
-#   # max = gl.getParameter(gl.MAX_CLIENT_WAIT_TIMEOUT_WEBGL) || 0
-#   # await gl.clientWaitSync(sync, 0, max)
-#   # gl.waitSync(sync, 0, gl.TIMEOUT_IGNORED);
-#   gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, array2, 0, size)
-  
-  
-#   # console.log ">>", max  
-#   # console.log 'Two seconds later'
-#   # found = false
-#   # for i in array2
-#   #   if i != 0 then found = true
-#   # console.log found
-#   # console.log "END"
-  
+  constructor: (@_gl) ->
+    @mixins.constructor
+      label: @constructor.name
+    @_gpuMeshRegistry = new Mesh.GPUMeshRegistry @gl
+    @_gpuMeshRegistry.dirty.onSet.addEventListener =>
+      @dirty.set()
+    # to jest paskudne:
+    @_gpuMeshRegistry._attributeRegistry.dirty.onSet.addEventListener =>
+      @dirty.set()
 
-# waitForComplete = (gl) ->
-#     sync   = gl.fenceSync gl.SYNC_GPU_COMMANDS_COMPLETE, 0
-#     status = gl.clientWaitSync sync, 0, 0
+  addMesh: (meshLike) ->
+    mesh = meshLike.mesh
+    @_gpuMeshRegistry.addMesh mesh
+    @dirty.set()
 
-#     while (status != gl.CONDITION_SATISFIED && status != gl.ALREADY_SIGNALED)
-#         # console.log "STILL WAITING"
-#         await promiseTimeout(1)
-#         status = gl.clientWaitSync(sync, 0, 0)
-#     # console.log "DONE!"
-    
-#     gl.deleteSync(sync)
+  update: (viewProjectionMatrix) ->
+    if @dirty.isSet 
+      @gpuMeshRegistry.update()
+      @gpuMeshRegistry.forEach (gpuMesh) =>
+        gpuMesh.draw viewProjectionMatrix
+      @dirty.unset()
 
-# promiseTimeout = (timeout) ->
-#     return new Promise (resolve, reject) =>
-#         setTimeout(resolve, timeout)
-
-
-
-
-  # console.log array
-  # gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, offset
-
-  # sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
-  # console.log "!!!", gl.isSync(sync)
-  # max = gl.getParameter(gl.MAX_CLIENT_WAIT_TIMEOUT_WEBGL) || 0
-  # out = gl.clientWaitSync(sync, 0, max)
-  # console.log "!!!", out, gl.TIMEOUT_EXPIRED
-  # # gl.waitSync(sync, 0, gl.TIMEOUT_IGNORED);
-  # gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, array2, 0, size)
-  
-
-  # demo(gl, sync, array2, size)
-
-  # found = false
-  # # array = new Uint8Array [7,8,9]
-
-# class Sprite
-#   constructor: ->
-#     @_geometry = 
 
 
 

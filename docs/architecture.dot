@@ -20,39 +20,59 @@ digraph G {
       
       bufferRegistry [label="GPUBufferRegistry" pos="4.6,7.0!"]
       gpuAttr1 [label="GPUAttribute1" pos="1.0,6.0!"]
-      gpuAttr2 [label="GPUAttribute2" pos="2.2,6.0!"] [style=invis]
+      gpuAttr2 [label="GPUAttribute2" pos="2.2,6.0!"]
       gpuAttr3 [label="GPUAttribute"  pos="3.4,6.0!"]
       gpuAttr4 [label="GPUAttribute"  pos="4.6,6.0!"]
       gpuAttr5 [label="GPUAttribute"  pos="5.8,6.0!"]
       gpuAttr6 [label="GPUAttribute"  pos="7.0,6.0!"]
-      gpuAttr7 [label="GPUAttribute"  pos="8.2,6.0!"] [style=invis]
+      gpuAttr7 [label="GPUAttribute"  pos="8.2,6.0!"]
       
       prog1 [label="Program", pos="3.4,2.0!"]
       prog2 [label="Program", pos="5.8,2.0!"]
       
       gpuMesh1 [label="GPUMesh", pos="2.75,1.0!"]
       gpuMesh2 [label="GPUMesh", pos="6.45,1.0!"]
+      gpuMeshRegistry [label="GPUMeshRegistry", pos="4.6,0.0!"]
+      gpuRenderer [label="GPURenderer", pos="4.6,-1.0!"]
       
       bufferRegistry -> gpuAttr1
-      bufferRegistry -> gpuAttr2 [style=invis]
+      bufferRegistry -> gpuAttr2
       bufferRegistry -> gpuAttr3
       bufferRegistry -> gpuAttr4
       bufferRegistry -> gpuAttr5
       bufferRegistry -> gpuAttr6
-      bufferRegistry -> gpuAttr7 [style=invis]
+      bufferRegistry -> gpuAttr7
       
       gpuAttr1 -> attr1
-      gpuAttr2 -> attr2 [style=invis]
+      gpuAttr2 -> attr2
       gpuAttr3 -> attr3
       gpuAttr4 -> attr4
       gpuAttr5 -> attr5
       gpuAttr6 -> attr6
-      gpuAttr7 -> attr7 [style=invis]
+      gpuAttr7 -> attr7
       
       gpuMesh1 -> prog1
       gpuMesh2 -> prog2
+      
+      gpuMeshRegistry -> gpuMesh1
+      gpuMeshRegistry -> gpuMesh2
+      gpuRenderer -> gpuMeshRegistry
   }
   
+  domObject1 [label="DomObject", pos="9.4,1.0!"]
+  domObject2 [label="DomObject", pos="10.6,1.0!"]
+  domObjectRegistry [label="DOMObjectRegistry", pos="10.0,0.0!"]
+  
+  domRenderer [label="DOMRenderer", pos="10.0,-1.0!"]
+  
+  domRenderer -> domObjectRegistry
+  domObjectRegistry -> domObject1
+  domObjectRegistry -> domObject2
+  
+  scene [label="Scene", pos="7.4,-3.0!"]
+  
+  scene -> gpuRenderer
+  scene -> domRenderer
   
   scope1 [label="Scope" pos="1.0,4.0!"]
   scope2 [label="Scope" pos="2.2,4.0!"]

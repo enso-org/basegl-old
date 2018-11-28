@@ -1,9 +1,11 @@
-import * as GL          from 'basegl/lib/webgl/utils'
-import * as Lazy        from 'basegl/object/lazy'
-import * as Material    from 'basegl/display/symbol/3D/material'
+import * as GL       from 'basegl/lib/webgl/utils'
+import * as Lazy     from 'basegl/object/lazy'
+import * as Variable from 'basegl/display/symbol/3D/geometry/variable'
+import * as Material from 'basegl/display/symbol/3D/material'
+import * as _        from 'lodash'
+
 import {shallowCompare} from 'basegl/object/compare'
 import {Program}        from 'basegl/render/webgl'
-import * as _           from 'lodash'
 
 ############
 ### Mesh ###
@@ -27,6 +29,10 @@ export class Mesh extends Lazy.LazyManager
   @getter 'material' , -> @_material
   @getter 'shader'   , -> @_shader
   @getter 'bindings' , -> @_bindings
+
+  # Every Mesh-like object is supposed to provide 'mesh' field. This way all
+  # API's can just invoke it while adding it to the stage.
+  @getter 'mesh', -> @ 
 
   _bindVariables: ->
     {bindings, missing} = @_matchVariables()
@@ -98,15 +104,15 @@ export create = (args...) -> new Mesh args...
 ###############
 
 export class GPUMesh extends Lazy.LazyManager
-  constructor: (@_gl, bufferRegistry, mesh) ->
+  constructor: (@_gl, attributeRegistry, mesh) ->
     super
       label       : "GPU.#{mesh.label}"
       lazyManager : new Lazy.HierarchicalManager 
-    @_bufferRegistry = bufferRegistry
-    @mesh            = mesh
-    @_varLoc         = {}
-    @buffer          = {}
-    @_program        = null
+    @_attributeRegistry = attributeRegistry
+    @mesh               = mesh
+    @_varLoc            = {}
+    @buffer             = {}
+    @_program           = null
     mesh.dirty.onSet.addEventListener => @dirty.setElem mesh
     @_init()
 
@@ -163,7 +169,7 @@ export class GPUMesh extends Lazy.LazyManager
         if not @buffer[spaceName]?
           @buffer[spaceName] = {}
         if loc != undefined
-          @_bufferRegistry.bindBuffer @, val, (bufferx) =>
+          @_attributeRegistry.bindBuffer @, val, (bufferx) =>
             buffer    = bufferx._buffer
             instanced = (spaceName == 'instance')
             @buffer[spaceName][varName] = buffer 
@@ -209,23 +215,33 @@ export class GPUMesh extends Lazy.LazyManager
 #######################
 
 export class GPUMeshRegistry extends Lazy.LazyManager
-  constructor: ->
+  constructor: (@_gl) ->
     super
       lazyManager : new Lazy.HierarchicalManager    
-    @_meshes = new Set
+    @_meshes            = new Set
+    @_attributeRegistry = new Variable.GPUAttributeRegistry @_gl
 
-  # @getter 'dirtyMeshes', -> @_dirty.elems
+  addMesh: (mesh) ->
+    gpuMesh = new GPUMesh @_gl, @_attributeRegistry, mesh
+    @add gpuMesh
+    gpuMesh
 
-  add: (mesh) ->
-    @_meshes.add mesh
-    mesh.dirty.onSet.addEventListener =>
-      @dirty.setElem mesh
+  add: (gpuMesh) ->
+    @_meshes.add gpuMesh
+    gpuMesh.dirty.onSet.addEventListener =>
+      @dirty.setElem gpuMesh
+
+  forEach: (f) ->
+    for gpuMesh from @_meshes
+      f gpuMesh
 
   update: ->
+    @_attributeRegistry.update()
+
     if @dirty.isSet
       @logger.group "Updating", =>
-        @dirty.elems.forEach (mesh) =>
-          mesh.update()
+        @dirty.elems.forEach (gpuMesh) =>
+          gpuMesh.update()
         @logger.group "Unsetting dirty flags", =>
           @dirty.unset()
     else @logger.info "Everything up to date"
