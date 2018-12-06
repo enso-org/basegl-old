@@ -46,7 +46,7 @@ export class DisplayObject extends EventObject
   @getter 'origin' , -> @update(); @_origin
 
   update: ->
-    if @dirty.set
+    if @dirty.isSet
       @_origin = if @parent then @parent.xform else M.mat4.create()
       @_xform  = M.mat4.create()
       M.mat4.translate @_xform , @_xform  , @position.xyz

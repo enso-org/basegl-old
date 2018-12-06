@@ -219,12 +219,6 @@ export class GPUMeshRegistry extends Lazy.LazyManager
     super
       lazyManager : new Lazy.HierarchicalManager    
     @_meshes            = new Set
-    @_attributeRegistry = new Variable.GPUAttributeRegistry @_gl
-
-  addMesh: (mesh) ->
-    gpuMesh = new GPUMesh @_gl, @_attributeRegistry, mesh
-    @add gpuMesh
-    gpuMesh
 
   add: (gpuMesh) ->
     @_meshes.add gpuMesh
@@ -236,8 +230,6 @@ export class GPUMeshRegistry extends Lazy.LazyManager
       f gpuMesh
 
   update: ->
-    @_attributeRegistry.update()
-
     if @dirty.isSet
       @logger.group "Updating", =>
         @dirty.elems.forEach (gpuMesh) =>

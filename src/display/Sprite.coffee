@@ -234,11 +234,12 @@ class Sprite extends DisplayObject
     @getVariable(name).set value
 
   update: -> 
-    super.update()
-    # FIXME 1 : xform should be kept as Buffer
-    # FIXME 2 : @xform causes update loop, maybe mixins?
-    xf = new Buffer.Buffer Float32Array, @_xform
-    @_varData['transform'].read(@id).set xf
+    if @dirty.isSet
+      super.update()
+      # FIXME 1 : xform should be kept as Buffer
+      # FIXME 2 : @xform causes update loop, maybe mixins?
+      xf = new Buffer.Buffer Float32Array, @_xform
+      @_varData['transform'].read(@id).set xf
 
 
 
@@ -470,16 +471,15 @@ export test = (gl) ->
     go()
 
   go = ->
+    
     # console.log ""
     # console.log "--- 1"
     camera.rotation.z += 0.1
-    sp1.position.x += 10
-    # console.log "--- 2"
-    # cos jest nie ok, bo to caly czas sie przelicza:
+    # sp1.position.x += 10
     sp1.update()
-    # console.log "--- 3"
     # meshRegistry.update()
-    gpuRenderer.update(camera.viewProjectionMatrix)
+    # gpuRenderer.dirty.set()
+    gpuRenderer.render camera
 
     # a = 0
     # for i in [0...1000000]
@@ -539,25 +539,57 @@ class GPURenderer
   constructor: (@_gl) ->
     @mixins.constructor
       label: @constructor.name
-    @_gpuMeshRegistry = new Mesh.GPUMeshRegistry @gl
-    @_gpuMeshRegistry.dirty.onSet.addEventListener =>
-      @dirty.set()
-    # to jest paskudne:
-    @_gpuMeshRegistry._attributeRegistry.dirty.onSet.addEventListener =>
-      @dirty.set()
+    @_attributeRegistry = new Variable.GPUAttributeRegistry @gl    
+    @_gpuMeshRegistry   = new Mesh.GPUMeshRegistry          @gl
+    
+    # @gpuMeshRegistry.dirty.onSet.addEventListener   => @dirty.set()
+    # @attributeRegistry.dirty.onSet.addEventListener => @dirty.set()
 
   addMesh: (meshLike) ->
-    mesh = meshLike.mesh
-    @_gpuMeshRegistry.addMesh mesh
+    mesh    = meshLike.mesh
+    gpuMesh = new Mesh.GPUMesh @gl, @attributeRegistry, mesh
+    @gpuMeshRegistry.add gpuMesh
     @dirty.set()
 
-  update: (viewProjectionMatrix) ->
-    if @dirty.isSet 
-      @gpuMeshRegistry.update()
-      @gpuMeshRegistry.forEach (gpuMesh) =>
-        gpuMesh.draw viewProjectionMatrix
-      @dirty.unset()
+  render: (camera) ->
+    if @dirty.isSet || camera.dirty.isSet
+      @logger.group "Updating", =>
+        @attributeRegistry.update()    
+        @gpuMeshRegistry.update()
+        @gpuMeshRegistry.forEach (gpuMesh) =>
+          gpuMesh.draw camera.viewProjectionMatrix
+        @dirty.unset()
 
 
 
 
+class Pass
+  @generateAccessors()
+  constructor: ->
+
+
+
+class Scene
+  @generateAccessors()
+
+  constructor: -> 
+    @_views     = new Set
+    @_renderers = new Set
+    @newView()
+
+  newView: (cfg) -> 
+    new View @, cfg
+
+
+
+
+
+class View
+  @generateAccessors()
+
+  constructor: (@_scene, cfg={}) ->
+    @_camera = cfg.camera ? new Camera
+    # @_width  = 
+
+
+s = new Scene
