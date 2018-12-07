@@ -5,6 +5,7 @@ import * as Material from 'basegl/display/symbol/3D/material'
 import * as Mesh     from 'basegl/display/symbol/3D/mesh'
 import * as Lazy     from 'basegl/object/lazy'
 import * as Property from 'basegl/object/Property'
+import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Buffer   from 'basegl/data/buffer'
 
 import {logger}                             from 'logger'
@@ -258,11 +259,12 @@ void main() {
 }'''
 
 class SpriteSystem
-  @mixin Logged
+  @mixin Lazy.LazyManager
 
   constructor: ->
     @mixins.constructor
-      label: @constructor.name
+      label       : @constructor.name
+      lazyManager : new Lazy.ListManager
 
     @logger.group "Initializing", =>
       @_geometry = Geometry.rectangle
@@ -287,19 +289,53 @@ class SpriteSystem
       @_mesh = Mesh.create @_geometry, @_material
 
   setVariable: (ix, name, data) ->
-    console.warn "SET", ix, name, data
     @geometry.instance.data[name].read(ix).set data
 
   create: -> 
-    ix = @geometry.instance.add({color: vec4(1,0,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20)})
-    new Sprite @, ix
+    ix     = @geometry.instance.add()
+    sprite = new Sprite @, ix
+    sprite.dirty.onSet.addEventListener => @dirty.setElem sprite
+    sprite
 
+  update: ->
+    @logger.group "Updating", =>
+      @dirty.elems.forEach (elem) =>
+        elem.update()
+      @dirty.unset()
 
 
 frameRequested = false
 
 
-export test = (gl) ->
+
+resizeCanvasToDisplaySize = (canvas, multiplier) ->
+  multiplier = multiplier || 1
+  width  = canvas.clientWidth  * multiplier | 0
+  height = canvas.clientHeight * multiplier | 0
+  if (canvas.width != width ||  canvas.height != height)
+    canvas.width  = width
+    canvas.height = height
+    true
+  false
+
+export test = () ->
+  scene = new Scene
+  gpuRenderer = new GPURenderer
+  scene.addRenderer gpuRenderer
+  
+  # canvas = document.createElement 'canvas'
+  # canvas.style.width  = '100%'
+  # canvas.style.height = '100%'
+  # scene.dom.element.appendChild canvas
+
+  # gl = canvas.getContext("webgl2")
+  # if (!gl) 
+  #   return
+
+  # resizeCanvasToDisplaySize gl.canvas
+  # gl.viewport 0, 0, gl.canvas.width, gl.canvas.height
+  gl = gpuRenderer.gl
+
 
   geo = Geometry.rectangle
     label    : "Geo1"
@@ -312,7 +348,6 @@ export test = (gl) ->
       
 
   # attrRegistry = new Variable.GPUAttributeRegistry gl
-  gpuRenderer = new GPURenderer gl
   # meshRegistry = new Mesh.GPUMeshRegistry gl
 
 
@@ -406,6 +441,9 @@ export test = (gl) ->
   #   attrRegistry.update()
   #   # meshRegistry.update()
 
+  # s = new Scene gl
+  
+
   width  = gl.canvas.clientWidth 
   height = gl.canvas.clientHeight
 
@@ -460,23 +498,16 @@ export test = (gl) ->
  
   renderloop = ->
     currentloop += 1
-    # if currentloop > maxloops then return
-    # a = 0
-    # for i in [0...1000000]
-    #   for j in [0...20]
-    #     a = i + j
     window.requestAnimationFrame renderloop
     if frameRequested then return
     frameRequested = true
     go()
 
   go = ->
-    
-    # console.log ""
-    # console.log "--- 1"
     camera.rotation.z += 0.1
-    # sp1.position.x += 10
-    sp1.update()
+    sp1.position.x += 1
+    # sp1.update()
+    ss.update()
     # meshRegistry.update()
     # gpuRenderer.dirty.set()
     gpuRenderer.render camera
@@ -529,19 +560,30 @@ fence = (gl) ->
         gl.deleteSync sync
         resolve()
       else
-        setTimeout(check, 0);
-    setTimeout(check, 0);
+        setTimeout check
+    setTimeout check
 
 
 class GPURenderer
   @mixin Lazy.LazyManager
 
-  constructor: (@_gl) ->
+  constructor: () ->
     @mixins.constructor
       label: @constructor.name
+    
+
+
+    @_dom = document.createElement 'canvas'
+    @_dom.style.width  = '100%'
+    @_dom.style.height = '100%'
+
+    @_gl = @_dom.getContext("webgl2")
+    if !@_gl then throw "WebGL not supported"
+    @updateSize()
+
     @_attributeRegistry = new Variable.GPUAttributeRegistry @gl    
     @_gpuMeshRegistry   = new Mesh.GPUMeshRegistry          @gl
-    
+      
     # @gpuMeshRegistry.dirty.onSet.addEventListener   => @dirty.set()
     # @attributeRegistry.dirty.onSet.addEventListener => @dirty.set()
 
@@ -550,6 +592,17 @@ class GPURenderer
     gpuMesh = new Mesh.GPUMesh @gl, @attributeRegistry, mesh
     @gpuMeshRegistry.add gpuMesh
     @dirty.set()
+
+  updateSize: -> 
+    width  = @dom.clientWidth 
+    height = @dom.clientHeight
+    if (@dom.width != width ||  @dom.height != height)
+      @dom.width  = width
+      @dom.height = height
+      @_gl.viewport 0, 0, width, height
+      true
+    false
+    
 
   render: (camera) ->
     if @dirty.isSet || camera.dirty.isSet
@@ -572,14 +625,31 @@ class Pass
 class Scene
   @generateAccessors()
 
-  constructor: -> 
+  constructor: (@_gl, cfg) -> 
     @_views     = new Set
     @_renderers = new Set
+    
+    @_dom = new SceneDOM cfg
+    @_dom.onResize.addEventListener (rect) =>
+      @resize rect.width, rect.height
     @newView()
 
-  newView: (cfg) -> 
-    new View @, cfg
+  addRenderer: (renderer) ->
+    @renderers.add renderer
+    layer = @dom.addLayer renderer.label
+    layer.appendChild renderer.dom
+    renderer.updateSize()
 
+  resize: (width, height) ->
+    @_width  = width 
+    @_height = height
+    @views.forEach (view) =>
+      view.updateSize()
+
+  newView: (cfg) -> 
+    view = new View @, cfg
+    @views.add view
+    view
 
 
 
@@ -589,7 +659,93 @@ class View
 
   constructor: (@_scene, cfg={}) ->
     @_camera = cfg.camera ? new Camera
-    # @_width  = 
+    @_width  = null
+    @_height = null
+    @updateSize()
+
+  @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
+  @setter 'height' , (height) -> @_height = height ; @updateSize()
+
+  updateSize: -> 
+    width  = @_width  ? @scene.width
+    height = @_height ? @scene.height
+    @camera.aspect = width / height
 
 
-s = new Scene
+
+class SceneDOM
+  @generateAccessors()
+
+  constructor: (cfg={}) ->
+    @_onResize = EventDispatcher.create()
+    @_initDomElement cfg.dom
+
+  _initDomElement: (cfg) ->
+    @_element = null
+    if cfg == undefined
+      cfg = document.body
+    if cfg != null
+      parent = null
+      if typeof cfg == 'string'
+        parent = document.getElementById cfg
+      else if cfg instanceof HTMLElement
+        parent = cfg
+
+      if parent == null
+        msg = "Provided 'dom' is neither a valid DOM ID nor DOM element."
+        throw {msg, cfg}
+
+      @_element = document.createElement 'div'
+      @_element.id            = 'basegl-scene'
+      @_element.style.display = 'flex'
+      @_element.style.width   = '100%'
+      @_element.style.height  = '100%'
+      parent.appendChild @_element
+        
+      resizeObserver = new ResizeObserver ([r]) =>
+        @onResize.dispatch r.contentRect
+      #   @geometry.resize r.contentRect.width, r.contentRect.height
+      resizeObserver.observe @_element
+
+
+      # @domLayer   = @addLayer 'dom'
+      # @glLayer    = @addLayer 'gl'
+      # @statsLayer = @addLayer 'stats'
+
+      # @domLayer.style.pointerEvents = 'auto'
+
+  addLayer: (name) =>
+    layer = document.createElement 'div'
+    layer.style.pointerEvents = 'none'
+    layer.style.position      = 'absolute'
+    layer.style.margin        = 0
+    layer.style.width         = '100%'
+    layer.style.height        = '100%'
+    layer.id                  = @element.id + '-layer-' + name
+    @element.appendChild layer
+    layer
+
+  # refreshSize: () ->
+  #   @geometry.resize @domElement.clientWidth, @domElement.clientHeight
+
+
+  # #FIXME: read note in usage place
+  # updateSizeSLOW: () ->
+  #   dwidth  = @domElement.clientWidth
+  #   dheight = @domElement.clientHeight
+  #   if dwidth != @width || dheight != @height
+  #     @geometry.resize @domElement.clientWidth, @domElement.clientHeight
+
+  # disableDOMLayerPointerEvents: () -> @domLayer.style.pointerEvents = 'none'
+  # enableDOMLayerPointerEvents : () -> @domLayer.style.pointerEvents = 'auto'
+
+
+
+
+# shape1 = basegl.shape ...
+
+# symbol1 = basegl.symbol shape1
+
+# scene.add symbol1
+
+

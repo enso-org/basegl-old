@@ -18,7 +18,7 @@ digraph G {
       node [fillcolor="#b2d6ef" fontcolor="#0c7cba"]
       edge [color="#83bbe5"]
       
-      bufferRegistry [label="GPUBufferRegistry" pos="4.6,7.0!"]
+      bufferRegistry [label="GPUAttributeRegistry" pos="4.6,7.0!"]
       gpuAttr1 [label="GPUAttribute1" pos="1.0,6.0!"]
       gpuAttr2 [label="GPUAttribute2" pos="2.2,6.0!"]
       gpuAttr3 [label="GPUAttribute"  pos="3.4,6.0!"]
