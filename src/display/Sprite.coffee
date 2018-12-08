@@ -387,7 +387,7 @@ export test = () ->
   ss  = new SpriteSystem
   # ssm = gpuRenderer.addMesh ss
 
-  scene.add ss
+  scene.addChild ss
 
   sp1 = ss.create()
   sp1.variable.color.rgb = [0,0,1]
@@ -596,10 +596,11 @@ class Pass
 
 
 
-class Scene
+class Scene extends DisplayObject
   @generateAccessors()
 
   constructor: (@_gl, cfg) -> 
+    super()
     @_views     = new Set
     @_renderers = new Set
     
@@ -614,10 +615,11 @@ class Scene
     layer.appendChild renderer.dom
     renderer.updateSize()
 
-  add: (obj) ->
+  addChild: (child) ->
+    # super.addChild child
     for renderer from @renderers
-      if renderer.handles obj
-        return renderer.add obj
+      if renderer.handles child
+        return renderer.add child
 
     msg = 'No registred renderer can handle the provided object'
     throw {msg, obj}
