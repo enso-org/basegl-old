@@ -273,7 +273,7 @@ class SpriteSystem
         height   : 200
         instance :
           color:     vec4()
-          transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
+          transform: mat4()
         object:
           matrix: mat4
 
@@ -337,58 +337,61 @@ export test = () ->
   gl = gpuRenderer.gl
 
 
-  geo = Geometry.rectangle
-    label    : "Geo1"
-    width    : 200
-    height   : 200
-    instance :
-      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
-    object:
-      matrix: mat4
+  # geo = Geometry.rectangle
+  #   label    : "Geo1"
+  #   width    : 200
+  #   height   : 200
+  #   instance :
+  #     transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
+  #   object:
+  #     matrix: mat4
       
 
   # attrRegistry = new Variable.GPUAttributeRegistry gl
   # meshRegistry = new Mesh.GPUMeshRegistry gl
 
 
-  vertexShaderSource = '''
-  void main() {
-    gl_Position = matrix * v_position;
-    gl_Position.x += v_transform[3][3];
-  }
-  '''
+  # vertexShaderSource = '''
+  # void main() {
+  #   gl_Position = matrix * v_position;
+  #   gl_Position.x += v_transform[3][3];
+  # }
+  # '''
 
-  fragmentShaderSource = '''
-  out vec4 output_color;  
-  void main() {
-    output_color = color;
-  }'''
+  # fragmentShaderSource = '''
+  # out vec4 output_color;  
+  # void main() {
+  #   output_color = color;
+  # }'''
 
-  fragmentShaderSource2 = '''
-  out vec4 output_color;  
-  void main() {
-    output_color = vec4(0,1,0,1);
-  }'''
+  # fragmentShaderSource2 = '''
+  # out vec4 output_color;  
+  # void main() {
+  #   output_color = vec4(0,1,0,1);
+  # }'''
 
-  mat1 = new Material.Raw
-    vertex   : vertexShaderSource
-    fragment : fragmentShaderSource
-    input:
-      position  : vec4()
-      transform : mat4()
-      matrix    : mat4()
-      color     : vec4 0,1,0,1
-  mesh = Mesh.create geo, mat1
+  # mat1 = new Material.Raw
+  #   vertex   : vertexShaderSource
+  #   fragment : fragmentShaderSource
+  #   input:
+  #     position  : vec4()
+  #     transform : mat4()
+  #     matrix    : mat4()
+  #     color     : vec4 0,1,0,1
+  # mesh = Mesh.create geo, mat1
 
   # m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
   # meshRegistry.add m1
 
 
   ss  = new SpriteSystem
-  ssm = gpuRenderer.addMesh ss
+  # ssm = gpuRenderer.addMesh ss
+
+  scene.add ss
 
   sp1 = ss.create()
   sp1.variable.color.rgb = [0,0,1]
+  # console.log sp1
   
 
   # sp1.position.x = 100
@@ -455,41 +458,7 @@ export test = () ->
 
   camera.position.z = 300
 
-  fms = 0
 
-  # {pbo, array2, size} = testx(gl, width, height)
-  
-  # drawMe = ->
-  #   logger.group "FRAME #{fms}", =>
-  #     # gl.clearColor(0, 0, 0, 0);
-  #     # gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-  #     camera.rotation.z += 0.1
-  #     sp1.position.x += 10
-
-  #     sp1.update()
-  #     attrRegistry.update()
-  #     meshRegistry.update()
-  #     ssm.draw(camera.viewProjectionMatrix)
-  #     # if fms == 1
-  #     # demo(gl, sync, array2, size)
-  #     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
-  #     gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0
-      
-  #     fence(gl).then =>
-  #       gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, size
-  #       # gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
-  #       gl.finish()
-        
-  #     if fms < 300
-  #       fms += 1
-  #       # setTimeout(drawMe, 1000)
-  #       window.requestAnimationFrame(drawMe)
-
-
-
-  # drawMe()
-  # window.drawMe = drawMe
 
   {pbo, array2, size} = testx(gl, width, height)
 
@@ -505,7 +474,7 @@ export test = () ->
 
   go = ->
     camera.rotation.z += 0.1
-    sp1.position.x += 1
+    # sp1.position.x += 1
     # sp1.update()
     ss.update()
     # meshRegistry.update()
@@ -587,6 +556,9 @@ class GPURenderer
     # @gpuMeshRegistry.dirty.onSet.addEventListener   => @dirty.set()
     # @attributeRegistry.dirty.onSet.addEventListener => @dirty.set()
 
+  add: (a) -> 
+    @addMesh a
+
   addMesh: (meshLike) ->
     mesh    = meshLike.mesh
     gpuMesh = new Mesh.GPUMesh @gl, @attributeRegistry, mesh
@@ -612,6 +584,8 @@ class GPURenderer
         @gpuMeshRegistry.forEach (gpuMesh) =>
           gpuMesh.draw camera.viewProjectionMatrix
         @dirty.unset()
+
+  handles: (obj) -> true # FIXME
 
 
 
@@ -639,6 +613,14 @@ class Scene
     layer = @dom.addLayer renderer.label
     layer.appendChild renderer.dom
     renderer.updateSize()
+
+  add: (obj) ->
+    for renderer from @renderers
+      if renderer.handles obj
+        return renderer.add obj
+
+    msg = 'No registred renderer can handle the provided object'
+    throw {msg, obj}
 
   resize: (width, height) ->
     @_width  = width 
