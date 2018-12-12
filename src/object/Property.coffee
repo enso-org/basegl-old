@@ -341,6 +341,16 @@ export extend = (obj, cfg) =>
 # throw "end"
 
 
+cloneObjectArray = (array) -> 
+  newArray = []
+  for obj in array
+    newObj = Object.assign {}, obj
+    newArray.push newObj
+  newArray
+
+arrayLast = (array) -> 
+  array[array.length - 1]
+
 
 ###############################################################################
 ### NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW ###
@@ -434,7 +444,7 @@ Function::generateAccessors = (args...) -> generateAccessors @, args...
 #   - cfg.rename="foo" 
 #     Renames the mixin variable
 #
-#   - cfg.exportMixin [default: true]
+#   - cfg.exportMixin [default: true] [true / false / 'private']
 #     Exports the mixin variable to variable scope 
 #
 #   - cfg.exportPrivate [default: false]
@@ -442,37 +452,77 @@ Function::generateAccessors = (args...) -> generateAccessors @, args...
 #
 #   - cfg.allowFieldsOverlap [defaukt: false]
 #     Allows mixin definition to override existing fields
+#
+#   - cfg.whitelist=['foo', 'bar'] [default: undefined]
+#     List of fields to be exposed in host class. Defaults to all fields.
+#
+#   - cfg.blacklist=['foo', 'bar'] [default: undefined]
+#     List of fields to be hidden in host class. Defaults to none.
+
+
+class MixinRegistry
+  constructor: (cfg={fields: new Map, constructorStack: []}) ->
+    @fields           = cfg.fields
+    @constructorStack = cfg.constructorStack
+
+  initializer: (args...) ->
+      if @_mixins_constructor_chain_depth_ == undefined
+        @_mixins_constructor_chain_depth_ = 0
+      else
+        @_mixins_constructor_chain_depth_ += 1
+      cons = @_mixins_.constructorStack[@_mixins_constructor_chain_depth_]
+      if @_mixins == undefined
+        @_mixins = {}
+      for n,f of cons
+        do (n,f) =>
+          @_mixins[n] = new f args...
+      if @_mixins_constructor_chain_depth_ == (@_mixins_.constructorStack.length - 1)
+        delete @_mixins_constructor_chain_depth_
+
+  clone: ->
+    fields           = new Map @fields
+    constructorStack = cloneObjectArray @constructorStack
+    new MixinRegistry {fields, constructorStack}
+
+
 
 embedMixin = (base, ext, cfg={}) ->
   baseProto = base.prototype
   extProto  = ext.prototype
   instName  = if cfg.rename then cfg.rename else lowerFirstChar ext.name
-  fields    = Object.getOwnPropertyNames extProto
 
-  # First mixin initialization
-  if baseProto._mixins == undefined
-    baseProto._mixins  = {}
-    baseProto._mixins_ = {}
-    baseProto._mixins_.fields = new Map
-    baseProto._mixins_.constructor = (args...) ->
-      mixins = @_mixins
-      @_mixins = {}
-      for n,f of mixins
-        do (n,f) =>
-          @_mixins[n] = new f args...
+  isFirstMixinDefinition = not baseProto.hasOwnProperty('_mixins_')
+  hasInheritedMixins     = not (baseProto._mixins_ == undefined)
 
-  if baseProto._mixins[instName] != undefined
+  currentClassMixinsConstructors = {}
+  if isFirstMixinDefinition
+    if hasInheritedMixins
+      baseProto._mixins_ = baseProto._mixins_.clone()
+    else
+      baseProto._mixins_ = new MixinRegistry
+    baseProto._mixins_.constructorStack.push currentClassMixinsConstructors
+  else
+    currentClassMixinsConstructors = 
+      arrayLast baseProto._mixins_.constructorStack
+
+  if currentClassMixinsConstructors[instName] != undefined
     throw "Trying to override '#{instName}' mixin. Possible solution is to use 
           'rename' option in the mixin definition:\n" + 
           "    @mixin MyMixin, {rename: 'foo'}"
-  baseProto._mixins[instName] = ext
+  currentClassMixinsConstructors[instName] = ext
   
   if cfg.exportMixin != false
     Object.defineProperty baseProto, "_#{instName}", 
       get: fastFunction {instName}, -> @_mixins.$instName
       configurable: true
 
+    if cfg.exportMixin != 'private'
+      Object.defineProperty baseProto, "#{instName}", 
+        get: fastFunction {instName}, -> @_mixins.$instName
+        configurable: true
+
   # Making getters / setters for mixins
+  fields = Object.getOwnPropertyNames extProto  
   fields.forEach (field) =>
     if checkMixinField field, cfg
       fieldFree = Object.getOwnPropertyDescriptor(baseProto,field) == undefined
@@ -489,7 +539,7 @@ embedMixin = (base, ext, cfg={}) ->
         baseProto._mixins_.fields.set field, instName 
 
         # Check if the target field is a function. If so, bind 'this'.
-        tgtProto          = baseProto._mixins[instName].prototype
+        tgtProto          = currentClassMixinsConstructors[instName].prototype
         tgtProtoFieldDesc = Object.getOwnPropertyDescriptor tgtProto, field
         tgtProtoField     = tgtProtoFieldDesc.value
         if tgtProtoField?.constructor == Function
@@ -507,15 +557,17 @@ embedMixin = (base, ext, cfg={}) ->
     
   # Mixin utils accessor
   Object.defineProperty baseProto, 'mixins', 
-    get: -> {constructor: @_mixins_.constructor.bind @}
+    get: -> {constructor: @_mixins_.initializer.bind @}
     configurable: true
 
   checkInit base
 
 checkMixinField = (name, cfg) -> 
-  notMagic = not (name in ['constructor', 'mixins'])
-  notPriv  = (not name.startsWith '_') || cfg.exportPrivate
-  notMagic && notPriv
+  notMagic       = not (name in ['constructor', 'mixins'])
+  notPriv        = (not name.startsWith '_') || cfg.exportPrivate
+  whitelisted    = (cfg.whitelist == undefined || (name in cfg.whitelist))
+  notBlacklisted = (cfg.blacklist == undefined || not (name in cfg.blacklist))
+  notMagic && notPriv && whitelisted && notBlacklisted
 
 checkInitPattern = /this *. *mixins *\. *constructor *\(/gm
 checkInit = (base) ->
@@ -537,6 +589,56 @@ lowerFirstChar = (string) ->
 
 Function::mixin = (ext, cfg) -> mixin @, ext, cfg
 
+
+
+# class B1
+#   constructor: ->
+#     console.log "B1"
+#   fb1: -> 1
+
+# class B2
+#   constructor: (a) ->
+#     console.log "B2"
+#     console.log "!!", a
+#   fb2: -> 2
+
+# class B3
+#   constructor: ->
+#     console.log "B3"  
+#   fb3: -> 3
+
+# class C1
+#   @mixin B1
+#   constructor: ->
+#     console.log ">> C1"
+#     console.log @mixins
+#     @mixins.constructor()
+#     console.log "<< C1"
+
+# class C2 extends C1
+#   @mixin B2
+#   @mixin B3
+#   constructor: ->
+#     console.log ">> C2"
+#     super()
+#     console.log "--"
+#     @mixins.constructor
+#       test: 1
+#     console.log "<< C2"
+
+# class C3 extends C1
+
+# c2 = new C2
+# c2_2 = new C2
+# # c3 = new C3 
+
+# console.log c2
+# console.log c2_2
+
+# window.c2 = c2
+# # console.log c3
+
+# throw "!!!"
 
 ### BENCH: ###
 

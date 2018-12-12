@@ -210,9 +210,9 @@ class Camera extends DisplayObject
       fovRad = @fov * Math.PI / 180
       M.mat4.perspective @_projectionMatrix, fovRad, @aspect, @near, @far
 
-    if @dirtyCfg.isSet || @dirty.isSet
+    if @dirtyCfg.isSet || @transform.dirty.isSet
       super.update()
-      M.mat4.invert   @_viewMatrix, @_xform
+      M.mat4.invert   @_viewMatrix, @transform.matrix
       M.mat4.multiply @_viewProjectionMatrix, @_projectionMatrix, @_viewMatrix
     @dirtyCfg.unset()
     
@@ -258,10 +258,12 @@ void main() {
   output_color = color;
 }'''
 
-class SpriteSystem
+class SpriteSystem extends DisplayObject
   @mixin Lazy.LazyManager
 
   constructor: ->
+    super()
+    
     @mixins.constructor
       label       : @constructor.name
       lazyManager : new Lazy.ListManager
@@ -294,7 +296,7 @@ class SpriteSystem
   create: -> 
     ix     = @geometry.instance.add()
     sprite = new Sprite @, ix
-    sprite.dirty.onSet.addEventListener => @dirty.setElem sprite
+    sprite.transform.dirty.onSet.addEventListener => @dirty.setElem sprite
     sprite
 
   update: ->
@@ -387,7 +389,7 @@ export test = () ->
   ss  = new SpriteSystem
   # ssm = gpuRenderer.addMesh ss
 
-  scene.addChild ss
+  scene.add ss
 
   sp1 = ss.create()
   sp1.variable.color.rgb = [0,0,1]
@@ -577,7 +579,7 @@ class GPURenderer
     
 
   render: (camera) ->
-    if @dirty.isSet || camera.dirty.isSet
+    if @dirty.isSet || camera.transform.dirty.isSet
       @logger.group "Updating", =>
         @attributeRegistry.update()    
         @gpuMeshRegistry.update()
@@ -615,8 +617,8 @@ class Scene extends DisplayObject
     layer.appendChild renderer.dom
     renderer.updateSize()
 
-  addChild: (child) ->
-    # super.addChild child
+  add: (child) ->
+    super.add child
     for renderer from @renderers
       if renderer.handles child
         return renderer.add child

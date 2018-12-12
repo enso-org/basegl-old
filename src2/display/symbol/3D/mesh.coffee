@@ -4,16 +4,21 @@ import * as Variable from 'basegl/display/symbol/3D/geometry/variable'
 import * as Material from 'basegl/display/symbol/3D/material'
 import * as _        from 'lodash'
 
+import {DisplayObject}  from 'basegl/display/object'
 import {shallowCompare} from 'basegl/object/compare'
 import {Program}        from 'basegl/render/webgl'
+
 
 ############
 ### Mesh ###
 ############
 
-export class Mesh extends Lazy.LazyManager
+export class Mesh extends DisplayObject
+  @mixin Lazy.LazyManager
+
   constructor: (geometry, material) ->
-    super
+    super()
+    @mixins.constructor
       label       : "Mesh." + geometry.label
       lazyManager : new Lazy.HierarchicalManager 
     @_geometry      = geometry
@@ -96,7 +101,6 @@ export class Mesh extends Lazy.LazyManager
     @_bindVariables()
 
 export create = (args...) -> new Mesh args...
-
 
 
 ###############

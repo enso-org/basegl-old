@@ -11,8 +11,11 @@ export class HierarchicalObject
     @_parent    = null
 
   @setter 'parent' , (p) -> @._redirect p
-  addChild         : (a) -> a._redirect @
+  add              : (a) -> a._redirect @
   removeChild      : (a) -> a._redirect null
+
+  # deprecated:
+  # addChild         : (a) -> a._redirect @ 
 
   _redirect: (newParent) ->
     if @parent
@@ -22,10 +25,6 @@ export class HierarchicalObject
     if newParent
       newParent._children.add @
       newParent.onChildAdded.dispatch @
-
-  addChildren: (children...) ->
-    for child from children
-      @addChild child
 
   forEach: (f) ->
     @_children.forEach f
