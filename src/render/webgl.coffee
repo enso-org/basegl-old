@@ -36,6 +36,8 @@ export class Program
     shader = loadShader @_gl, name, code, type
     @attachShader shader
 
+shaderErrorNumber = 0
+
 export loadShader = (gl, name, shaderSource, shaderType) ->
   shader = gl.createShader shaderType
   gl.shaderSource shader, shaderSource
@@ -43,7 +45,14 @@ export loadShader = (gl, name, shaderSource, shaderType) ->
   compiled = gl.getShaderParameter shader, gl.COMPILE_STATUS
   if not compiled
     lastError = gl.getShaderInfoLog shader
-    console.error ("*** Error compiling #{name} shader:" + lastError)
+    console.error ("*** Error compiling #{name} shader:\n" + lastError)
+    logfname = "printShaderError#{shaderErrorNumber}"
+    console.error "Use '#{logfname}' to see its source"
+    window[logfname] = ->
+      console.error(listCode shaderSource)
+    shaderErrorNumber += 1
+
+    listCode shaderSource
     gl.deleteShadershader
     return null
   return shader
@@ -57,3 +66,25 @@ export resizeCanvasToDisplaySize = (canvas, multiplier) ->
     canvas.height = height
     true
   false
+
+
+
+digitsCount = (number) ->
+  Math.floor(Math.log10(number)) + 1
+
+listCode = (code) -> 
+  lines     = code.split(/\r?\n/)
+  maxDigits = digitsCount lines.length
+  
+  listLines  = []
+  lineNumber = 0
+  for line in lines
+    lineNumber += 1
+    digits      = digitsCount lineNumber
+    spaces      = maxDigits - digits
+    linePfx     = " ".repeat(spaces) + "#{lineNumber}: "
+    listLine    = linePfx + line
+    listLines.push listLine
+
+  listing = listLines.join '\n'
+  listing

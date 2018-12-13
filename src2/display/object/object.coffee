@@ -51,9 +51,6 @@ export class Transform
       @dirty.unset()
 
 
-# console.log ""
-# console.log "------------"
-# console.log ""
 export class DisplayObject extends EventObject
   @mixin Transform,
     whitelist: ['position', 'rotation', 'scale']
@@ -77,26 +74,6 @@ export class DisplayObject extends EventObject
 
 export group = (elems) -> new DisplayObject elems
 
-# console.log ""
-# console.log "------------"
-# console.log ""
-
-# a = new DisplayObject
-# console.log a
-
-# class SpriteSystem extends DisplayObject
-#   @mixin Lazy.LazyManager
-
-#   constructor: ->
-#     super()
-    
-#     @mixins.constructor
-#       label       : @constructor.name
-#       lazyManager : new Lazy.ListManager
-
-# b = new SpriteSystem
-# console.log b
-# throw "dsad"
 
 window.DisplayObject = DisplayObject
 window.EventObject = EventObject

@@ -120,10 +120,8 @@ export class ShaderBuilder
     if @constants
       addSection 'Constants'
       for name,cfg of @constants
-        vertexName   = @mkVertexName   name
-        fragmentName = @mkFragmentName name
-        vertexCode.addDefinition   cfg.type, vertexName   , cfg.value
-        fragmentCode.addDefinition cfg.type, fragmentName , cfg.value
+        vertexCode.addDefinition   cfg.type, name , cfg.value
+        fragmentCode.addDefinition cfg.type, name , cfg.value
 
     if @attributes
       addSection 'Attributes shared between vertex and fragment shaders'

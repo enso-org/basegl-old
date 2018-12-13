@@ -23,6 +23,219 @@ import {DisplayObject} from 'basegl/display/object'
 import {Logged} from 'basegl/object/logged'
 
 
+import vertexHeader   from 'basegl/lib/shader/component/vertexHeader'
+import vertexBody     from 'basegl/lib/shader/component/vertexBody'
+import fragmentHeader from 'basegl/lib/shader/component/fragmentHeader'
+import fragmentRunner from 'basegl/lib/shader/component/fragmentRunner'
+import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
+
+
+
+builtins = '''
+float radians(float degrees)  
+vec2 radians(vec2 degrees)  
+vec3 radians(vec3 degrees)  
+vec4 radians(vec4 degrees)
+float degrees(float radians)  
+vec2 degrees(vec2 radians)  
+vec3 degrees(vec3 radians)  
+vec4 degrees(vec4 radians)
+float sin(float angle)  
+vec2 sin(vec2 angle)  
+vec3 sin(vec3 angle)  
+vec4 sin(vec4 angle)
+float cos(float angle)  
+vec2 cos(vec2 angle)  
+vec3 cos(vec3 angle)  
+vec4 cos(vec4 angle)
+float tan(float angle)  
+vec2 tan(vec2 angle)  
+vec3 tan(vec3 angle)  
+vec4 tan(vec4 angle)
+float asin(float x)  
+vec2 asin(vec2 x)  
+vec3 asin(vec3 x)  
+vec4 asin(vec4 x)
+float acos(float x)  
+vec2 acos(vec2 x)  
+vec3 acos(vec3 x)  
+vec4 acos(vec4 x)
+float pow(float x, float y)  
+vec2 pow(vec2 x, vec2 y)  
+vec3 pow(vec3 x, vec3 y)  
+vec4 pow(vec4 x, vec4 y)
+float exp(float x)  
+vec2 exp(vec2 x)  
+vec3 exp(vec3 x)  
+vec4 exp(vec4 x)
+float log(float x)  
+vec2 log(vec2 x)  
+vec3 log(vec3 x)  
+vec4 log(vec4 x)
+float exp2(float x)  
+vec2 exp2(vec2 x)  
+vec3 exp2(vec3 x)  
+vec4 exp2(vec4 x)
+float log2(float x)  
+vec2 log2(vec2 x)  
+vec3 log2(vec3 x)  
+vec4 log2(vec4 x)
+float sqrt(float x)  
+vec2 sqrt(vec2 x)  
+vec3 sqrt(vec3 x)  
+vec4 sqrt(vec4 x)
+float inversesqrt(float x)  
+vec2 inversesqrt(vec2 x)  
+vec3 inversesqrt(vec3 x)  
+vec4 inversesqrt(vec4 x)
+float abs(float x)  
+vec2 abs(vec2 x)  
+vec3 abs(vec3 x)  
+vec4 abs(vec4 x)
+float sign(float x)  
+vec2 sign(vec2 x)  
+vec3 sign(vec3 x)  
+vec4 sign(vec4 x)
+float floor(float x)  
+vec2 floor(vec2 x)  
+vec3 floor(vec3 x)  
+vec4 floor(vec4 x)
+float ceil(float x)  
+vec2 ceil(vec2 x)  
+vec3 ceil(vec3 x)  
+vec4 ceil(vec4 x)
+float fract(float x)  
+vec2 fract(vec2 x)  
+vec3 fract(vec3 x)  
+vec4 fract(vec4 x)
+float mod(float x, float y)  
+vec2 mod(vec2 x, vec2 y)  
+vec3 mod(vec3 x, vec3 y)  
+vec4 mod(vec4 x, vec4 y)
+vec2 mod(vec2 x, float y)  
+vec3 mod(vec3 x, float y)  
+vec4 mod(vec4 x, float y)
+float min(float x, float y)  
+vec2 min(vec2 x, vec2 y)  
+vec3 min(vec3 x, vec3 y)  
+vec4 min(vec4 x, vec4 y)
+vec2 min(vec2 x, float y)  
+vec3 min(vec3 x, float y)  
+vec4 min(vec4 x, float y)
+vec2 max(vec2 x, vec2 y)  
+vec3 max(vec3 x, vec3 y)  
+vec4 max(vec4 x, vec4 y)
+float max(float x, float y)  
+vec2 max(vec2 x, float y)  
+vec3 max(vec3 x, float y)  
+vec4 max(vec4 x, float y)
+vec2 clamp(vec2 x, vec2 minVal, vec2 maxVal)  
+vec3 clamp(vec3 x, vec3 minVal, vec3 maxVal)  
+vec4 clamp(vec4 x, vec4 minVal, vec4 maxVal)
+float clamp(float x, float minVal, float maxVal)  
+vec2 clamp(vec2 x, float minVal, float maxVal)  
+vec3 clamp(vec3 x, float minVal, float maxVal)  
+vec4 clamp(vec4 x, float minVal, float maxVal) 
+vec2 mix(vec2 x, vec2 y, vec2 a)  
+vec3 mix(vec3 x, vec3 y, vec3 a)  
+vec4 mix(vec4 x, vec4 y, vec4 a)
+float mix(float x, float y, float a)  
+vec2 mix(vec2 x, vec2 y, float a)  
+vec3 mix(vec3 x, vec3 y, float a)  
+vec4 mix(vec4 x, vec4 y, float a)
+vec2 step(vec2 edge, vec2 x)  
+vec3 step(vec3 edge, vec3 x)  
+vec4 step(vec4 edge, vec4 x)
+float step(float edge, float x)  
+vec2 step(float edge, vec2 x)  
+vec3 step(float edge, vec3 x)  
+vec4 step(float edge, vec4 x)
+float smoothstep(float edge0, float edge1, float x)  
+vec2 smoothstep(vec2 edge0, vec2 edge1, vec2 x)  
+vec3 smoothstep(vec3 edge0, vec3 edge1, vec3 x)  
+vec4 smoothstep(vec4 edge0, vec4 edge1, vec4 x)
+vec2 smoothstep(float edge0, float edge1, vec2 x)  
+vec3 smoothstep(float edge0, float edge1, vec3 x)  
+vec4 smoothstep(float edge0, float edge1, vec4 x)
+float length(float x)  
+float length(vec2 x)  
+float length(vec3 x)  
+float length(vec4 x)
+float distance(float p0, float p1)  
+float distance(vec2 p0, vec2 p1)  
+float distance(vec3 p0, vec3 p1)  
+float distance(vec4 p0, vec4 p1)
+float dot(float x, float y)  
+float dot(vec2 x, vec2 y)  
+float dot(vec3 x, vec3 y)  
+float dot(vec4 x, vec4 y)
+vec3 cross(vec3 x, vec3 y)
+float normalize(float x)  
+vec2 normalize(vec2 x)  
+vec3 normalize(vec3 x)  
+vec4 normalize(vec4 x)
+float faceforward(float N, float I, float Nref)  
+vec2 faceforward(vec2 N, vec2 I, vec2 Nref)  
+vec3 faceforward(vec3 N, vec3 I, vec3 Nref)  
+vec4 faceforward(vec4 N, vec4 I, vec4 Nref)
+float reflect(float I, float N)  
+vec2 reflect(vec2 I, vec2 N)  
+vec3 reflect(vec3 I, vec3 N)  
+vec4 reflect(vec4 I, vec4 N)
+float refract(float I, float N, float eta)  
+vec2 refract(vec2 I, vec2 N, float eta)  
+vec3 refract(vec3 I, vec3 N, float eta)  
+vec4 refract(vec4 I, vec4 N, float eta)
+mat2 matrixCompMult(mat2 x, mat2 y)  
+mat3 matrixCompMult(mat3 x, mat3 y)  
+mat4 matrixCompMult(mat4 x, mat4 y)
+bvec2 lessThan(vec2 x, vec2 y)  
+bvec3 lessThan(vec3 x, vec3 y)    
+bvec4 lessThan(vec4 x, vec4 y)  
+bvec2 lessThan(ivec2 x, ivec2 y)  
+bvec3 lessThan(ivec3 x, ivec3 y)  
+bvec4 lessThan(ivec4 x, ivec4 y)
+bvec2 lessThanEqual(vec2 x, vec2 y)  
+bvec3 lessThanEqual(vec3 x, vec3 y)  
+bvec4 lessThanEqual(vec4 x, vec4 y)  
+bvec2 lessThanEqual(ivec2 x, ivec2 y)  
+bvec3 lessThanEqual(ivec3 x, ivec3 y)  
+bvec4 lessThanEqual(ivec4 x, ivec4 y)
+bvec2 greaterThan(vec2 x, vec2 y)  
+bvec3 greaterThan(vec3 x, vec3 y)  
+bvec4 greaterThan(vec4 x, vec4 y)  
+bvec2 greaterThan(ivec2 x, ivec2 y)  
+bvec3 greaterThan(ivec3 x, ivec3 y)  
+bvec4 greaterThan(ivec4 x, ivec4 y)
+bvec2 greaterThanEqual(vec2 x, vec2 y)  
+bvec3 greaterThanEqual(vec3 x, vec3 y)  
+bvec4 greaterThanEqual(vec4 x, vec4 y)  
+bvec2 greaterThanEqual(ivec2 x, ivec2 y)  
+bvec3 greaterThanEqual(ivec3 x, ivec3 y)  
+bvec4 greaterThanEqual(ivec4 x, ivec4 y)
+bvec2 equal(vec2 x, vec2 y)  
+bvec3 equal(vec3 x, vec3 y)  
+bvec4 equal(vec4 x, vec4 y)  
+bvec2 equal(ivec2 x, ivec2 y)  
+bvec3 equal(ivec3 x, ivec3 y)  
+bvec4 equal(ivec4 x, ivec4 y)
+bvec2 notEqual(vec2 x, vec2 y)  
+bvec3 notEqual(vec3 x, vec3 y)  
+bvec4 notEqual(vec4 x, vec4 y)  
+bvec2 notEqual(ivec2 x, ivec2 y)  
+bvec3 notEqual(ivec3 x, ivec3 y)  
+bvec4 notEqual(ivec4 x, ivec4 y)
+bool any(bvec2 x)  
+bool any(bvec3 x)  
+bool any(bvec4 x)
+bool all(bvec2 x)  
+bool all(bvec3 x)  
+bool all(bvec4 x)
+bvec2 not(bvec2 x)  
+bvec3 not(bvec3 x)  
+bvec4 not(bvec4 x)
+'''
+
 
 export test2 = (gl, viewProjectionMatrix) ->
 
@@ -192,7 +405,7 @@ class Camera extends DisplayObject
 
     @__projectionMatrix     = M.mat4.create()
     @__viewMatrix           = M.mat4.create()
-    @__viewProjectionMatrix = M.mat4.create()
+    # @__viewProjectionMatrix = M.mat4.create()
 
     @dirtyCfg.set()
     @update()
@@ -201,9 +414,15 @@ class Camera extends DisplayObject
   @setter 'aspect' , (val) -> @_aspect = val; @dirtyCfg.set()
   @setter 'near'   , (val) -> @_near   = val; @dirtyCfg.set()
   @setter 'far'    , (val) -> @_far    = val; @dirtyCfg.set()
-  @getter 'viewProjectionMatrix', ->
+  # @getter 'viewProjectionMatrix', ->
+  #   @update()
+  #   @__viewProjectionMatrix
+  @getter 'viewMatrix', ->
     @update()
-    @__viewProjectionMatrix
+    @__viewMatrix
+  @getter 'projectionMatrix', ->
+    @update()
+    @__projectionMatrix
 
   update: ->
     if @dirtyCfg.isSet
@@ -213,7 +432,7 @@ class Camera extends DisplayObject
     if @dirtyCfg.isSet || @transform.dirty.isSet
       super.update()
       M.mat4.invert   @_viewMatrix, @transform.matrix
-      M.mat4.multiply @_viewProjectionMatrix, @_projectionMatrix, @_viewMatrix
+      # M.mat4.multiply @_viewProjectionMatrix, @_projectionMatrix, @_viewMatrix
     @dirtyCfg.unset()
     
 
@@ -240,20 +459,90 @@ class Sprite extends DisplayObject
       # FIXME 1 : xform should be kept as Buffer
       # FIXME 2 : @xform causes update loop, maybe mixins?
       xf = new Buffer.Buffer Float32Array, @_xform
-      @_varData['transform'].read(@id).set xf
+      @_varData['modelMatrix'].read(@id).set xf
 
 
+# builtinPattern = /([^ ]+) ([^(]+)(\([^)]*\))/
+builtinPattern = /([^ ]+) ([^(]+)\(([^)]*)\)/
+# argsPattern = /([^ ]+ [^ ]+ ?, ?)*/
+# argsPattern = /(([^ ]+) ([^ ]+) ?,? ?)*/
+
+redirectBuiltins = ->
+  lines = builtins.split(/\r?\n/)
+  names        = []
+  redirections = []
+  for line in lines
+    # console.log line.replace(builtinPattern, "$1 overloaded_$2 $3 { return $2$3 }")
+    match    = line.match builtinPattern
+    outType  = match[1]
+    fname    = match[2]
+    argsStr  = match[3]
+    args     = (v.split(' ') for v in argsStr.split(', '))
+    argNames = (a[1] for a in args)
+    redirection = "#{outType} overloaded_#{fname} (#{argsStr}) { return #{fname}(#{argNames.join(',')}); }"
+    names.push fname
+    redirections.push redirection
+  code = redirections.join '\n'
+  {code, names}
+
+redirections = redirectBuiltins()
+
+builtinsMap = new Set redirections.names
+
+
+anyVar = /([a-zA-Z_])[a-zA-Z_0-9]*/gm
+fragment_lib2 = fragment_lib.replace anyVar, (v) =>
+  if builtinsMap.has v then "overloaded_#{v}" else v
+
+overloadings = '''
+
+float overloaded
+
+'''
 
 spriteVertexShaderBase = '''
+
+out vec3 world;
+out vec3 local;
+out vec3 eye;
+//out vec3 scaledEye;
+out float zoomLevel;
+
+out float symbolID;
+out float symbolFamilyID;
+out float zIndex;
+
 vec4 xpos;
 void main() {
-  xpos = v_transform * v_position;
-  gl_Position = matrix * xpos;
+  local                = vec3((uv - 0.5) * bbox, 0.0);
+  mat4 modelViewMatrix = viewMatrix * modelMatrix;
+  vec4 eyeT            = modelViewMatrix * vec4(local,1.0);
+  gl_Position          = projectionMatrix * eyeT;
+  world                = gl_Position.xyz; 
+ 
+  eye = eyeT.xyz;
+  eye.z = -eye.z;
+
+  zoomLevel      = 1.0;
+  symbolID       = 1.0;
+  symbolFamilyID = 1.0;
+  zIndex         = 1.0;
 }
 '''
 
 spriteFragmentShaderBase = '''
+in vec3  world;
+in vec3  local;
+in vec3  eye;
+in float zoomLevel;
+in float symbolID;
+in float symbolFamilyID;
+in float zIndex;
+
 out vec4 output_color;  
+''' + redirections.code + '\n' + fragment_lib2 +
+
+'''
 void main() {
   output_color = color;
 }'''
@@ -274,19 +563,24 @@ class SpriteSystem extends DisplayObject
         width    : 200
         height   : 200
         instance :
-          color:     vec4()
-          transform: mat4()
+          color       : vec4()
+          modelMatrix : mat4()
+          # bbox      : vec2(100,100)
         object:
-          matrix: mat4
+          viewMatrix       : mat4
+          projectionMatrix : mat4
 
       @_material = new Material.Raw
         vertex   : spriteVertexShaderBase
         fragment : spriteFragmentShaderBase
         input:
-          position  : vec4()
-          transform : mat4()
-          matrix    : mat4()
-          color     : vec4 0,1,0,1
+          position         : vec3()
+          modelMatrix      : mat4()
+          viewMatrix       : mat4()
+          projectionMatrix : mat4()
+          color            : vec4()
+          uv               : vec2()
+          bbox             : vec2(100,100)
 
       @_mesh = Mesh.create @_geometry, @_material
 
@@ -304,6 +598,14 @@ class SpriteSystem extends DisplayObject
       @dirty.elems.forEach (elem) =>
         elem.update()
       @dirty.unset()
+
+
+class Symbol 
+  constructor: 
+    @_sprites = new SpriteSystem
+
+   
+
 
 
 frameRequested = false
@@ -387,6 +689,11 @@ export test = () ->
 
 
   ss  = new SpriteSystem
+
+  console.log fragmentHeader
+  console.log fragment_lib
+  console.log ss.mesh.shader.vertex
+  # console.log ss.mesh.shader.vertex
   # ssm = gpuRenderer.addMesh ss
 
   scene.add ss
@@ -469,7 +776,7 @@ export test = () ->
  
   renderloop = ->
     currentloop += 1
-    window.requestAnimationFrame renderloop
+    # window.requestAnimationFrame renderloop
     if frameRequested then return
     frameRequested = true
     go()
@@ -584,7 +891,7 @@ class GPURenderer
         @attributeRegistry.update()    
         @gpuMeshRegistry.update()
         @gpuMeshRegistry.forEach (gpuMesh) =>
-          gpuMesh.draw camera.viewProjectionMatrix
+          gpuMesh.draw camera #.viewProjectionMatrix
         @dirty.unset()
 
   handles: (obj) -> true # FIXME
@@ -610,6 +917,8 @@ class Scene extends DisplayObject
     @_dom.onResize.addEventListener (rect) =>
       @resize rect.width, rect.height
     @newView()
+
+    # @onChildAdded.addEventListener, (child) => @_add child
 
   addRenderer: (renderer) ->
     @renderers.add renderer

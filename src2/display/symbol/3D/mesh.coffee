@@ -195,11 +195,13 @@ export class GPUMesh extends Lazy.LazyManager
         @_init()
       
 
-  draw: (viewProjectionMatrix) ->
+  draw: (camera) ->
     @logger.group "Drawing", =>
       @_gl.useProgram @_program.glProgram      
       GL.withVAO @_gl, @_vao, =>
-        @_gl.uniformMatrix4fv(@_varLoc.matrix, false, viewProjectionMatrix)
+        console.warn @_varLoc.viewMatrix
+        @_gl.uniformMatrix4fv(@_varLoc.viewMatrix, false, camera.viewMatrix)
+        @_gl.uniformMatrix4fv(@_varLoc.projectionMatrix, false, camera.projectionMatrix)
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length
         isInstanced   = not _.isEmpty(@mesh.geometry.instance.data)
