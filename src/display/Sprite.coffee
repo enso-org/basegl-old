@@ -9,7 +9,7 @@ import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Buffer   from 'basegl/data/buffer'
 
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 import * as M from 'gl-matrix'
@@ -237,159 +237,6 @@ bvec4 not(bvec4 x)
 '''
 
 
-export test2 = (gl, viewProjectionMatrix) ->
-
-  geo = Geometry.rectangle
-    label    : "Geo1"
-    width    : 200
-    height   : 200
-    instance :
-      transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
-    object:
-      matrix: mat4
-      
-
-  # geo = Geometry.create
-  #   label: "Geo1"
-  #   point:
-  #     position: 
-  #       usage : Variable.usage.static
-  #       data  : [
-  #         (vec3 -100,  100, 0),
-  #         (vec3 -100, -100, 0),
-  #         (vec3  100,  100, 0),
-  #         (vec3  100, -100, 0)]
-  #     uv: [
-  #       # usage : usage.static
-  #       # data  : [
-  #         (vec2 0,1),
-  #         (vec2 0,0),
-  #         (vec2 1,1),
-  #         (vec2 1,0)] 
-
-  #     # color: 
-  #     #   type: vec4
-  #     #   data: new Float32Array [
-  #     #     1,0,0,1,
-  #     #     0,1,0,1,
-  #     #     0,0,1,1,
-  #     #     1,1,1,1]
-
-  #     # color: [
-  #     #   (vec4 1,0,0,1),
-  #     #   (vec4 0,1,0,1),
-  #     #   (vec4 0,0,1,1),
-  #     #   (vec4 1,1,1,1)
-  #     # ]
-
-  #     # color: 
-  #     #   type: vec4
-  #     #   default: [1,0,0,1,0,1,0,1]
-      
-  #     # transform: [
-  #     #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100) ,
-  #     #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ,
-  #     #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ,
-  #     #   (mat4 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0) ]
-      
-  #   instance:
-  #   #   # color: vec4
-  #   #   # color: [
-  #   #   #   (vec4 1,0,0,1)] # , (vec4 0,1,0,1) ]
-  #   #   # color: 
-  #   #   #   data: vec4(1,0,0,1)
-  #   #   #   default: [1,0,1]
-  #     transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
-  #     # foo: [1,2]
-
-  #   object:
-  #     matrix: mat4
-
-
-  attrRegistry = new Variable.GPUAttributeRegistry gl
-  meshRegistry = new Mesh.GPUMeshRegistry
-
-
-  vertexShaderSource = '''
-  void main() {
-    gl_Position = matrix * v_position;
-    gl_Position.x += v_transform[3][3];
-  }
-  '''
-
-  fragmentShaderSource = '''
-  out vec4 output_color;  
-  void main() {
-    output_color = color;
-  }'''
-
-  fragmentShaderSource2 = '''
-  out vec4 output_color;  
-  void main() {
-    output_color = vec4(0,1,0,1);
-  }'''
-
-  mat1 = new Material.Raw
-    vertex   : vertexShaderSource
-    fragment : fragmentShaderSource
-    input:
-      position  : vec4()
-      transform : mat4()
-      matrix    : mat4()
-      color     : vec4 0,1,0,1
-  mesh = Mesh.create geo, mat1
-
-  m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
-  meshRegistry.add m1
-
-
-
-  # console.log mat1.shader
-  # mat1.writePointVariable 'position', (vec4 [0,0,0,0])
-  # mat1.writePointVariable 'color', (vec4 [0,0,0,1])
-  # mat1.writePointVariable 'uv', (vec2 [0,0])
-  # mat1.writeObjectVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-  # mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
-  # console.log mat1.shader.vertex
-  # console.log mat1.shader.fragment
-
-  logger.group "FRAME 1", =>
-    # geo.point.data.position.read(0)[0] = 7
-    # console.log geo.instance.data.color
-    geo.instance.addAttribute 'color', 
-      type: vec4
-      default: vec4(1,0,0,1)
-    # mat1.fragment = fragmentShaderSource2
-    meshRegistry.update()
-    attrRegistry.update()
-    # meshRegistry.update()
-  
-  logger.group "FRAME 2", =>
-    geo.instance.data.color.read(0).rgba = [1,1,0,1]
-    geo.instance.data.color.read(1).rgba = [0,1,0,1]
-    # geo.point.data.position.read(0)[0] = 7
-  #   geo.point.data.position.read(0)[0] = 7
-  #   geo.point.data.position.read(0)[1] = 7
-    attrRegistry.update()
-    meshRegistry.update()
-
-  logger.group "FRAME 3", =>
-  #   # geo.point.data.position.read(1)[0] = 8
-  #   # geo.point.data.uv.read(1)[0] = 8
-  #   # geo.instance.add({color: vec4(0,0,1,1)})
-  #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
-  #   # geo.instance.add({color: vec4(0,0,0,1)})
-  #   # geo.instance.data.color.read(0)[0] = 0.7
-    attrRegistry.update()
-    meshRegistry.update()
-
-  # logger.group "FRAME 4", =>
-  #   attrRegistry.update()
-  #   # meshRegistry.update()
-
-
-  m1.draw(viewProjectionMatrix)
-  
 
 
 class Camera extends DisplayObject
@@ -494,39 +341,21 @@ anyVar = /([a-zA-Z_])[a-zA-Z_0-9]*/gm
 fragment_lib2 = fragment_lib.replace anyVar, (v) =>
   if builtinsMap.has v then "overloaded_#{v}" else v
 
-overloadings = '''
-
-float overloaded
-
-'''
 
 spriteVertexShaderBase = '''
 
 out vec3 world;
 out vec3 local;
 out vec3 eye;
-//out vec3 scaledEye;
-out float zoomLevel;
 
-out float symbolID;
-out float symbolFamilyID;
-out float zIndex;
-
-vec4 xpos;
 void main() {
   local                = vec3((uv - 0.5) * bbox, 0.0);
   mat4 modelViewMatrix = viewMatrix * modelMatrix;
   vec4 eyeT            = modelViewMatrix * vec4(local,1.0);
   gl_Position          = projectionMatrix * eyeT;
-  world                = gl_Position.xyz; 
- 
-  eye = eyeT.xyz;
+  world                = gl_Position.xyz;  
+  eye                  = eyeT.xyz;
   eye.z = -eye.z;
-
-  zoomLevel      = 1.0;
-  symbolID       = 1.0;
-  symbolFamilyID = 1.0;
-  zIndex         = 1.0;
 }
 '''
 
@@ -534,23 +363,34 @@ spriteFragmentShaderBase = '''
 in vec3  world;
 in vec3  local;
 in vec3  eye;
-in float zoomLevel;
-in float symbolID;
-in float symbolFamilyID;
-in float zIndex;
 
 out vec4 output_color;  
-''' + redirections.code + '\n' + fragment_lib2 +
+''' + redirections.code + '\n' + fragment_lib2 + '\n' +
 
 '''
-void main() {
-  output_color = color;
-}'''
+
+sdf_shape _main(vec2 p) {
+float shape_1   = sdf_circle(p,50.0);
+vec4  shape_1_bb = bbox_new(50.0,50.0);
+vec4  shape_1_cd = rgb2lch(vec4(1,0,0,1));
+int shape_1_id = newIDLayer(shape_1, 1);
+float shape_2   = sdf_circle(p,30.0);
+vec4  shape_2_bb = bbox_new(30.0,30.0);
+vec4  shape_2_cd = rgb2lch(vec4(1,0,0,1));
+int shape_2_id = newIDLayer(shape_2, 2);
+float shape_3   = sdf_difference(shape_1,shape_2);
+vec4  shape_3_bb = bbox_union(shape_1_bb,shape_2_bb);
+vec4  shape_3_cd = shape_1_cd;
+int shape_3_id = id_difference(shape_1, shape_2, shape_1_id);
+return sdf_shape(shape_3, shape_3_id, shape_3_bb, shape_3_cd);
+}
+
+''' + fragmentRunner
 
 class SpriteSystem extends DisplayObject
   @mixin Lazy.LazyManager
 
-  constructor: ->
+  constructor: (cfg={}) ->
     super()
     
     @mixins.constructor
@@ -558,29 +398,34 @@ class SpriteSystem extends DisplayObject
       lazyManager : new Lazy.ListManager
 
     @logger.group "Initializing", =>
-      @_geometry = Geometry.rectangle
+      @_geometry = cfg.geometry || Geometry.rectangle
         label    : "Sprite"
-        width    : 200
-        height   : 200
+        width    : cfg.size || 100
+        height   : cfg.size || 100
         instance :
-          color       : vec4()
-          modelMatrix : mat4()
-          # bbox      : vec2(100,100)
+          modelMatrix    : mat4()
+          bbox           : vec2(cfg.size||100, cfg.size||100)
+          symbolID       : float 0
+          symbolFamilyID : float 0
+          zIndex         : float 0
         object:
           viewMatrix       : mat4
           projectionMatrix : mat4
+          zoom             : float 1 # FIXME, hardcoded in mesh rendering
 
-      @_material = new Material.Raw
-        vertex   : spriteVertexShaderBase
-        fragment : spriteFragmentShaderBase
+      @_material = cfg.material || new Material.Raw
+        vertex   : cfg.shader?.vertex   || spriteVertexShaderBase
+        fragment : cfg.shader?.fragment || spriteFragmentShaderBase
         input:
-          position         : vec3()
           modelMatrix      : mat4()
           viewMatrix       : mat4()
           projectionMatrix : mat4()
-          color            : vec4()
           uv               : vec2()
-          bbox             : vec2(100,100)
+          bbox             : vec2()
+          symbolID         : float()
+          symbolFamilyID   : float()
+          zoom             : float()
+          zIndex           : float()
 
       @_mesh = Mesh.create @_geometry, @_material
 
@@ -600,9 +445,6 @@ class SpriteSystem extends DisplayObject
       @dirty.unset()
 
 
-class Symbol 
-  constructor: 
-    @_sprites = new SpriteSystem
 
    
 
@@ -691,7 +533,7 @@ export test = () ->
   ss  = new SpriteSystem
 
   console.log fragmentHeader
-  console.log fragment_lib
+  console.log fragmentRunner
   console.log ss.mesh.shader.vertex
   # console.log ss.mesh.shader.vertex
   # ssm = gpuRenderer.addMesh ss
@@ -699,7 +541,7 @@ export test = () ->
   scene.add ss
 
   sp1 = ss.create()
-  sp1.variable.color.rgb = [0,0,1]
+  # sp1.variable.color.rgb = [0,0,1]
   # console.log sp1
   
 

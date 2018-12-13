@@ -1,4 +1,8 @@
 
+// FIXME - THESE NEED TO BE PROVIDED
+int drawBuffer = 0;
+int displayMode = 0;
+float pointerEvents = 1.0;
 
 void main() {
   vec2      p     = local.xy ;
@@ -12,33 +16,33 @@ void main() {
 
   if (drawBuffer == 0) {
       if (displayMode == 0) {
-          gl_FragColor = vec4(toGamma(lch2rgb(shape.cd.rgb)), shape.cd.a * alpha);
+          output_color = vec4(toGamma(lch2rgb(shape.cd.rgb)), shape.cd.a * alpha);
       } else if (displayMode == 1) {
-          vec3 col = distanceMeter(shape.density, 500.0 * zoomLevel, vec3(0.0,1.0,0.0), 500.0/zoomLevel);
+          vec3 col = distanceMeter(shape.density, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
           col = Uncharted2ToneMapping(col);
-          gl_FragColor = vec4(pow(col, vec3(1./2.2)), 1.0 );
+          output_color = vec4(pow(col, vec3(1./2.2)), 1.0 );
       } else if (displayMode == 2) {
           if (pointerEvents > 0.0) {
               vec3 cd = hsv2rgb(vec3(symbolFamilyID_r/4.0, 1.0, 1.0));
-              gl_FragColor = vec4(cd, idMask);
+              output_color = vec4(cd, idMask);
           } else {
-              gl_FragColor = vec4(0.0);
+              output_color = vec4(0.0);
           }
       } else if (displayMode == 3) {
           vec3 cd = hsv2rgb(vec3(symbolID_r/4.0, 1.0, idMask));
-          gl_FragColor = vec4(cd, idMask);
+          output_color = vec4(cd, idMask);
       } else if (displayMode == 4) {
           vec3 cd = hsv2rgb(vec3(float(sid)/20.0, 1.0, idMask));
-          gl_FragColor = vec4(cd, idMask);
+          output_color = vec4(cd, idMask);
       } else if (displayMode == 5) {
-          gl_FragColor = vec4(zIndex/100.0);
-          gl_FragColor.a = idMask;
+          output_color = vec4(zIndex/100.0);
+          output_color.a = idMask;
       }
   } else if (drawBuffer == 1) {
       if (pointerEvents > 0.0) {
-          gl_FragColor = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
+          output_color = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
       } else {
-          gl_FragColor = vec4(0.0);
+          output_color = vec4(0.0);
       }
   }
   // gl_FragColor = vec4(luv.x, luv.y, 0.0, 1.0);

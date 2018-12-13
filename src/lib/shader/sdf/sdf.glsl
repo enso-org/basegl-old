@@ -146,8 +146,8 @@ float sdf_grow   (float size, float d)  { return d - size;  }
 float sdf_shrink (float size, float d)  { return d + size;  }
 float sdf_border (float d)              { return abs(d);    }
 float sdf_flatten(float a)              { return clamp(-a); }
-float sdf_render (float d)              { return clamp((0.5 - d) / zoomLevel); }
-float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoomLevel / w); }
+float sdf_render (float d)              { return clamp((0.5 - d) / zoom); }
+float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoom / w); }
 
 float sdf_removeOutside (float d) { return (d > 0.0) ?  INF : d; }
 float sdf_removeInside  (float d) { return (d < 0.0) ? -INF : d; }

@@ -126,9 +126,6 @@ export class BufferType extends Type
     args = (toGLSL a for a in @rawArray)
     "#{name}(#{args.join(',')})"
 
-  # @getter 0, -> @read 0
-  # @getter 1, -> @read 1
-  # @getter 2, -> @read 2
     
 Property.swizzleFieldsXYZW2 BufferType
 Property.swizzleFieldsRGBA2 BufferType
@@ -141,7 +138,9 @@ export class Float extends Type
   @glType  : webGL.types.float
   @default : -> new Float 0
 
-  constructor: (@number) -> super()
+  constructor: (@number=0) -> super()
+  @getter 'type'    , -> @constructor  
+  @getter 'glType'  , -> @constructor.glType
   @getter 'rawArray', -> new Float32Array [@number]
 
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
@@ -189,6 +188,7 @@ export class Mat4 extends BufferType
 
 ### Smart constructors ###
 
+export float = (args...) => new Float args...
 export vec2 = (args...) => Vec2.from args
 export vec3 = (args...) => Vec3.from args
 export vec4 = (args...) => Vec4.from args
@@ -196,6 +196,7 @@ export mat2 = (args...) => Mat2.from args
 export mat3 = (args...) => Mat3.from args
 export mat4 = (args...) => Mat4.from args
 
+float.type = Float
 vec2.type = Vec2
 vec3.type = Vec3
 vec4.type = Vec4
