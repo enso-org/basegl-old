@@ -13,6 +13,18 @@ import {Program}        from 'basegl/render/webgl'
 ### Mesh ###
 ############
 
+compareAttrScopeMaps = (map1, map2) -> 
+  compareMapsWith map1, map2, (val1, val2) =>
+    (val1.scope != val2.scope) || (val1.type != val2.type)
+
+compareMapsWith = (map1, map2, comp) -> 
+  if map1.size != map2.size then return false
+  map1.forEach (val1,key) =>
+    val2 = map2.get key
+    if not comp(val1,val2) then return false
+  return true 
+
+
 export class Mesh extends DisplayObject
   @mixin Lazy.LazyManager
 
@@ -25,6 +37,7 @@ export class Mesh extends DisplayObject
     @_material      = material
     @_shader        = null
     @_bindings      = {}
+    @_exposeAllVars = true
     @_shaderBuilder = new Material.ShaderBuilder 
     @geometry.dirty.onSet.addEventListener => @dirty.setElem @geometry
     @material.dirty.onSet.addEventListener => @dirty.setElem @material
@@ -41,7 +54,7 @@ export class Mesh extends DisplayObject
 
   _bindVariables: ->
     {bindings, missing} = @_matchVariables()
-    bindingsChanged     = not shallowCompare @bindings, bindings
+    bindingsChanged     = not compareAttrScopeMaps @bindings, bindings
     materialChanged     = @material.dirty.isSet
     if bindingsChanged || materialChanged
       @logger.group "Binding variables", =>
@@ -52,17 +65,16 @@ export class Mesh extends DisplayObject
         @_generateShader()
 
   _fillMatches: (matches) ->
-    for varName, scopeName of matches
-      varDef   = @material.variable.input[varName]
-      glType   = varDef.glType
+    matches.forEach (cfg, varName) =>
+      glType   = cfg.type.glType
       glslType = glType.name
-      @logger.info "Using variable '#{varName}' from #{scopeName} scope"
-      if scopeName == 'point' || scopeName == 'instance'
+      @logger.info "Using variable '#{varName}' from #{cfg.scope} scope"
+      if cfg.scope == 'point' || cfg.scope == 'instance'
         @_shaderBuilder.attributes[varName] = glslType
-      else if scopeName == 'object'
+      else if cfg.scope == 'object'
         @_shaderBuilder.uniforms[varName] = glslType
       else
-        throw "Unsupported scope #{scopeName}"
+        throw "Unsupported scope #{cfg.scope}"
   
   _fillMissing: (missing) ->
     for varName in missing      
@@ -73,12 +85,12 @@ export class Mesh extends DisplayObject
         value : varDef.toGLSL()
 
   _matchVariables: ->
-    bindings = {}
+    bindings = if @exposeAllVars then @_allGeoVarsFlat() else new Map
     missing  = []
     for varName, varDef of @material.variable.input 
       scopeName = @_lookupAttrScope varName
       if scopeName
-        bindings[varName] = scopeName
+        bindings.set varName, {scope: scopeName, type: varDef.type}
       else
         missing.push varName
     {bindings, missing}
@@ -88,14 +100,20 @@ export class Mesh extends DisplayObject
     vcode = @material.vertexCode()
     fcode = @material.fragmentCode()
     @_shader = @_shaderBuilder.compute vcode, fcode
-    # console.log @_shader.vertex
-    # console.log @_shader.fragment
 
   _lookupAttrScope: (name) ->
     for scopeName of @geometry.scope
       if @geometry.scope[scopeName].data[name]?
         return scopeName
     return null
+
+  _allGeoVarsFlat: ->
+    attrScopeMap = new Map
+    scopesFromMostGeneral = Object.keys(@geometry.scope).reverse()
+    for scopeName in scopesFromMostGeneral
+      for attrName, attr of @geometry.scope[scopeName].data
+        attrScopeMap.set attrName, {scope: scopeName, type: attr.type}
+    attrScopeMap
 
   update: ->
     @_bindVariables()
@@ -135,11 +153,11 @@ export class GPUMesh extends Lazy.LazyManager
   _initVarLocations: () ->
     @logger.group "Binding variables to shader", =>
       @_varLoc = {}
-      for varName, spaceName of @mesh.bindings
-        @_initSpaceVarLocation spaceName, varName
+      @mesh.bindings.forEach (cfg, varName) =>
+        @_initSpaceVarLocation cfg.scope, varName
 
-  _initSpaceVarLocation: (spaceName, varName) ->
-      if spaceName == 'object'
+  _initSpaceVarLocation: (scopeName, varName) ->
+      if scopeName == 'object'
         loc = @_program.getUniformLocation varName
       else 
         loc = @_program.getAttribLocation "v_#{varName}"
@@ -157,26 +175,26 @@ export class GPUMesh extends Lazy.LazyManager
 
   _bindAttrsToProgram: () ->
     GL.withVAO @_gl, @_vao, =>  
-      for varName, spaceName of @mesh.bindings
-        @bindAttrToProgram spaceName, varName
+      @mesh.bindings.forEach (cfg, varName) =>
+        @bindAttrToProgram cfg.scope, varName
       
-  _bindAttrToProgram: (spaceName, varName) -> 
+  _bindAttrToProgram: (scopeName, varName) -> 
     GL.withVAO @_gl, @_vao, =>  
-      @bindAttrToProgram spaceName, varName
+      @bindAttrToProgram scopeName, varName
 
-  bindAttrToProgram: (spaceName, varName) -> 
-    if spaceName != 'object'
-      @logger.group "Binding variable '#{spaceName}.#{varName}'", =>
-        space = @mesh.geometry[spaceName].data
+  bindAttrToProgram: (scopeName, varName) -> 
+    if scopeName != 'object'
+      @logger.group "Binding variable '#{scopeName}.#{varName}'", =>
+        space = @mesh.geometry[scopeName].data
         val   = space[varName]
         loc   = @_varLoc[varName]
-        if not @buffer[spaceName]?
-          @buffer[spaceName] = {}
+        if not @buffer[scopeName]?
+          @buffer[scopeName] = {}
         if loc != undefined
           @_attributeRegistry.bindBuffer @, val, (bufferx) =>
             buffer    = bufferx._buffer
-            instanced = (spaceName == 'instance')
-            @buffer[spaceName][varName] = buffer 
+            instanced = (scopeName == 'instance')
+            @buffer[scopeName][varName] = buffer 
             bufferx.bindToLoc loc, instanced 
             @logger.info "Variable bound succesfully using 
                          #{bufferx.chunksNum} locations"

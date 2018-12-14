@@ -342,8 +342,7 @@ fragment_lib2 = fragment_lib.replace anyVar, (v) =>
   if builtinsMap.has v then "overloaded_#{v}" else v
 
 
-spriteVertexShaderBase = '''
-
+spriteBasciMaterialVertexShader = '''
 out vec3 world;
 out vec3 local;
 out vec3 eye;
@@ -359,7 +358,7 @@ void main() {
 }
 '''
 
-spriteFragmentShaderBase = '''
+spriteBasciMaterialFragmentShader = '''
 in vec3  world;
 in vec3  local;
 in vec3  eye;
@@ -387,6 +386,10 @@ return sdf_shape(shape_3, shape_3_id, shape_3_bb, shape_3_cd);
 
 ''' + fragmentRunner
 
+export spriteBasicMaterial = new Material.Raw
+  vertex   : spriteBasciMaterialVertexShader
+  fragment : spriteBasciMaterialFragmentShader
+
 class SpriteSystem extends DisplayObject
   @mixin Lazy.LazyManager
 
@@ -398,7 +401,7 @@ class SpriteSystem extends DisplayObject
       lazyManager : new Lazy.ListManager
 
     @logger.group "Initializing", =>
-      @_geometry = cfg.geometry || Geometry.rectangle
+      @_geometry = cfg.geometry || Geometry.rectangle # FIXME: exposes unnecessary var 'position'
         label    : "Sprite"
         width    : cfg.size || 100
         height   : cfg.size || 100
@@ -414,18 +417,18 @@ class SpriteSystem extends DisplayObject
           zoom             : float 1 # FIXME, hardcoded in mesh rendering
 
       @_material = cfg.material || new Material.Raw
-        vertex   : cfg.shader?.vertex   || spriteVertexShaderBase
-        fragment : cfg.shader?.fragment || spriteFragmentShaderBase
-        input:
-          modelMatrix      : mat4()
-          viewMatrix       : mat4()
-          projectionMatrix : mat4()
-          uv               : vec2()
-          bbox             : vec2()
-          symbolID         : float()
-          symbolFamilyID   : float()
-          zoom             : float()
-          zIndex           : float()
+        vertex   : cfg.shader?.vertex   || spriteBasciMaterialVertexShader
+        fragment : cfg.shader?.fragment || spriteBasciMaterialFragmentShader
+        # input:
+        #   modelMatrix      : mat4()
+        #   viewMatrix       : mat4
+        #   projectionMatrix : mat4()
+        #   uv               : vec2()
+        #   bbox             : vec2()
+        #   symbolID         : float()
+        #   symbolFamilyID   : float()
+        #   zoom             : float()
+        #   zIndex           : float()
 
       @_mesh = Mesh.create @_geometry, @_material
 
@@ -532,9 +535,9 @@ export test = () ->
 
   ss  = new SpriteSystem
 
-  console.log fragmentHeader
-  console.log fragmentRunner
-  console.log ss.mesh.shader.vertex
+  # console.log fragmentHeader
+  # console.log fragmentRunner
+  # console.log ss.mesh.shader.vertex
   # console.log ss.mesh.shader.vertex
   # ssm = gpuRenderer.addMesh ss
 
