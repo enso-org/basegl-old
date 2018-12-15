@@ -475,134 +475,13 @@ export test = (shape) ->
   gpuRenderer = new GPURenderer
   scene.addRenderer gpuRenderer
   
-  # canvas = document.createElement 'canvas'
-  # canvas.style.width  = '100%'
-  # canvas.style.height = '100%'
-  # scene.dom.element.appendChild canvas
-
-  # gl = canvas.getContext("webgl2")
-  # if (!gl) 
-  #   return
-
-  # resizeCanvasToDisplaySize gl.canvas
-  # gl.viewport 0, 0, gl.canvas.width, gl.canvas.height
   gl = gpuRenderer.gl
 
-
-  # geo = Geometry.rectangle
-  #   label    : "Geo1"
-  #   width    : 200
-  #   height   : 200
-  #   instance :
-  #     transform: [mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100), mat4()]
-  #   object:
-  #     matrix: mat4
-      
-
-  # attrRegistry = new Variable.GPUAttributeRegistry gl
-  # meshRegistry = new Mesh.GPUMeshRegistry gl
-
-
-  # vertexShaderSource = '''
-  # void main() {
-  #   gl_Position = matrix * v_position;
-  #   gl_Position.x += v_transform[3][3];
-  # }
-  # '''
-
-  # fragmentShaderSource = '''
-  # out vec4 output_color;  
-  # void main() {
-  #   output_color = color;
-  # }'''
-
-  # fragmentShaderSource2 = '''
-  # out vec4 output_color;  
-  # void main() {
-  #   output_color = vec4(0,1,0,1);
-  # }'''
-
-  # mat1 = new Material.Raw
-  #   vertex   : vertexShaderSource
-  #   fragment : fragmentShaderSource
-  #   input:
-  #     position  : vec4()
-  #     transform : mat4()
-  #     matrix    : mat4()
-  #     color     : vec4 0,1,0,1
-  # mesh = Mesh.create geo, mat1
-
-  # m1 = new Mesh.GPUMesh gl, attrRegistry, mesh
-  # meshRegistry.add m1
-
-
   ss  = new Symbol shape
-
-  # console.log fragmentHeader
-  # console.log fragmentRunner
-  # console.log ss.mesh.shader.vertex
-  # console.log ss.mesh.shader.vertex
-  # ssm = gpuRenderer.addMesh ss
 
   scene.add ss
 
   sp1 = ss.create()
-  # sp1.variable.color.rgb = [0,0,1]
-  # console.log sp1
-  
-
-  # sp1.position.x = 100
-  # ss.setVariable 0, 'color', vec4(0,1,0,1)
-
-  # console.warn ">>>"
-  # console.log sp1.getVariable 'color'
-
-
-  # console.log mat1.shader
-  # mat1.writePointVariable 'position', (vec4 [0,0,0,0])
-  # mat1.writePointVariable 'color', (vec4 [0,0,0,1])
-  # mat1.writePointVariable 'uv', (vec2 [0,0])
-  # mat1.writeObjectVariable 'matrix', (mat4 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])
-  # mat1.writeOutputVariable 'color', (vec4 [0,0,0,0])
-  # console.log mat1.shader.vertex
-  # console.log mat1.shader.fragment
-
-  # logger.group "TEST FRAME 1", =>
-  #   # geo.point.data.position.read(0)[0] = 7
-  #   # console.log geo.instance.data.color
-  #   geo.instance.addAttribute 'color', 
-  #     type: vec4
-  #     default: vec4(1,0,0,1)
-  #   # mat1.fragment = fragmentShaderSource2
-  #   meshRegistry.update()
-  #   meshRegistry._attributeRegistry.update()
-  #   # meshRegistry.update()
-  
-  # logger.group "TEST FRAME 2", =>
-  #   geo.instance.data.color.read(0).rgba = [1,1,0,1]
-  #   geo.instance.data.color.read(1).rgba = [0,1,0,1]
-  #   # geo.point.data.position.read(0)[0] = 7
-  # #   geo.point.data.position.read(0)[0] = 7
-  # #   geo.point.data.position.read(0)[1] = 7
-  #   attrRegistry.update()
-  #   meshRegistry.update()
-
-  # logger.group "TEST FRAME 3", =>
-  # #   # geo.point.data.position.read(1)[0] = 8
-  # #   # geo.point.data.uv.read(1)[0] = 8
-  # #   # geo.instance.add({color: vec4(0,0,1,1)})
-  # #   geo.instance.add({color: vec4(0,1,0,1), transform:mat4(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10)})
-  # #   # geo.instance.add({color: vec4(0,0,0,1)})
-  # #   # geo.instance.data.color.read(0)[0] = 0.7
-  #   attrRegistry.update()
-  #   meshRegistry.update()
-
-  # logger.group "TEST FRAME 4", =>
-  #   attrRegistry.update()
-  #   # meshRegistry.update()
-
-  # s = new Scene gl
-  
 
   width  = gl.canvas.clientWidth 
   height = gl.canvas.clientHeight
@@ -624,7 +503,7 @@ export test = (shape) ->
  
   renderloop = ->
     currentloop += 1
-    # window.requestAnimationFrame renderloop
+    window.requestAnimationFrame renderloop
     if frameRequested then return
     frameRequested = true
     go()
@@ -794,6 +673,8 @@ class Scene extends DisplayObject
     @views.add view
     view
 
+
+export scene = (args...) -> new Scene args...
 
 
 

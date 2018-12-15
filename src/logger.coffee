@@ -159,7 +159,7 @@ export class Buffered extends StreamTransformer
 export defaultLogger = new Logger()
 stream = new Console
 stream.setFormatter scopedFormatter
-defaultLogger.attachStream stream
+# defaultLogger.attachStream stream
 
 export log     = defaultLogger.log
 export group   = defaultLogger.groupWith []
