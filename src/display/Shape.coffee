@@ -566,7 +566,7 @@ export class GLSLRenderer
 
   render: (s) ->
     shape    = @renderShape(s)
-    defsCode = 'sdf_shape main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_shape(#{shape.name}, #{shape.idName}, #{shape.bbName}, #{shape.cdName});\n}"
+    defsCode = 'sdf_shape _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_shape(#{shape.name}, #{shape.idName}, #{shape.bbName}, #{shape.cdName});\n}"
     # new ShaderBuilder (new SDFShader {fragment: defsCode}), @idmap
     {fragment: defsCode}
 

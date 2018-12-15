@@ -1,4 +1,5 @@
-import * as Lazy from 'basegl/object/lazy'
+import * as Lazy     from 'basegl/object/lazy'
+import * as Property from 'basegl/object/Property'
 
 
 ###################
@@ -27,14 +28,15 @@ export class GLSLBuilder
   addInput          : (args...) -> @addAttr 'in'      , args...
   addOutput         : (args...) -> @addAttr 'out'     , args...
   addUniform        : (args...) -> @addAttr 'uniform' , args...
-  addAttr           : (qual, prec, type, name) ->
-    p = if prec then " #{prec} " else ' '
-    @addExpr "#{qual}#{p}#{type} #{name}"
+  addAttr           : (qual,type,name,cfg) -> # (qual, prec, type, name) ->
+    l = if cfg.loc?  then "layout(location=#{cfg.loc}) " else ""
+    p = if cfg.prec? then " #{cfg.prec} " else " "
+    @addExpr "#{l}#{qual}#{p}#{type} #{name}"
   buildMain     : (f) ->
     @addLine 'void main() {'
     f?()
     @addLine '}'
-    
+
   
 
 #######################
@@ -81,8 +83,9 @@ export class ShaderBuilder
   resetVariables: ->
     @constants  = {}
     @attributes = {}
+    @locals     = {}
     @uniforms   = {}
-    @outputs    = {}
+    @outputs    = {color: 'vec4'}
 
   resetPrecision: ->
     @precision =
@@ -93,6 +96,7 @@ export class ShaderBuilder
 
   mkVertexName:   (s) -> 'v_' + s
   mkFragmentName: (s) -> s
+  mkOutputName:   (s) -> 'output_' + s
 
   readVar: (name,cfg) ->
     type = cfg
@@ -129,24 +133,37 @@ export class ShaderBuilder
         v = @readVar name, cfg
         fragmentName = @mkFragmentName v.name
         vertexName   = @mkVertexName   v.name
-        vertexCode.addInput   v.prec, v.type, vertexName
-        vertexCode.addOutput  v.prec, v.type, fragmentName
-        fragmentCode.addInput v.prec, v.type, fragmentName
+        vertexCode.addInput   v.type, vertexName  , {prec: v.prec}
+        vertexCode.addOutput  v.type, fragmentName, {prec: v.prec}
+        fragmentCode.addInput v.type, fragmentName, {prec: v.prec}
         vertexBodyCode.addAssignment fragmentName, vertexName
+
+    if @locals
+      addSection 'Local variables shared between vertex and fragment shaders'
+      for name,cfg of @locals
+        v = @readVar name, cfg
+        fragmentName = @mkFragmentName v.name
+        vertexName   = @mkVertexName   v.name
+        vertexCode.addOutput  v.type, fragmentName, {prec: v.prec}
+        fragmentCode.addInput v.type, fragmentName, {prec: v.prec}
     
     if @uniforms
       addSection 'Uniforms'
       for name,cfg of @uniforms
         v = @readVar name, cfg       
         prec = 'mediump' # FIXME! We cannot get mismatch of prec between vertex and fragment shader!
-        vertexCode.addUniform   prec, v.type, v.name
-        fragmentCode.addUniform prec, v.type, v.name
+        vertexCode.addUniform   v.type, v.name, {prec}
+        fragmentCode.addUniform v.type, v.name, {prec}
 
     if @outputs
       fragmentCode.addSection 'Outputs'
+      loc = 0    
       for name,cfg of @outputs
-        v = @readVar name, cfg        
-        fragmentCode.addOutput v.prec, v.type, v.name
+        v    = @readVar name, cfg 
+        name = @mkOutputName v.name
+        prec = v.prec       
+        fragmentCode.addOutput v.type, name, {prec, loc}
+        loc += 1
 
     
     ### Generating vertex code ###
@@ -239,6 +256,7 @@ export class Material extends Lazy.LazyManager
     @_variable = 
       input  : cfg.input  || {}
       output : cfg.output || {}
+      locals : cfg.locals || {}
   @getter 'variable', -> @_variable
 
   vertexCode   : -> ''

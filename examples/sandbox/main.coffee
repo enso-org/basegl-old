@@ -20,13 +20,11 @@ import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 
 
 myShape = basegl.expr ->
-  (circle(50) - circle(30))
+  (circle(50) - circle(30).moveX(10))
 
-shader = myShape.toShader()
-console.log shader.fragment 
 
 main = () ->
-  Sprite.test(shader.fragment )
+  Sprite.test(myShape)
   # canvas = document.getElementById("canvas")
   # gl = canvas.getContext("webgl2")
   # if (!gl) 

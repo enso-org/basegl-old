@@ -319,7 +319,6 @@ redirectBuiltins = ->
   names        = []
   redirections = []
   for line in lines
-    # console.log line.replace(builtinPattern, "$1 overloaded_$2 $3 { return $2$3 }")
     match    = line.match builtinPattern
     outType  = match[1]
     fname    = match[2]
@@ -342,11 +341,13 @@ fragment_lib2 = fragment_lib.replace anyVar, (v) =>
   if builtinsMap.has v then "overloaded_#{v}" else v
 
 
-spriteBasciMaterialVertexShader = '''
-out vec3 world;
-out vec3 local;
-out vec3 eye;
+allowOverloading = (src) -> 
+  src2 = src.replace anyVar, (v) =>
+    if builtinsMap.has v then "overloaded_#{v}" else v
+  redirections.code + '\n' + src2
 
+
+spriteBasciMaterialVertexShader = '''
 void main() {
   local                = vec3((uv - 0.5) * bbox, 0.0);
   mat4 modelViewMatrix = viewMatrix * modelMatrix;
@@ -358,39 +359,48 @@ void main() {
 }
 '''
 
-spriteBasciMaterialFragmentShader = '''
-in vec3  world;
-in vec3  local;
-in vec3  eye;
-
-out vec4 output_color;  
-''' + redirections.code + '\n' + fragment_lib2 + '\n' +
-
+spriteBasciMaterialFragmentShader= '''
+void main() {
+  output_color = vec4(1.0,0.0,0.0,1.0);
+}
 '''
 
-sdf_shape _main(vec2 p) {
-float shape_1   = sdf_circle(p,50.0);
-vec4  shape_1_bb = bbox_new(50.0,50.0);
-vec4  shape_1_cd = rgb2lch(vec4(1,0,0,1));
-int shape_1_id = newIDLayer(shape_1, 1);
-float shape_2   = sdf_circle(p,30.0);
-vec4  shape_2_bb = bbox_new(30.0,30.0);
-vec4  shape_2_cd = rgb2lch(vec4(1,0,0,1));
-int shape_2_id = newIDLayer(shape_2, 2);
-float shape_3   = sdf_difference(shape_1,shape_2);
-vec4  shape_3_bb = bbox_union(shape_1_bb,shape_2_bb);
-vec4  shape_3_cd = shape_1_cd;
-int shape_3_id = id_difference(shape_1, shape_2, shape_1_id);
-return sdf_shape(shape_3, shape_3_id, shape_3_bb, shape_3_cd);
-}
+export spriteBasicMaterial = (cfg={}) -> 
+  new Material.Raw
+    vertex:   cfg.vertex   || spriteBasciMaterialVertexShader
+    fragment: cfg.fragment || spriteBasciMaterialFragmentShader
+    locals:
+      world : 'vec3'
+      local : 'vec3'
+      eye   : 'vec3'
+    input:
+      modelMatrix      : mat4()
+      viewMatrix       : mat4()
+      projectionMatrix : mat4()
+      uv               : vec2()
+      bbox             : vec2(100,100)
+    
 
-''' + fragmentRunner
 
-export spriteBasicMaterial = new Material.Raw
-  vertex   : spriteBasciMaterialVertexShader
-  fragment : spriteBasciMaterialFragmentShader
+export spriteBasicGeometry = (cfg) ->
+  Geometry.rectangle # FIXME: exposes unnecessary var 'position'
+    label    : "Sprite"
+    width    : cfg.size || 100
+    height   : cfg.size || 100
+    instance :
+      modelMatrix    : mat4()
+      bbox           : vec2(cfg.size||100, cfg.size||100)
+      symbolID       : float 0
+      symbolFamilyID : float 0
+      zIndex         : float 0
+    object:
+      viewMatrix       : mat4
+      projectionMatrix : mat4
+      zoom             : float 1 # FIXME, hardcoded in mesh rendering  
+  
 
-class SpriteSystem extends DisplayObject
+
+export class SpriteSystem extends DisplayObject
   @mixin Lazy.LazyManager
 
   constructor: (cfg={}) ->
@@ -401,36 +411,9 @@ class SpriteSystem extends DisplayObject
       lazyManager : new Lazy.ListManager
 
     @logger.group "Initializing", =>
-      @_geometry = cfg.geometry || Geometry.rectangle # FIXME: exposes unnecessary var 'position'
-        label    : "Sprite"
-        width    : cfg.size || 100
-        height   : cfg.size || 100
-        instance :
-          modelMatrix    : mat4()
-          bbox           : vec2(cfg.size||100, cfg.size||100)
-          symbolID       : float 0
-          symbolFamilyID : float 0
-          zIndex         : float 0
-        object:
-          viewMatrix       : mat4
-          projectionMatrix : mat4
-          zoom             : float 1 # FIXME, hardcoded in mesh rendering
-
-      @_material = cfg.material || new Material.Raw
-        vertex   : cfg.shader?.vertex   || spriteBasciMaterialVertexShader
-        fragment : cfg.shader?.fragment || spriteBasciMaterialFragmentShader
-        # input:
-        #   modelMatrix      : mat4()
-        #   viewMatrix       : mat4
-        #   projectionMatrix : mat4()
-        #   uv               : vec2()
-        #   bbox             : vec2()
-        #   symbolID         : float()
-        #   symbolFamilyID   : float()
-        #   zoom             : float()
-        #   zIndex           : float()
-
-      @_mesh = Mesh.create @_geometry, @_material
+      @_geometry = cfg.geometry || spriteBasicGeometry(cfg)
+      @_material = cfg.material || spriteBasicMaterial(cfg)
+      @_mesh     = Mesh.create @_geometry, @_material
 
   setVariable: (ix, name, data) ->
     @geometry.instance.data[name].read(ix).set data
@@ -449,6 +432,26 @@ class SpriteSystem extends DisplayObject
 
 
 
+
+fragment_lib2 = allowOverloading fragment_lib
+
+symbolBasciMaterialFragmentShader = (shapeShader) ->
+  [fragment_lib2, shapeShader, fragmentRunner].join '\n'
+
+
+export symbolBasicMaterial = (shapeShader, cfg) -> 
+  spriteBasicMaterial Property.extend cfg,
+    fragment: symbolBasciMaterialFragmentShader shapeShader
+
+
+export class Symbol extends DisplayObject
+  @mixin SpriteSystem
+
+  constructor: (shape, cfg={}) -> 
+    super()
+    @mixins.constructor Property.extend cfg,
+      material: symbolBasicMaterial shape.toShader().fragment
+    @add @spriteSystem
    
 
 
@@ -467,7 +470,7 @@ resizeCanvasToDisplaySize = (canvas, multiplier) ->
     true
   false
 
-export test = () ->
+export test = (shape) ->
   scene = new Scene
   gpuRenderer = new GPURenderer
   scene.addRenderer gpuRenderer
@@ -533,7 +536,7 @@ export test = () ->
   # meshRegistry.add m1
 
 
-  ss  = new SpriteSystem
+  ss  = new Symbol shape
 
   # console.log fragmentHeader
   # console.log fragmentRunner

@@ -60,6 +60,7 @@ export class Mesh extends DisplayObject
       @logger.group "Binding variables", =>
         @_bindings = bindings
         @_shaderBuilder.resetVariables()
+        @_shaderBuilder.locals = @material.variable.locals
         @_fillMatches bindings 
         @_fillMissing missing
         @_generateShader()
@@ -79,7 +80,7 @@ export class Mesh extends DisplayObject
   _fillMissing: (missing) ->
     for varName in missing      
       @logger.info "Using default value for variable '#{varName}'"
-      varDef   = @material.variable.input[varName]
+      varDef = @material.variable.input[varName]
       @_shaderBuilder.constants[varName] =
         type  : varDef.glType.name
         value : varDef.toGLSL()
