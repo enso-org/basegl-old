@@ -472,6 +472,7 @@ resizeCanvasToDisplaySize = (canvas, multiplier) ->
 
 export test = (shape) ->
   scene = new Scene
+    dom: 'test'
   gpuRenderer = new GPURenderer
 
 
@@ -495,8 +496,8 @@ export test = (shape) ->
   sp1_2.position.x = 100
   sp1_2.update()
 
-  width  = gl.canvas.clientWidth 
-  height = gl.canvas.clientHeight
+  # width  = gl.canvas.clientWidth 
+  # height = gl.canvas.clientHeight
 
   # aspect = width / height
 
@@ -509,7 +510,7 @@ export test = (shape) ->
 
 
 
-  {pbo, array2, size} = testx(gl, width, height)
+  {pbo, array2, size} = testx(gl, 1,1) # scene.width, scene.height)
 
   maxloops = 5 
   currentloop = 0
@@ -544,11 +545,13 @@ export test = (shape) ->
     # ssm.draw(camera.viewProjectionMatrix)
     
     gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
-    gl.readPixels 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0
+    # gl.readPixels 0, 0, scene.width, scene.height, gl.RGBA, gl.UNSIGNED_BYTE, 0
+    gl.readPixels scene.mouse.x, scene.height-scene.mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0
     # gl.readPixels(mouse.x, pickingTexture.height - mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
     fence(gl).then ->
       gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, 4
       gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
+      console.log ">", array2
       render()
       gl.finish()
 
@@ -631,12 +634,14 @@ class GPURenderer
     gpuMesh
 
   updateSize: (width, height) -> 
+    console.log "GPURENDERER updateSize", width, height, @dom
     if (@dom.width != width || @dom.height != height)
       @dom.width  = width
       @dom.height = height
       @_gl.viewport 0, 0, width, height
       true
     false
+    console.log "AFTER GPURENDERER updateSize", @dom.width, @dom.height
     
   render: (camera) ->
     # console.log "render", camera.position.xyz
@@ -682,11 +687,10 @@ class Pass
   constructor: ->
 
 
-
 class Scene extends DisplayObject
   @generateAccessors()
 
-  constructor: (@_gl, cfg) -> 
+  constructor: (cfg) -> 
     super()
     @_views     = new Set
     @_renderers = new Set
@@ -694,19 +698,24 @@ class Scene extends DisplayObject
     @_dom = new SceneDOM cfg
     @_dom.onResize.addEventListener (rect) =>
       @resize rect.width, rect.height
+    @_dom.initSize()
     @_mainView = @addView()
 
-    # @onChildAdded.addEventListener, (child) => @_add child
+    @_mouse = {x:0,y:0}
+
+    window.addEventListener 'mousemove', (e) =>
+      # Mouse position can be non integer and negative e.g. when div position
+      # is non integer.
+      @mouse.x = Math.min(@width ,Math.max(0,Math.round(e.x - @dom.position.x)))
+      @mouse.y = Math.min(@height,Math.max(0,Math.round(e.y - @dom.position.y)))
 
   addRenderer: (renderer) ->
     @renderers.add renderer
     layer = @dom.addLayer renderer.label
     layer.appendChild renderer.dom
     renderer.updateSize()
-
     @views.forEach (view) => 
       view.addRenderer renderer
-
 
   selectRenderer: (obj) ->
     for renderer from @renderers
@@ -812,7 +821,7 @@ class SceneDOM
         throw {msg, cfg}
 
       @_element = document.createElement 'div'
-      @_element.id            = 'basegl-scene'
+      @_element.id            = 'scene'
       @_element.style.display = 'flex'
       @_element.style.width   = '100%'
       @_element.style.height  = '100%'
@@ -820,10 +829,17 @@ class SceneDOM
         
       resizeObserver = new ResizeObserver ([r]) =>
         @onResize.dispatch r.contentRect
-      #   @geometry.resize r.contentRect.width, r.contentRect.height
       resizeObserver.observe @_element
+      @refreshPosition_SLOW()
 
+  # WARNING: This is slow, it requires whole DOM redraw.
+  refreshPosition_SLOW: ->
+    @_position = @_element.getBoundingClientRect()
 
+  initSize: ->
+    @onResize.dispatch
+      width  : @_element.clientWidth
+      height : @_element.clientHeight
       # @domLayer   = @addLayer 'dom'
       # @glLayer    = @addLayer 'gl'
       # @statsLayer = @addLayer 'stats'
@@ -833,6 +849,7 @@ class SceneDOM
   addLayer: (name) =>
     layer = document.createElement 'div'
     layer.style.pointerEvents = 'none'
+    layer.style.display       = 'flex'
     layer.style.margin        = 0
     layer.style.width         = '100%'
     layer.style.height        = '100%'
