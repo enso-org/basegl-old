@@ -301,11 +301,11 @@ class Sprite extends DisplayObject
     @getVariable(name).set value
 
   update: -> 
-    if @dirty.isSet
+    if @transform.dirty.isSet
       super.update()
       # FIXME 1 : xform should be kept as Buffer
       # FIXME 2 : @xform causes update loop, maybe mixins?
-      xf = new Buffer.Buffer Float32Array, @_xform
+      xf = new Buffer.Buffer Float32Array, @transform._matrix
       @_varData['modelMatrix'].read(@id).set xf
 
 
@@ -473,24 +473,37 @@ resizeCanvasToDisplaySize = (canvas, multiplier) ->
 export test = (shape) ->
   scene = new Scene
   gpuRenderer = new GPURenderer
+
+
+  v2 = scene.addView()
+  v2.camera.position.y = 60
+  v2.camera.position.z = 300
+
   scene.addRenderer gpuRenderer
   
   gl = gpuRenderer.gl
 
   ss  = new Symbol shape
+  ss2 = new Symbol shape
 
   scene.add ss
+  scene.add ss2
+  v2.add ss
 
   sp1 = ss.create()
+  sp1_2 = ss2.create()
+  sp1_2.position.x = 100
+  sp1_2.update()
 
   width  = gl.canvas.clientWidth 
   height = gl.canvas.clientHeight
 
-  aspect = width / height
+  # aspect = width / height
 
   
-  camera = new Camera
-    aspect: aspect
+  camera = scene.mainView.camera
+  # camera = new Camera
+  #   aspect: aspect
 
   camera.position.z = 300
 
@@ -509,13 +522,19 @@ export test = (shape) ->
     go()
 
   go = ->
-    camera.rotation.z += 0.1
-    # sp1.position.x += 1
-    # sp1.update()
-    ss.update()
+    # camera.rotation.z += 0.1
+    # console.log ""
+    # console.log "---"
+    sp1.position.x += 1
+    # console.log sp1
+    sp1.update()
+    # console.log "---"
+    # console.log ""
+    # ss.update()
     # meshRegistry.update()
     # gpuRenderer.dirty.set()
-    gpuRenderer.render camera
+    # gpuRenderer.render camera
+    scene.render()
 
     # a = 0
     # for i in [0...1000000]
@@ -572,7 +591,7 @@ fence = (gl) ->
 class GPURenderer
   @mixin Lazy.LazyManager
 
-  constructor: () ->
+  constructor: ->
     @mixins.constructor
       label: @constructor.name
     
@@ -582,47 +601,79 @@ class GPURenderer
     @_dom.style.width  = '100%'
     @_dom.style.height = '100%'
 
-    @_gl = @_dom.getContext("webgl2")
+    @_gl = @_dom.getContext "webgl2"
+      # premultipliedAlpha: false
     if !@_gl then throw "WebGL not supported"
-    @updateSize()
+    @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
+    @_gl.enable(@_gl.BLEND);
+    # gl.disable(gl.DEPTH_TEST);
+    # @updateSize()
 
     @_attributeRegistry = new Variable.GPUAttributeRegistry @gl    
     @_gpuMeshRegistry   = new Mesh.GPUMeshRegistry          @gl
       
-    # @gpuMeshRegistry.dirty.onSet.addEventListener   => @dirty.set()
-    # @attributeRegistry.dirty.onSet.addEventListener => @dirty.set()
+    @gpuMeshRegistry.dirty.onSet.addEventListener   => @dirty.set()
+    @attributeRegistry.dirty.onSet.addEventListener => @dirty.set()
+
+    @_meshes = new Map
 
   add: (a) -> 
     @addMesh a
 
   addMesh: (meshLike) ->
     mesh    = meshLike.mesh
-    gpuMesh = new Mesh.GPUMesh @gl, @attributeRegistry, mesh
-    @gpuMeshRegistry.add gpuMesh
-    @dirty.set()
+    gpuMesh = @meshes.get mesh
+    if not gpuMesh
+      gpuMesh = new Mesh.GPUMesh @gl, @attributeRegistry, mesh
+      @meshes.set mesh, gpuMesh
+      @gpuMeshRegistry.add gpuMesh
+      @dirty.set()
+    gpuMesh
 
-  updateSize: -> 
-    width  = @dom.clientWidth 
-    height = @dom.clientHeight
-    if (@dom.width != width ||  @dom.height != height)
+  updateSize: (width, height) -> 
+    if (@dom.width != width || @dom.height != height)
       @dom.width  = width
       @dom.height = height
       @_gl.viewport 0, 0, width, height
       true
     false
     
-
   render: (camera) ->
-    if @dirty.isSet || camera.transform.dirty.isSet
+    # console.log "render", camera.position.xyz
+    @gpuMeshRegistry.forEach (gpuMesh) =>
+      gpuMesh.draw camera
+
+  update: ->
+    if @dirty.isSet
       @logger.group "Updating", =>
         @attributeRegistry.update()    
         @gpuMeshRegistry.update()
-        @gpuMeshRegistry.forEach (gpuMesh) =>
-          gpuMesh.draw camera #.viewProjectionMatrix
         @dirty.unset()
 
   handles: (obj) -> true # FIXME
 
+  addView: ->
+    new GPURendererView @
+
+
+
+export class GPURendererView
+  @generateAccessors()
+
+  constructor: (@_renderer) ->
+    @_instances = new Set
+
+  add: (obj) ->
+    instance = @renderer.add obj
+    @instances.add instance
+
+  render: (camera) ->
+    @instances.forEach (instance) =>
+      instance.draw camera
+
+  handles: (obj) ->
+    @renderer.handles obj
+    
 
 
 
@@ -643,7 +694,7 @@ class Scene extends DisplayObject
     @_dom = new SceneDOM cfg
     @_dom.onResize.addEventListener (rect) =>
       @resize rect.width, rect.height
-    @newView()
+    @_mainView = @addView()
 
     # @onChildAdded.addEventListener, (child) => @_add child
 
@@ -653,25 +704,38 @@ class Scene extends DisplayObject
     layer.appendChild renderer.dom
     renderer.updateSize()
 
-  add: (child) ->
-    super.add child
-    for renderer from @renderers
-      if renderer.handles child
-        return renderer.add child
+    @views.forEach (view) => 
+      view.addRenderer renderer
 
-    msg = 'No registred renderer can handle the provided object'
-    throw {msg, obj}
+
+  selectRenderer: (obj) ->
+    for renderer from @renderers
+      if renderer.handles obj
+        return renderer
+    return null
+
+  add: (child) -> @mainView.add child
 
   resize: (width, height) ->
     @_width  = width 
     @_height = height
+    @renderers.forEach (renderer) =>
+      renderer.updateSize width, height
     @views.forEach (view) =>
-      view.updateSize()
+      view.updateSize width, height
 
-  newView: (cfg) -> 
-    view = new View @, cfg
+  addView: (cfg) -> 
+    view = new View cfg
     @views.add view
+    for renderer from @renderers
+      view.addRenderer renderer
     view
+
+  render: ->
+    @renderers.forEach (renderer) =>
+      renderer.update()
+    @views.forEach (view) =>
+      view.render()
 
 
 export scene = (args...) -> new Scene args...
@@ -681,20 +745,48 @@ export scene = (args...) -> new Scene args...
 class View
   @generateAccessors()
 
-  constructor: (@_scene, cfg={}) ->
+  constructor: (cfg={}) ->
     @_camera = cfg.camera ? new Camera
     @_width  = null
     @_height = null
+
+    @_scopes = new Map
+    @_renderers = new Set
     @updateSize()
 
   @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
   @setter 'height' , (height) -> @_height = height ; @updateSize()
 
-  updateSize: -> 
-    width  = @_width  ? @scene.width
-    height = @_height ? @scene.height
+  updateSize: (sceneWidth, sceneHeight) -> 
+    width  = @width  ? sceneWidth
+    height = @height ? sceneHeight
     @camera.aspect = width / height
 
+  _selectRenderer: (obj) ->
+    for renderer from @renderers
+      if renderer.handles obj
+        return renderer
+    return null
+
+  add: (child) ->
+    renderer = @_selectRenderer child
+    if not renderer
+      msg = 'No registred renderer can handle the provided object'
+      throw {msg, obj}
+    
+    scope = @scopes.get renderer
+    if not scope
+      scope = new Set
+      @scopes.set renderer, scope
+    scope.add child
+    renderer.add child
+
+  addRenderer: (renderer) ->
+    @renderers.add renderer.addView() 
+
+  render: ->
+    @renderers.forEach (renderer) =>
+      renderer.render @camera   
 
 
 class SceneDOM
@@ -741,7 +833,6 @@ class SceneDOM
   addLayer: (name) =>
     layer = document.createElement 'div'
     layer.style.pointerEvents = 'none'
-    layer.style.position      = 'absolute'
     layer.style.margin        = 0
     layer.style.width         = '100%'
     layer.style.height        = '100%'
