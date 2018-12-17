@@ -1,6 +1,7 @@
 
 import * as Property from "basegl/object/Property"
 import * as Buffer   from 'basegl/data/buffer'
+import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 
 
@@ -35,17 +36,18 @@ class GLType
 ### Batch preparation ###
 
 typesCfg =
-  float        : {name: 'float' , bufferType: Float32Array}
-  int          : {name: 'int'   , bufferType: Int32Array}
-  float_vec2   : {name: 'vec2'  , item: 'float' , size: 2}
-  float_vec3   : {name: 'vec3'  , item: 'float' , size: 3}
-  float_vec4   : {name: 'vec4'  , item: 'float' , size: 4}
-  int_vec2     : {name: 'ivec2' , item: 'int'   , size: 2}
-  int_vec3     : {name: 'ivec3' , item: 'int'   , size: 3}
-  int_vec4     : {name: 'ivec4' , item: 'int'   , size: 4}
-  float_mat2   : {name: 'mat2'  , item: 'float' , size: 4}
-  float_mat3   : {name: 'mat3'  , item: 'float' , size: 9}
-  float_mat4   : {name: 'mat4'  , item: 'float' , size: 16}
+  float        : {name: 'float'     , bufferType: Float32Array}
+  int          : {name: 'int'       , bufferType: Int32Array}
+  float_vec2   : {name: 'vec2'      , item: 'float' , size: 2}
+  float_vec3   : {name: 'vec3'      , item: 'float' , size: 3}
+  float_vec4   : {name: 'vec4'      , item: 'float' , size: 4}
+  int_vec2     : {name: 'ivec2'     , item: 'int'   , size: 2}
+  int_vec3     : {name: 'ivec3'     , item: 'int'   , size: 3}
+  int_vec4     : {name: 'ivec4'     , item: 'int'   , size: 4}
+  float_mat2   : {name: 'mat2'      , item: 'float' , size: 4}
+  float_mat3   : {name: 'mat3'      , item: 'float' , size: 9}
+  float_mat4   : {name: 'mat4'      , item: 'float' , size: 16}
+  sampler2D    : {name: 'sampler2D' , item: 'float' , size: null}
 
 webGL = {types: {}}
 for name,cfg of typesCfg
@@ -54,21 +56,78 @@ for name,cfg of typesCfg
   glName = name.toUpperCase()
   webGL.types[name] = new GLType glName, cfg
 
-
-
-
-
-
 notImplementError = (cons, fn) -> 
   throw "Type #{cons} does not implement '#{fn}' method"
-
-
 
 export class Type
   @default : -> notImplementError @name, 'default'
   
   toGLSL   : -> notImplementError @constructor.name, 'toGLSL'
   @getter 'rawArray', -> notImplementError @constructor.name, 'rawArray'
+
+
+
+###############
+### Texture ###
+###############
+
+class Texture
+  @glType: webGL.types.sampler2D
+
+  @generateAccessors()
+  
+  constructor: (url) ->
+    @_ready    = false
+    @_onLoaded = singleShotEventDispatcher() 
+    @_cache    = new WeakMap
+    @_load url
+
+  @getter 'type'    , -> @constructor
+
+  _load: (url) -> 
+    @image = new Image()
+    @image.crossOrigin = 'anonymous'
+    @image.onload = =>
+      @onLoaded.dispatch()
+    @image.src = url
+    
+  glValue: (gl) ->
+    texture = @cache.get gl
+    if texture then return texture
+
+    tmpImage       = new Uint8Array [0,0,0,0]
+    tmpWidth       = 1
+    tmpHeight      = 1
+    tmpBorder      = 0
+    level          = 0
+    internalFormat = gl.RGBA
+    format         = gl.RGBA
+    type           = gl.UNSIGNED_BYTE
+    
+    texture = gl.createTexture()
+    @cache.set gl, texture
+    gl.bindTexture gl.TEXTURE_2D, texture
+    gl.texImage2D  gl.TEXTURE_2D, level, internalFormat, tmpWidth, tmpHeight, 
+                   tmpBorder, format, type, tmpImage
+
+    @onLoaded.addEventListener =>
+      gl.bindTexture gl.TEXTURE_2D, texture
+      gl.texImage2D gl.TEXTURE_2D, level, internalFormat, format, type, @image
+
+      if isPowerOf2 @image.width && isPowerOf2 @image.height 
+        gl.generateMipmap gl.TEXTURE_2D
+      else
+        gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE
+        gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE
+        gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR
+    
+    texture
+
+
+isPowerOf2 = (value) ->
+  (value & (value - 1)) == 0
+
+export texture = (args...) -> new Texture args...
 
 
 

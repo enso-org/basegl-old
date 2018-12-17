@@ -59,7 +59,7 @@ export create = (args...) -> new Geometry args...
 ### Basic shapes ###
 ####################
 
-export rectangle = (cfg) ->
+export rectangle = (cfg={}) ->
   width  = cfg.width  || 10
   height = cfg.height || 10
   w2     = width  / 2

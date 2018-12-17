@@ -8,8 +8,10 @@ import * as Property from 'basegl/object/Property'
 import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Buffer   from 'basegl/data/buffer'
 
+import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
+
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 import * as M from 'gl-matrix'
@@ -239,6 +241,40 @@ bvec4 not(bvec4 x)
 
 
 
+# loadTexture = (gl, url) ->
+#   texture = gl.createTexture()
+#   gl.bindTexture(gl.TEXTURE_2D, texture)
+
+#   level = 0
+#   internalFormat = gl.RGBA
+#   width = 1
+#   height = 1
+#   border = 0
+#   srcFormat = gl.RGBA
+#   srcType = gl.UNSIGNED_BYTE
+#   pixel = new Uint8Array([0, 0, 255, 255])  
+#   gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+#                 width, height, border, srcFormat, srcType,
+#                 pixel)
+
+#   image = new Image()
+#   image.onload = =>
+#     gl.bindTexture(gl.TEXTURE_2D, texture)
+#     gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+#                   srcFormat, srcType, image)
+
+#     if (isPowerOf2(image.width) && isPowerOf2(image.height)) 
+#        gl.generateMipmap(gl.TEXTURE_2D)
+#     else
+#        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+#        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+#        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+#   image.src = url
+#   return texture
+
+
+
+
 class Camera extends DisplayObject
   @generateAccessors()
 
@@ -360,8 +396,11 @@ void main() {
 '''
 
 spriteBasciMaterialFragmentShader= '''
+layout(location = 1) out vec4 outColor1;
+
 void main() {
   output_color = vec4(1.0,0.0,0.0,1.0);
+  outColor1    = vec4(0.5,0.5,0.5,0.5);
 }
 '''
 
@@ -470,6 +509,32 @@ resizeCanvasToDisplaySize = (canvas, multiplier) ->
     true
   false
 
+
+
+fsboxVertexShader = '''
+
+out vec3 pos;
+void main() {
+  //mat4 modelViewMatrix = viewMatrix * modelMatrix;
+  //vec4 eyeT            = modelViewMatrix * vec4(position,1.0);
+  gl_Position = vec4(position,1.0); //          = projectionMatrix * eyeT;
+  pos = position;
+}
+'''
+
+fsboxFragmentShader= '''
+in vec3 pos;
+
+void main() {
+  vec3 uv = (pos + 1.0) / 2.0;
+  output_color = vec4(uv.x,uv.y,0.0,1.0);
+  output_color = texture(txt1, uv.xy);
+}
+'''
+
+
+
+
 export test = (shape) ->
   scene = new Scene
     dom: 'test'
@@ -484,11 +549,32 @@ export test = (shape) ->
   
   gl = gpuRenderer.gl
 
+  txt1 = texture 'https://webglfundamentals.org/webgl/lessons/resources/mip-low-res-enlarged.png'
+  
+  fsboxMaterial = 
+    new Material.Raw
+      vertex:   fsboxVertexShader
+      fragment: fsboxFragmentShader
+
+  fsboxGeometry = Geometry.rectangle
+    width  : 2
+    height : 2
+    object :
+      txt1: txt1
+
+  fsbox = Mesh.create fsboxGeometry, fsboxMaterial
+  # fsbox = new SpriteSystem
+  # fsbox.create()
+
   ss  = new Symbol shape
   ss2 = new Symbol shape
 
   scene.add ss
   scene.add ss2
+
+  scene.add fsbox
+
+
   v2.add ss
 
   sp1 = ss.create()
@@ -496,10 +582,14 @@ export test = (shape) ->
   sp1_2.position.x = 100
   sp1_2.update()
 
+
+  # console.log txt1.getGLTexture(gl)txt1
   # width  = gl.canvas.clientWidth 
   # height = gl.canvas.clientHeight
 
   # aspect = width / height
+
+  console.log ">>>", fsbox.shader.fragment
 
   
   camera = scene.mainView.camera
@@ -514,12 +604,13 @@ export test = (shape) ->
 
   maxloops = 5 
   currentloop = 0
- 
+  
+  cxc = 20
   renderloop = ->
     currentloop += 1
-    window.requestAnimationFrame renderloop
-    if frameRequested then return
-    frameRequested = true
+    # window.requestAnimationFrame renderloop
+    # if frameRequested then return
+    # frameRequested = true
     go()
 
   go = ->
@@ -539,8 +630,19 @@ export test = (shape) ->
 
     # a = 0
     # for i in [0...1000000]
-    #   for j in [0...20]
+    #   for j in [0...10]
     #     a = i + j
+
+    if cxc == 0 then return
+    cxc -= 1
+
+    window.requestAnimationFrame renderloop
+    if frameRequested
+      # console.warn "SKIP" 
+      return
+    frameRequested = true
+    
+    
     
     # ssm.draw(camera.viewProjectionMatrix)
     
@@ -551,7 +653,7 @@ export test = (shape) ->
     fence(gl).then ->
       gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, 4
       gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
-      console.log ">", array2
+      # console.log ">", array2
       render()
       gl.finish()
 
@@ -620,6 +722,10 @@ class GPURenderer
 
     @_meshes = new Map
 
+
+    
+
+
   add: (a) -> 
     @addMesh a
 
@@ -642,11 +748,40 @@ class GPURenderer
       true
     false
     console.log "AFTER GPURENDERER updateSize", @dom.width, @dom.height
+
+    @_framebuffer = @_gl.createFramebuffer()
+    @_textures = []
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+
+    for i in [0...2]
+      tex = @_gl.createTexture()
+      @_textures.push(tex)
+      @_gl.bindTexture(@_gl.TEXTURE_2D, tex)
+      level = 0
+      @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, width, height, 0, 
+                    @_gl.RGBA, @_gl.UNSIGNED_BYTE, null)
+      # attach texture to framebuffer
+      @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, @_gl.COLOR_ATTACHMENT0 + i,
+                              @_gl.TEXTURE_2D, tex, level)
     
-  render: (camera) ->
-    # console.log "render", camera.position.xyz
-    @gpuMeshRegistry.forEach (gpuMesh) =>
-      gpuMesh.draw camera
+
+    @_gl.drawBuffers([
+      @_gl.COLOR_ATTACHMENT0,
+      @_gl.COLOR_ATTACHMENT1 
+    ])
+
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+    # @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+    
+    
+  # render: (camera) ->
+  #   # console.log "render", camera.position.xyz
+  #   @gpuMeshRegistry.forEach (gpuMesh) =>
+  #     gpuMesh.draw camera
+
+  begin: ->
+  finish: ->
+
 
   update: ->
     if @dirty.isSet
@@ -742,9 +877,13 @@ class Scene extends DisplayObject
 
   render: ->
     @renderers.forEach (renderer) =>
+      renderer.begin()
+    @renderers.forEach (renderer) =>
       renderer.update()
     @views.forEach (view) =>
       view.render()
+    @renderers.forEach (renderer) =>
+      renderer.finish()
 
 
 export scene = (args...) -> new Scene args...

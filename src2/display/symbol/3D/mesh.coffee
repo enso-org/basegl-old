@@ -122,6 +122,7 @@ export class Mesh extends DisplayObject
 export create = (args...) -> new Mesh args...
 
 
+
 ###############
 ### GPUMesh ###
 ###############
@@ -220,6 +221,15 @@ export class GPUMesh extends Lazy.LazyManager
       GL.withVAO @_gl, @_vao, =>
         @_gl.uniformMatrix4fv(@_varLoc.viewMatrix, false, camera.viewMatrix)
         @_gl.uniformMatrix4fv(@_varLoc.projectionMatrix, false, camera.projectionMatrix)
+        
+        keys = Object.keys @mesh.geometry.object.data
+        for key in keys
+          if not (key in ['viewMatrix', 'projectionMatrix', 'zoom'])
+            texture = @mesh.geometry.object.data[key].glValue(@_gl)
+            @_gl.activeTexture @_gl.TEXTURE0
+            @_gl.bindTexture @_gl.TEXTURE_2D, texture
+            @_gl.uniform1i @_varLoc.txt1, 0
+
         @_gl.uniform1f(@_varLoc.zoom, 1.0)
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length
