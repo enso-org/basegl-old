@@ -73,18 +73,28 @@ export class Type
 ### Texture ###
 ###############
 
-class Texture
-  @glType: webGL.types.sampler2D
-
+class TextureWrapper
   @generateAccessors()
+
+  @glType: webGL.types.sampler2D
+  @getter 'type'   , -> Texture # FIXME: outside reference, we use it while rendering mesh
+  @getter 'glType' , -> @constructor.glType
+
+  constructor: (@_texture) ->
+  glValue: -> @texture
+
+
+class Texture
+  @generateAccessors()
+
+  @glType: webGL.types.sampler2D
+  @getter 'type'   , -> @constructor
+  @getter 'glType' , -> @constructor.glType
   
   constructor: (url) ->
     @_onLoaded = singleShotEventDispatcher() 
     @_cache    = new WeakMap
     @_load url
-
-  @getter 'type'   , -> @constructor
-  @getter 'glType' , -> @constructor.glType
 
   _load: (url) -> 
     @image = new Image()
@@ -111,6 +121,10 @@ class Texture
     gl.bindTexture gl.TEXTURE_2D, texture
     gl.texImage2D  gl.TEXTURE_2D, level, internalFormat, tmpWidth, tmpHeight, 
                    tmpBorder, format, type, tmpImage
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE
+    gl.texParameteri gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR
+
 
     @onLoaded.addEventListener =>
       gl.bindTexture gl.TEXTURE_2D, texture
@@ -129,9 +143,14 @@ class Texture
 isPowerOf2 = (value) ->
   (value & (value - 1)) == 0
 
-export texture = (args...) -> new Texture args...
-texture.type = Texture
+# export texture = (args...) -> new Texture args...
 
+export texture = (cfg) ->
+  if typeof cfg == 'string'
+    new Texture cfg
+  else 
+    new TextureWrapper cfg
+texture.type = Texture
 
 
 ##################

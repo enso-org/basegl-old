@@ -4,6 +4,8 @@ int drawBuffer = 0;
 int displayMode = 0;
 float pointerEvents = 1.0;
 
+layout(location = 1) out vec4 outColor1;
+
 void main() {
   vec2      p     = local.xy ;
   sdf_shape shape = _main(p);
@@ -45,5 +47,7 @@ void main() {
           output_color = vec4(0.0);
       }
   }
+  outColor1    = vec4(0.5,0.6,0.7,0.8);
+  
   // gl_FragColor = vec4(luv.x, luv.y, 0.0, 1.0);
 }

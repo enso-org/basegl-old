@@ -388,13 +388,13 @@ void main() {
 '''
 
 spriteBasciMaterialFragmentShader= '''
-layout(location = 1) out vec4 outColor1;
-
 void main() {
   output_color = vec4(1.0,0.0,0.0,1.0);
-  outColor1    = vec4(0.5,0.5,0.5,0.5);
 }
 '''
+
+# layout(location = 1) out vec4 outColor1;
+# outColor1    = vec4(0.5,0.6,0.7,0.8);
 
 export spriteBasicMaterial = (cfg={}) -> 
   new Material.Raw
@@ -517,6 +517,7 @@ void main() {
   vec3 uv = (pos + 1.0) / 2.0;
   output_color = vec4(uv.x,uv.y,0.0,1.0);
   output_color = texture(txt1, uv.xy);
+  output_color.g += 0.7;
 }
 '''
 
@@ -538,6 +539,7 @@ export test = (shape) ->
   gl = gpuRenderer.gl
 
   txt1 = texture 'https://webglfundamentals.org/webgl/lessons/resources/mip-low-res-enlarged.png'
+  # txt1 = texture 'https://vignette.wikia.nocookie.net/universeconquest/images/e/e6/Sample.jpg/revision/latest?cb=20171003194302'
   
   fsboxMaterial = 
     new Material.Raw
@@ -561,7 +563,11 @@ export test = (shape) ->
   scene.add ss
   scene.add ss2
 
-  scene.add fsbox
+  # scene.add fsbox
+  scene.xView.add fsbox
+  scene.xView.mesh = fsbox
+  scene.views.delete scene.xView # FIXME HACK
+  
 
 
   v2.add ss
@@ -628,7 +634,6 @@ export test = (shape) ->
 
     window.requestAnimationFrame renderloop
     if frameRequested
-      # console.warn "SKIP" 
       return
     frameRequested = true
     
@@ -730,37 +735,58 @@ class GPURenderer
     gpuMesh
 
   updateSize: (width, height) -> 
-    console.log "GPURENDERER updateSize", width, height, @dom
     if (@dom.width != width || @dom.height != height)
       @dom.width  = width
       @dom.height = height
       @_gl.viewport 0, 0, width, height
       true
     false
-    console.log "AFTER GPURENDERER updateSize", @dom.width, @dom.height
 
     @_framebuffer = @_gl.createFramebuffer()
     @_textures = []
     @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+    # @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
+    # @_gl.enable(@_gl.BLEND);
 
     for i in [0...2]
       tex = @_gl.createTexture()
       @_textures.push(tex)
       @_gl.bindTexture(@_gl.TEXTURE_2D, tex)
       level = 0
-      @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, width, height, 0, 
-                    @_gl.RGBA, @_gl.UNSIGNED_BYTE, null)
+      # tmpImage       = new Uint8Array [0,0,255,100]
+
+      ww = width
+      hh = height
+      xlen = 4*ww*hh
+      tmpImage       = new Uint8Array xlen
+
+      # for ii in [0 ... (ww*hh)]
+      #   tmpImage[4*ii    ] = ii % 122
+      #   tmpImage[4*ii + 1] = ii % 70
+      #   tmpImage[4*ii + 2] = ii % 255
+      #   tmpImage[4*ii + 3] = 100
+      
+      @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, ww, hh, 0, 
+                    @_gl.RGBA, @_gl.UNSIGNED_BYTE, tmpImage)
+      @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MAG_FILTER, @_gl.NEAREST);
+      @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MIN_FILTER, @_gl.NEAREST);
       # attach texture to framebuffer
-      @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, @_gl.COLOR_ATTACHMENT0 + i,
+      @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, (@_gl.COLOR_ATTACHMENT0 + i),
                               @_gl.TEXTURE_2D, tex, level)
+                              
+
+
+
     
 
     @_gl.drawBuffers([
       @_gl.COLOR_ATTACHMENT0,
       @_gl.COLOR_ATTACHMENT1 
     ])
+    
 
     @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+    # @_gl.bindTexture(@_gl.TEXTURE_2D, @textures[0])
     # @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
     
     
@@ -769,8 +795,22 @@ class GPURenderer
   #   @gpuMeshRegistry.forEach (gpuMesh) =>
   #     gpuMesh.draw camera
 
+  selectFramebuffer1: ->
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+
+  selectScreenFramebuffer: ->
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+    
   begin: ->
+    # @_gl.colorMask(true, true, true, true);
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+    @_gl.clear(@_gl.COLOR_BUFFER_BIT)
+    @_gl.blendFuncSeparate @_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA, @_gl.ONE, @_gl.ONE_MINUS_SRC_ALPHA
+  
   finish: ->
+    # @_gl.colorMask(true, true, true, false);
+    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+    @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
 
 
   update: ->
@@ -826,6 +866,8 @@ class Scene extends DisplayObject
     @_dom.initSize()
     @_mainView = @addView()
 
+    @_xView    = @addView() # FIXME HACK
+
     @_mouse = {x:0,y:0}
 
     window.addEventListener 'mousemove', (e) =>
@@ -838,7 +880,7 @@ class Scene extends DisplayObject
     @renderers.add renderer
     layer = @dom.addLayer renderer.label
     layer.appendChild renderer.dom
-    renderer.updateSize()
+    renderer.updateSize @width, @height
     @views.forEach (view) => 
       view.addRenderer renderer
 
@@ -866,6 +908,10 @@ class Scene extends DisplayObject
     view
 
   render: ->
+    gpura = Array.from @renderers
+    gpur  = gpura[0]
+    gl    = gpur.gl
+    
     @renderers.forEach (renderer) =>
       renderer.begin()
     @renderers.forEach (renderer) =>
@@ -874,6 +920,15 @@ class Scene extends DisplayObject
       view.render()
     @renderers.forEach (renderer) =>
       renderer.finish()
+    
+    # console.log gpur.textures
+    # console.log ""
+    # console.log "vvvvvvvvv"
+    screenT = texture gpur.textures[0]
+    @xView.mesh.geometry.object.data.txt1 = screenT
+    @xView.render()
+    # console.log "^^^^^^^^^"
+    # console.log "" 
 
 
 export scene = (args...) -> new Scene args...
@@ -906,8 +961,8 @@ class View
         return renderer
     return null
 
-  add: (child) ->
-    renderer = @_selectRenderer child
+  add: (obj) ->
+    renderer = @_selectRenderer obj
     if not renderer
       msg = 'No registred renderer can handle the provided object'
       throw {msg, obj}
@@ -916,8 +971,8 @@ class View
     if not scope
       scope = new Set
       @scopes.set renderer, scope
-    scope.add child
-    renderer.add child
+    scope.add obj
+    renderer.add obj
 
   addRenderer: (renderer) ->
     @renderers.add renderer.addView() 
