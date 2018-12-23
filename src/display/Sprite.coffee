@@ -286,9 +286,8 @@ class Camera extends DisplayObject
     @_near     = cfg.near   || 1
     @_far      = cfg.far    || 2000
 
-    @__projectionMatrix     = M.mat4.create()
-    @__viewMatrix           = M.mat4.create()
-    # @__viewProjectionMatrix = M.mat4.create()
+    @__projectionMatrix     = mat4()
+    @__viewMatrix           = mat4()
 
     @dirtyCfg.set()
     @update()
@@ -297,25 +296,18 @@ class Camera extends DisplayObject
   @setter 'aspect' , (val) -> @_aspect = val; @dirtyCfg.set()
   @setter 'near'   , (val) -> @_near   = val; @dirtyCfg.set()
   @setter 'far'    , (val) -> @_far    = val; @dirtyCfg.set()
-  # @getter 'viewProjectionMatrix', ->
-  #   @update()
-  #   @__viewProjectionMatrix
-  @getter 'viewMatrix', ->
-    @update()
-    @__viewMatrix
-  @getter 'projectionMatrix', ->
-    @update()
-    @__projectionMatrix
+  @getter 'viewMatrix'       , -> @update(); @__viewMatrix
+  @getter 'projectionMatrix' , -> @update(); @__projectionMatrix
+  @getter 'variables'        , -> {@viewMatrix, @projectionMatrix, zoom: float 1}
 
   update: ->
     if @dirtyCfg.isSet
       fovRad = @fov * Math.PI / 180
-      M.mat4.perspective @_projectionMatrix, fovRad, @aspect, @near, @far
+      @_projectionMatrix.perspective fovRad, @aspect, @near, @far
 
     if @dirtyCfg.isSet || @transform.dirty.isSet
       super.update()
-      M.mat4.invert   @_viewMatrix, @transform.matrix
-      # M.mat4.multiply @_viewProjectionMatrix, @_projectionMatrix, @_viewMatrix
+      @_viewMatrix.invertFrom @transform.matrix
     @dirtyCfg.unset()
     
 
@@ -413,11 +405,12 @@ export spriteBasicMaterial = (cfg={}) ->
       local : 'vec3'
       eye   : 'vec3'
     input:
-      modelMatrix      : mat4()
-      viewMatrix       : mat4()
-      projectionMatrix : mat4()
-      uv               : vec2()
-      bbox             : vec2(100,100)
+      modelMatrix      : mat4
+      viewMatrix       : mat4
+      projectionMatrix : mat4
+      uv               : vec2
+      bbox             : vec2
+      zoom             : float
     
 
 
@@ -432,11 +425,6 @@ export spriteBasicGeometry = (cfg) ->
       symbolID       : float 0
       symbolFamilyID : float 0
       zIndex         : float 0
-    object:
-      viewMatrix       : mat4
-      projectionMatrix : mat4
-      zoom             : float 1 # FIXME, hardcoded in mesh rendering  
-  
 
 
 export class SpriteSystem extends DisplayObject
@@ -561,6 +549,7 @@ export test = (shape) ->
     height : 2
     object :
       txt1: txt1
+      test: float 2.0
 
   fsbox = Mesh.create fsboxGeometry, fsboxMaterial
   # fsbox = new SpriteSystem
@@ -589,7 +578,8 @@ export test = (shape) ->
 
   # aspect = width / height
 
-  console.log ">>>", fsbox.shader.fragment
+  # console.log ">>>", fsbox.shader.fragment
+  # console.log ">>>", ss.shader.fragment
 
   
   camera = scene.mainView.camera

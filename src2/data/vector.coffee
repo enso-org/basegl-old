@@ -1,6 +1,7 @@
 
 import * as Property from "basegl/object/Property"
 import * as Buffer   from 'basegl/data/buffer'
+import * as Matrix   from 'gl-matrix'
 import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 
@@ -13,8 +14,9 @@ import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 class GLType
   constructor: (@id, cfg) ->
-    @name = cfg.name
-    @code = WebGLRenderingContext[@id]
+    @name      = cfg.name
+    @code      = WebGLRenderingContext[@id]
+    @uniSetter = cfg.uniSetter
     if cfg.item
       @item       = cfg.item
       @size       = cfg.size
@@ -36,18 +38,18 @@ class GLType
 ### Batch preparation ###
 
 typesCfg =
-  float        : {name: 'float'     , bufferType: Float32Array}
-  int          : {name: 'int'       , bufferType: Int32Array}
-  float_vec2   : {name: 'vec2'      , item: 'float' , size: 2}
-  float_vec3   : {name: 'vec3'      , item: 'float' , size: 3}
-  float_vec4   : {name: 'vec4'      , item: 'float' , size: 4}
-  int_vec2     : {name: 'ivec2'     , item: 'int'   , size: 2}
-  int_vec3     : {name: 'ivec3'     , item: 'int'   , size: 3}
-  int_vec4     : {name: 'ivec4'     , item: 'int'   , size: 4}
-  float_mat2   : {name: 'mat2'      , item: 'float' , size: 4}
-  float_mat3   : {name: 'mat3'      , item: 'float' , size: 9}
-  float_mat4   : {name: 'mat4'      , item: 'float' , size: 16}
-  sampler2D    : {name: 'sampler2D' , item: 'float' , size: null}
+  float        : {name: 'float'     , uniSetter: ((gl, loc, val) -> gl.uniform1fv loc, val) , bufferType: Float32Array}
+  int          : {name: 'int'       , uniSetter: ((gl, loc, val) -> gl.uniform1iv loc, val) , bufferType: Int32Array}
+  float_vec2   : {name: 'vec2'      , uniSetter: ((gl, loc, val) -> gl.uniform2fv loc, val) , item: 'float' , size: 2}
+  float_vec3   : {name: 'vec3'      , uniSetter: ((gl, loc, val) -> gl.uniform3fv loc, val) , item: 'float' , size: 3}
+  float_vec4   : {name: 'vec4'      , uniSetter: ((gl, loc, val) -> gl.uniform4fv loc, val) , item: 'float' , size: 4}
+  int_vec2     : {name: 'ivec2'     , uniSetter: ((gl, loc, val) -> gl.uniform2iv loc, val) , item: 'int'   , size: 2}
+  int_vec3     : {name: 'ivec3'     , uniSetter: ((gl, loc, val) -> gl.uniform3iv loc, val) , item: 'int'   , size: 3}
+  int_vec4     : {name: 'ivec4'     , uniSetter: ((gl, loc, val) -> gl.uniform4iv loc, val) , item: 'int'   , size: 4}
+  float_mat2   : {name: 'mat2'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix2fv loc, false, val) , item: 'float' , size: 4}
+  float_mat3   : {name: 'mat3'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix3fv loc, false, val) , item: 'float' , size: 9}
+  float_mat4   : {name: 'mat4'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix4fv loc, false, val) , item: 'float' , size: 16}
+  sampler2D    : {name: 'sampler2D' , uniSetter: ((gl, loc, val) -> gl.uniform1i  loc, val) , item: 'float' , size: null}
 
 webGL = {types: {}}
 for name,cfg of typesCfg
@@ -77,12 +79,12 @@ class Texture
   @generateAccessors()
   
   constructor: (url) ->
-    @_ready    = false
     @_onLoaded = singleShotEventDispatcher() 
     @_cache    = new WeakMap
     @_load url
 
-  @getter 'type'    , -> @constructor
+  @getter 'type'   , -> @constructor
+  @getter 'glType' , -> @constructor.glType
 
   _load: (url) -> 
     @image = new Image()
@@ -128,6 +130,7 @@ isPowerOf2 = (value) ->
   (value & (value - 1)) == 0
 
 export texture = (args...) -> new Texture args...
+texture.type = Texture
 
 
 
@@ -174,6 +177,10 @@ export class BufferType extends Type
   write:         (ix,v)    -> @array.write         ix, v
   readMultiple:  (ixs)     -> @array.readMultiple  ixs
   writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
+  glValue:                 -> @rawArray
+
+  clone: ->
+    new @ (@glType.newBufferfromArray @rawArray)
 
   set: (src) ->
     for i in [0 ... @glType.size]
@@ -202,6 +209,7 @@ export class Float extends Type
   @getter 'glType'  , -> @constructor.glType
   @getter 'rawArray', -> new Float32Array [@number]
 
+  glValue: -> @rawArray
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
 export class Vec2 extends BufferType
@@ -244,6 +252,14 @@ export class Mat4 extends BufferType
     array[15] = 1
     array
 
+  perspective: (fovy, aspect, near, far) -> 
+    Matrix.mat4.perspective @rawArray, fovy, aspect, near, far
+
+  invert:              -> @invertFrom @rawArray
+  inverted:            -> @clone().invert()
+  invertFrom: (matrix) -> Matrix.mat4.invert @rawArray, matrix
+  
+  
 
 ### Smart constructors ###
 
