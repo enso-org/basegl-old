@@ -717,6 +717,8 @@ class GPURenderer
 
     @_meshes = new Map
 
+    @_pipeline = __passes__
+    @_pipelineInstance = null
 
     
 
@@ -739,55 +741,45 @@ class GPURenderer
       @dom.width  = width
       @dom.height = height
       @_gl.viewport 0, 0, width, height
-      true
-    false
 
-    @_framebuffer = @_gl.createFramebuffer()
-    @_textures = []
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
-    # @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
-    # @_gl.enable(@_gl.BLEND);
+      @_pipelineInstance = pipelineInstance @_gl, width, height, @pipeline
+      # runPipeline @pipelineInstance
 
-    for i in [0...2]
-      tex = @_gl.createTexture()
-      @_textures.push(tex)
-      @_gl.bindTexture(@_gl.TEXTURE_2D, tex)
-      level = 0
-      # tmpImage       = new Uint8Array [0,0,255,100]
+      @_framebuffer = @_gl.createFramebuffer()
+      @_textures = []
+      @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+      # @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
+      # @_gl.enable(@_gl.BLEND);
 
-      ww = width
-      hh = height
-      xlen = 4*ww*hh
-      tmpImage       = new Uint8Array xlen
+      for i in [0...2]
+        tex = @_gl.createTexture()
+        @_textures.push(tex)
+        @_gl.bindTexture(@_gl.TEXTURE_2D, tex)
+        level = 0
 
-      # for ii in [0 ... (ww*hh)]
-      #   tmpImage[4*ii    ] = ii % 122
-      #   tmpImage[4*ii + 1] = ii % 70
-      #   tmpImage[4*ii + 2] = ii % 255
-      #   tmpImage[4*ii + 3] = 100
+        
+        @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, width, height, 0, 
+                      @_gl.RGBA, @_gl.UNSIGNED_BYTE, null)
+        @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MAG_FILTER, @_gl.NEAREST);
+        @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MIN_FILTER, @_gl.NEAREST);
+        # attach texture to framebuffer
+        @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, (@_gl.COLOR_ATTACHMENT0 + i),
+                                @_gl.TEXTURE_2D, tex, level)
+                                
+
+
+
       
-      @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, ww, hh, 0, 
-                    @_gl.RGBA, @_gl.UNSIGNED_BYTE, tmpImage)
-      @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MAG_FILTER, @_gl.NEAREST);
-      @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MIN_FILTER, @_gl.NEAREST);
-      # attach texture to framebuffer
-      @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, (@_gl.COLOR_ATTACHMENT0 + i),
-                              @_gl.TEXTURE_2D, tex, level)
-                              
 
+      @_gl.drawBuffers([
+        @_gl.COLOR_ATTACHMENT0,
+        @_gl.COLOR_ATTACHMENT1 
+      ])
+      
 
-
-    
-
-    @_gl.drawBuffers([
-      @_gl.COLOR_ATTACHMENT0,
-      @_gl.COLOR_ATTACHMENT1 
-    ])
-    
-
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
-    # @_gl.bindTexture(@_gl.TEXTURE_2D, @textures[0])
-    # @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+      @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+      # @_gl.bindTexture(@_gl.TEXTURE_2D, @textures[0])
+      # @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
     
     
   # render: (camera) ->
@@ -795,11 +787,11 @@ class GPURenderer
   #   @gpuMeshRegistry.forEach (gpuMesh) =>
   #     gpuMesh.draw camera
 
-  selectFramebuffer1: ->
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
+  # selectFramebuffer1: ->
+  #   @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
 
-  selectScreenFramebuffer: ->
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
+  # selectScreenFramebuffer: ->
+  #   @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
     
   begin: ->
     # @_gl.colorMask(true, true, true, true);
@@ -849,7 +841,89 @@ export class GPURendererView
 
 class Pass
   @generateAccessors()
-  constructor: ->
+  constructor: (cfg) ->
+    @_inputs  = cfg.inputs  || []
+    @_outputs = cfg.outputs || {}
+    @_run     = cfg.run
+
+class PassInstance
+  constructor: (@gl, @pass, @width, @height) ->
+    outputNum     = 0
+    @textures     = {}
+    @attachements = []
+    @framebuffer  = null
+
+    outputKeys = Object.keys @pass.outputs
+    outputSize = outputKeys.length
+
+    if outputSize > 0
+      @framebuffer = @gl.createFramebuffer()
+      @gl.bindFramebuffer @gl.FRAMEBUFFER, @framebuffer
+
+      # Creating textures
+      for outputNum in [0 ... outputSize]
+        name        = outputKeys[outputNum]
+        level       = 0
+        noImage     = null
+        texture_    = @gl.createTexture()
+        attachement = @gl.COLOR_ATTACHMENT0 + outputNum
+        @textures[name] = texture_
+        @attachements.push attachement
+        @gl.bindTexture @gl.TEXTURE_2D, texture_
+        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @width, @height, 0,  #FIXME literal
+                       @gl.RGBA, @gl.UNSIGNED_BYTE, noImage
+        @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
+        @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
+        @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
+                                 texture_, level
+
+      @gl.bindFramebuffer @gl.FRAMEBUFFER, null # FIXME -> withFramebuffer
+
+  run: (state) ->
+    for output, texture_ of @textures
+      state[output] = texture_
+ 
+    if @framebuffer
+      @gl.bindFramebuffer @gl.FRAMEBUFFER, @framebuffer
+      @gl.clear @gl.COLOR_BUFFER_BIT
+      @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
+      @gl.drawBuffers @attachements
+    @pass.run state
+    if @framebuffer
+      @gl.bindFramebuffer @gl.FRAMEBUFFER, null #FIXME -> withFramebuffer
+      @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there?    
+    state
+
+
+symbolDrawPass = new Pass
+  outputs:
+    color  : vec3
+    family : float
+    symbol : float
+  run: ->
+
+symbolMousePass = new Pass
+  inputs: ['color', 'family', 'symbol']
+  run: ->
+
+symbolDisplayPass = new Pass
+  inputs: ['color', 'family', 'symbol']
+  run: ->
+
+__passes__ = [symbolDrawPass, symbolMousePass, symbolDisplayPass]
+
+pipelineInstance = (gl, width, height, passes) ->
+  out = []
+  for pass in passes
+    pi = new PassInstance gl, pass, width, height
+    out.push pi
+  out
+
+runPipeline = (pipeline) -> 
+  state = {}
+  for pass in pipeline
+    state = pass.run state
+  state
 
 
 class Scene extends DisplayObject
