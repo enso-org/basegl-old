@@ -251,7 +251,7 @@ splitOnClosingBrace =(txt) ->
 ################
 
 export class Material extends Lazy.LazyManager
-  constructor: (cfg) -> 
+  constructor: (cfg={}) -> 
     super cfg 
     @_variable = 
       input  : cfg.input  || {}
@@ -268,11 +268,23 @@ export class Material extends Lazy.LazyManager
 ### Raw Material ###
 ####################
 
+defaultRawVertexShader = '''
+void main() {
+  gl_Position = vec4(position,1.0);
+}
+'''
+
+defaultRawFragmentShader= '''
+void main() {
+  output_color = vec4(1.0,0.0,0.0,1.0);
+}
+'''
+
 export class Raw extends Material
-  constructor: (cfg) ->
+  constructor: (cfg={}) ->
     super cfg
-    @_vertex   = cfg.vertex
-    @_fragment = cfg.fragment
+    @_vertex   = cfg.vertex   || defaultRawVertexShader
+    @_fragment = cfg.fragment || defaultRawFragmentShader
   @getter 'vertex'   ,     -> @_vertex
   @getter 'fragment' ,     -> @_fragment
   @setter 'vertex'   , (v) -> @_vertex   = v; @dirty.set()

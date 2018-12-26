@@ -499,27 +499,7 @@ resizeCanvasToDisplaySize = (canvas, multiplier) ->
 
 
 
-fsboxVertexShader = '''
 
-out vec3 pos;
-void main() {
-  //mat4 modelViewMatrix = viewMatrix * modelMatrix;
-  //vec4 eyeT            = modelViewMatrix * vec4(position,1.0);
-  gl_Position = vec4(position,1.0); //          = projectionMatrix * eyeT;
-  pos = position;
-}
-'''
-
-fsboxFragmentShader= '''
-in vec3 pos;
-
-void main() {
-  vec3 uv = (pos + 1.0) / 2.0;
-  output_color = vec4(uv.x,uv.y,0.0,1.0);
-  output_color = texture(txt1, uv.xy);
-  output_color.g += 0.7;
-}
-'''
 
 
 
@@ -530,32 +510,13 @@ export test = (shape) ->
   gpuRenderer = new GPURenderer
 
 
-  v2 = scene.addView()
-  v2.camera.position.y = 60
-  v2.camera.position.z = 300
+  # v2 = scene.addView()
+  # v2.camera.position.y = 60
+  # v2.camera.position.z = 300
 
   scene.addRenderer gpuRenderer
   
   gl = gpuRenderer.gl
-
-  txt1 = texture 'https://webglfundamentals.org/webgl/lessons/resources/mip-low-res-enlarged.png'
-  # txt1 = texture 'https://vignette.wikia.nocookie.net/universeconquest/images/e/e6/Sample.jpg/revision/latest?cb=20171003194302'
-  
-  fsboxMaterial = 
-    new Material.Raw
-      vertex:   fsboxVertexShader
-      fragment: fsboxFragmentShader
-
-  fsboxGeometry = Geometry.rectangle
-    width  : 2
-    height : 2
-    object :
-      txt1: txt1
-      test: float 2.0
-
-  fsbox = Mesh.create fsboxGeometry, fsboxMaterial
-  # fsbox = new SpriteSystem
-  # fsbox.create()
 
   ss  = new Symbol shape
   ss2 = new Symbol shape
@@ -563,14 +524,6 @@ export test = (shape) ->
   scene.add ss
   scene.add ss2
 
-  # scene.add fsbox
-  scene.xView.add fsbox
-  scene.xView.mesh = fsbox
-  scene.views.delete scene.xView # FIXME HACK
-  
-
-
-  v2.add ss
 
   sp1 = ss.create()
   sp1_2 = ss2.create()
@@ -578,7 +531,7 @@ export test = (shape) ->
   sp1_2.update()
 
 
-  # console.log txt1.getGLTexture(gl)txt1
+  # console.log input_color.getGLTexture(gl)input_color
   # width  = gl.canvas.clientWidth 
   # height = gl.canvas.clientHeight
 
@@ -588,11 +541,11 @@ export test = (shape) ->
   # console.log ">>>", ss.shader.fragment
 
   
-  camera = scene.mainView.camera
+  # camera = scene.mainView.camera
   # camera = new Camera
   #   aspect: aspect
 
-  camera.position.z = 300
+  # camera.position.z = 300
 
 
 
@@ -717,14 +670,17 @@ class GPURenderer
 
     @_meshes = new Map
 
-    @_pipeline = __passes__
+    @renderViewsPass = renderViewsPass @
+    @_pipeline = [@renderViewsPass, screenDrawPass @]
     @_pipelineInstance = null
 
+  @getter 'width' , -> @dom.width
+  @getter 'height', -> @dom.height
     
 
 
   add: (a) -> 
-    @addMesh a
+    @renderViewsPass.add a
 
   addMesh: (meshLike) ->
     mesh    = meshLike.mesh
@@ -741,69 +697,10 @@ class GPURenderer
       @dom.width  = width
       @dom.height = height
       @_gl.viewport 0, 0, width, height
+      @_pipelineInstance = pipelineInstance @, @pipeline
 
-      @_pipelineInstance = pipelineInstance @_gl, width, height, @pipeline
-      # runPipeline @pipelineInstance
-
-      @_framebuffer = @_gl.createFramebuffer()
-      @_textures = []
-      @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
-      # @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
-      # @_gl.enable(@_gl.BLEND);
-
-      for i in [0...2]
-        tex = @_gl.createTexture()
-        @_textures.push(tex)
-        @_gl.bindTexture(@_gl.TEXTURE_2D, tex)
-        level = 0
-
-        
-        @_gl.texImage2D(@_gl.TEXTURE_2D, level, @_gl.RGBA, width, height, 0, 
-                      @_gl.RGBA, @_gl.UNSIGNED_BYTE, null)
-        @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MAG_FILTER, @_gl.NEAREST);
-        @_gl.texParameteri(@_gl.TEXTURE_2D, @_gl.TEXTURE_MIN_FILTER, @_gl.NEAREST);
-        # attach texture to framebuffer
-        @_gl.framebufferTexture2D(@_gl.FRAMEBUFFER, (@_gl.COLOR_ATTACHMENT0 + i),
-                                @_gl.TEXTURE_2D, tex, level)
-                                
-
-
-
-      
-
-      @_gl.drawBuffers([
-        @_gl.COLOR_ATTACHMENT0,
-        @_gl.COLOR_ATTACHMENT1 
-      ])
-      
-
-      @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
-      # @_gl.bindTexture(@_gl.TEXTURE_2D, @textures[0])
-      # @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
-    
-    
-  # render: (camera) ->
-  #   # console.log "render", camera.position.xyz
-  #   @gpuMeshRegistry.forEach (gpuMesh) =>
-  #     gpuMesh.draw camera
-
-  # selectFramebuffer1: ->
-  #   @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
-
-  # selectScreenFramebuffer: ->
-  #   @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
-    
-  begin: ->
-    # @_gl.colorMask(true, true, true, true);
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, @_framebuffer)
-    @_gl.clear(@_gl.COLOR_BUFFER_BIT)
-    @_gl.blendFuncSeparate @_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA, @_gl.ONE, @_gl.ONE_MINUS_SRC_ALPHA
-  
-  finish: ->
-    # @_gl.colorMask(true, true, true, false);
-    @_gl.bindFramebuffer(@_gl.FRAMEBUFFER, null)
-    @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
-
+  render: -> 
+    runPipeline @pipelineInstance
 
   update: ->
     if @dirty.isSet
@@ -841,13 +738,18 @@ export class GPURendererView
 
 class Pass
   @generateAccessors()
-  constructor: (cfg) ->
+  constructor: (cfg={}) ->
     @_inputs  = cfg.inputs  || []
     @_outputs = cfg.outputs || {}
-    @_run     = cfg.run
+    @_run     = cfg.run     || (->)
+    @_update  = cfg.update  || (->)
 
 class PassInstance
-  constructor: (@gl, @pass, @width, @height) ->
+  @generateAccessors()
+
+  @getter 'gl', -> @renderer.gl
+
+  constructor: (@_renderer, @pass) ->
     outputNum     = 0
     @textures     = {}
     @attachements = []
@@ -867,10 +769,10 @@ class PassInstance
         noImage     = null
         texture_    = @gl.createTexture()
         attachement = @gl.COLOR_ATTACHMENT0 + outputNum
-        @textures[name] = texture_
+        @textures[name] = texture texture_
         @attachements.push attachement
         @gl.bindTexture @gl.TEXTURE_2D, texture_
-        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @width, @height, 0,  #FIXME literal
+        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @renderer.width, @renderer.height, 0,  #FIXME literal
                        @gl.RGBA, @gl.UNSIGNED_BYTE, noImage
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
@@ -895,27 +797,98 @@ class PassInstance
     state
 
 
-symbolDrawPass = new Pass
-  outputs:
-    color  : vec3
-    family : float
-    symbol : float
-  run: ->
-
 symbolMousePass = new Pass
   inputs: ['color', 'family', 'symbol']
   run: ->
 
-symbolDisplayPass = new Pass
-  inputs: ['color', 'family', 'symbol']
+
+
+
+######################
+### ScreenDrawPass ###
+######################
+
+class ScreenDrawPass extends Pass
+  @generateAccessors()
+
+  constructor: (@_renderer, cfg={}) ->
+    super()
+
+    material = 
+      new Material.Raw
+        fragment: fullScreenFragmentShader
+
+    geometry = Geometry.rectangle
+      object :
+        input_color: texture()
+
+    @_fullScreenBox         = Mesh.create geometry, material
+    @_fullScreenBoxInstance = @renderer.addMesh @fullScreenBox 
+
+  run: (state) ->
+    @fullScreenBox.geometry.object.data.input_color = state.color
+    @fullScreenBoxInstance.draw()
+    
+
+screenDrawPass = (args...) -> new ScreenDrawPass args...
+
+
+fullScreenFragmentShader= '''
+void main() {
+  vec3 uv = (position + 1.0) / 2.0;
+  output_color = texture(input_color, uv.xy);
+}
+'''
+
+
+
+######################
+### RenderViewPass ###
+######################
+
+class RenderViewsPass extends Pass 
+  @generateAccessors()
+
+  constructor: (@_renderer, cfg={}) ->
+    super
+      outputs:
+        color  : vec3
+        family : float
+        symbol : float
+    @_camera   = cfg.camera ? new Camera
+    @_width    = null
+    @_height   = null
+    @_elements = new Map
+
+    @camera.position.z = 300
+
+  @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
+  @setter 'height' , (height) -> @_height = height ; @updateSize()
+  
+  update: () -> 
+    @camera.aspect = @renderer.width / @renderer.height
+
+  add: (element) ->
+    instance = @renderer.addMesh element 
+    @elements.set element, instance
+
   run: ->
+    @elements.forEach (instance) =>
+      instance.draw @camera
 
-__passes__ = [symbolDrawPass, symbolMousePass, symbolDisplayPass]
 
-pipelineInstance = (gl, width, height, passes) ->
+renderViewsPass = (args...) -> new RenderViewsPass args...
+
+
+
+
+
+
+pipelineInstance = (renderer, passes) ->
   out = []
   for pass in passes
-    pi = new PassInstance gl, pass, width, height
+    pass.update()
+    pi = new PassInstance renderer, pass
     out.push pi
   out
 
@@ -931,16 +904,16 @@ class Scene extends DisplayObject
 
   constructor: (cfg) -> 
     super()
-    @_views     = new Set
+    # @_views     = new Set
     @_renderers = new Set
     
     @_dom = new SceneDOM cfg
     @_dom.onResize.addEventListener (rect) =>
       @resize rect.width, rect.height
     @_dom.initSize()
-    @_mainView = @addView()
+    # @_mainView = @addView()
 
-    @_xView    = @addView() # FIXME HACK
+    # @_xView    = @addView() # FIXME HACK
 
     @_mouse = {x:0,y:0}
 
@@ -955,8 +928,8 @@ class Scene extends DisplayObject
     layer = @dom.addLayer renderer.label
     layer.appendChild renderer.dom
     renderer.updateSize @width, @height
-    @views.forEach (view) => 
-      view.addRenderer renderer
+    # @views.forEach (view) => 
+    #   view.addRenderer renderer
 
   selectRenderer: (obj) ->
     for renderer from @renderers
@@ -964,48 +937,53 @@ class Scene extends DisplayObject
         return renderer
     return null
 
-  add: (child) -> @mainView.add child
+  add: (child) -> 
+    # @mainView.add child
+    Array.from(@renderers)[0].add child
 
   resize: (width, height) ->
     @_width  = width 
     @_height = height
     @renderers.forEach (renderer) =>
       renderer.updateSize width, height
-    @views.forEach (view) =>
-      view.updateSize width, height
+    # @views.forEach (view) =>
+    #   view.updateSize width, height
 
-  addView: (cfg) -> 
-    view = new View cfg
-    @views.add view
-    for renderer from @renderers
-      view.addRenderer renderer
-    view
+  # addView: (cfg) -> 
+  #   view = new View cfg
+  #   @views.add view
+  #   for renderer from @renderers
+  #     view.addRenderer renderer
+  #   view
 
   render: ->
-    gpura = Array.from @renderers
-    gpur  = gpura[0]
-    gl    = gpur.gl
+      # gpura = Array.from @renderers
+      # gpur  = gpura[0]
+      # gl    = gpur.gl
     
-    @renderers.forEach (renderer) =>
-      renderer.begin()
+    # @renderers.forEach (renderer) =>
+    #   renderer.begin()
     @renderers.forEach (renderer) =>
       renderer.update()
-    @views.forEach (view) =>
-      view.render()
     @renderers.forEach (renderer) =>
-      renderer.finish()
+      renderer.render()
+    # @renderers.forEach (renderer) =>
+    #   renderer.finish()
     
     # console.log gpur.textures
     # console.log ""
     # console.log "vvvvvvvvv"
-    screenT = texture gpur.textures[0]
-    @xView.mesh.geometry.object.data.txt1 = screenT
-    @xView.render()
+      # screenT = texture gpur.textures[0]
+      # @xView.mesh.geometry.object.data.input_color = screenT
+      # @xView.render()
     # console.log "^^^^^^^^^"
     # console.log "" 
 
 
 export scene = (args...) -> new Scene args...
+
+
+
 
 
 

@@ -94,7 +94,8 @@ class Texture
   constructor: (url) ->
     @_onLoaded = singleShotEventDispatcher() 
     @_cache    = new WeakMap
-    @_load url
+    if url?
+      @_load url
 
   _load: (url) -> 
     @image = new Image()
@@ -146,7 +147,7 @@ isPowerOf2 = (value) ->
 # export texture = (args...) -> new Texture args...
 
 export texture = (cfg) ->
-  if typeof cfg == 'string'
+  if (not cfg?) || (typeof cfg == 'string')
     new Texture cfg
   else 
     new TextureWrapper cfg

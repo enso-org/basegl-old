@@ -222,7 +222,9 @@ export class GPUMesh extends Lazy.LazyManager
       GL.withVAO @_gl, @_vao, =>
         texID = 0
         data  = @mesh.geometry.object.data
-        vars  = Object.assign({}, camera.variables, data)
+        vars  = Object.assign {}, data
+        if camera?
+          vars = Object.assign vars, camera.variables
         for key, val of vars
           glType = val.glType
           glVal  = val.glValue @_gl
@@ -240,10 +242,10 @@ export class GPUMesh extends Lazy.LazyManager
           instanceWord = if instanceCount == 1 then "instance" else "instances"
           @logger.info "Drawing #{instanceCount} " + instanceWord
           if instanceCount != 0
-            @_gl.drawBuffers([
-              @_gl.COLOR_ATTACHMENT0,
-              @_gl.COLOR_ATTACHMENT1 
-            ]) # FIXME: remove
+            # @_gl.drawBuffers([
+            #   @_gl.COLOR_ATTACHMENT0,
+            #   @_gl.COLOR_ATTACHMENT1 
+            # ]) # FIXME: remove
             @_gl.drawArraysInstanced @_gl.TRIANGLE_STRIP, 0, pointCount, 
                                      instanceCount
         else 

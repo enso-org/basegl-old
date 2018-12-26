@@ -60,8 +60,8 @@ export create = (args...) -> new Geometry args...
 ####################
 
 export rectangle = (cfg={}) ->
-  width  = cfg.width  || 10
-  height = cfg.height || 10
+  width  = cfg.width  || 2
+  height = cfg.height || 2
   w2     = width  / 2
   h2     = height / 2
   
