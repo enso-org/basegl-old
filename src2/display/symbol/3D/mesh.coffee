@@ -224,7 +224,13 @@ export class GPUMesh extends Lazy.LazyManager
         data  = @mesh.geometry.object.data
         vars  = Object.assign {}, data
         if camera?
-          vars = Object.assign vars, camera.variables
+          #FIXME: computing projection matrix for every draw for every object
+          #       is time consuming. We should abstract it to some kind of 
+          #       CameraInstance for each scene.
+          width  = @_gl.canvas.width
+          height = @_gl.canvas.height
+          aspect = width / height
+          vars = Object.assign vars, camera.variables aspect
         for key, val of vars
           glType = val.glType
           glVal  = val.glValue @_gl

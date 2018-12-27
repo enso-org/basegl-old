@@ -282,34 +282,34 @@ class Camera extends DisplayObject
     super()
     @_dirtyCfg = new Lazy.Manager
     @_fov      = cfg.fov    || 60
-    @_aspect   = cfg.aspect || 1
     @_near     = cfg.near   || 1
     @_far      = cfg.far    || 2000
 
-    @__projectionMatrix     = mat4()
-    @__viewMatrix           = mat4()
+    @__viewMatrix = mat4()
 
     @dirtyCfg.set()
     @update()
 
-  @setter 'fov'    , (val) -> @_fov    = val; @dirtyCfg.set()
-  @setter 'aspect' , (val) -> @_aspect = val; @dirtyCfg.set()
-  @setter 'near'   , (val) -> @_near   = val; @dirtyCfg.set()
-  @setter 'far'    , (val) -> @_far    = val; @dirtyCfg.set()
-  @getter 'viewMatrix'       , -> @update(); @__viewMatrix
-  @getter 'projectionMatrix' , -> @update(); @__projectionMatrix
-  @getter 'variables'        , -> {@viewMatrix, @projectionMatrix, zoom: float 1}
+  @setter 'fov'  , (val) -> @_fov    = val; @dirtyCfg.set()
+  @setter 'near' , (val) -> @_near   = val; @dirtyCfg.set()
+  @setter 'far'  , (val) -> @_far    = val; @dirtyCfg.set()
+  @getter 'viewMatrix' , -> @update(); @__viewMatrix
+
+  variables: (displayAspect) ->
+    projectionMatrix = @projectionMatrix displayAspect
+    {@viewMatrix, projectionMatrix, zoom: float 1}
 
   update: ->
-    if @dirtyCfg.isSet
-      fovRad = @fov * Math.PI / 180
-      @_projectionMatrix.perspective fovRad, @aspect, @near, @far
-
     if @dirtyCfg.isSet || @transform.dirty.isSet
       super.update()
       @_viewMatrix.invertFrom @transform.matrix
     @dirtyCfg.unset()
-    
+
+  projectionMatrix: (displayAspect) ->
+    fovRad = @fov * Math.PI / 180
+    projectionMatrix = mat4()
+    projectionMatrix.perspective fovRad, displayAspect, @near, @far
+    projectionMatrix
 
 class Sprite extends DisplayObject
   @generateAccessors()
@@ -746,7 +746,6 @@ class Pass
     @_inputs  = cfg.inputs  || []
     @_outputs = cfg.outputs || {}
     @_run     = cfg.run     || (->)
-    @_update  = cfg.update  || (->)
 
   instance: (renderer) ->
     new PassInstance renderer, @
@@ -890,9 +889,6 @@ class RenderViewsPass extends Pass
   # @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
   # @setter 'height' , (height) -> @_height = height ; @updateSize()
   
-  update: (renderer) -> 
-    @camera.aspect = renderer.width / renderer.height
-
   add: (element) ->
     instance = @renderer.addMesh element 
     @elements.set element, instance
@@ -928,7 +924,6 @@ class ViewInstance
 pipelineInstance = (renderer, passes) ->
   out = []
   for pass in passes
-    pass.update renderer
     pi = pass.instance renderer
     out.push pi
   out
