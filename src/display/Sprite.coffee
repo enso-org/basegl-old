@@ -736,6 +736,10 @@ export class GPURendererView
 
 
 
+############
+### Pass ### 
+############
+
 class Pass
   @generateAccessors()
   constructor: (cfg={}) ->
@@ -743,6 +747,15 @@ class Pass
     @_outputs = cfg.outputs || {}
     @_run     = cfg.run     || (->)
     @_update  = cfg.update  || (->)
+
+  instance: (renderer) ->
+    new PassInstance renderer, @
+
+
+
+####################
+### PassInstance ### 
+####################
 
 class PassInstance
   @generateAccessors()
@@ -833,7 +846,7 @@ class ScreenDrawPass extends Pass
 screenDrawPass = (args...) -> new ScreenDrawPass args...
 
 
-fullScreenFragmentShader= '''
+fullScreenFragmentShader = '''
 void main() {
   vec3 uv = (position + 1.0) / 2.0;
   output_color = texture(input_color, uv.xy);
@@ -860,17 +873,31 @@ class RenderViewsPass extends Pass
     @_height   = null
     @_elements = new Map
 
+    @_views    = new Set
+    @_mainView = @newView()
+
     @camera.position.z = 300
 
-  @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
-  @setter 'height' , (height) -> @_height = height ; @updateSize()
+  newView: (cfg) -> 
+    view = new View cfg
+    @addView view
+    view
+
+  addView: (view) ->
+    @views.add view
   
-  update: () -> 
-    @camera.aspect = @renderer.width / @renderer.height
+
+  # @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
+  # @setter 'height' , (height) -> @_height = height ; @updateSize()
+  
+  update: (renderer) -> 
+    @camera.aspect = renderer.width / renderer.height
 
   add: (element) ->
     instance = @renderer.addMesh element 
     @elements.set element, instance
+    ## ## ## ## ## ##
+    @mainView.add element
 
   run: ->
     @elements.forEach (instance) =>
@@ -882,13 +909,27 @@ renderViewsPass = (args...) -> new RenderViewsPass args...
 
 
 
+class View
+  @generateAccessors()
+
+  constructor: (cfg={}) ->
+    @_camera   = cfg.camera || new Camera
+    @_elements = new Set
+
+  add: (element) -> 
+    @elements.add element
+
+
+
+class ViewInstance
+
 
 
 pipelineInstance = (renderer, passes) ->
   out = []
   for pass in passes
-    pass.update()
-    pi = new PassInstance renderer, pass
+    pass.update renderer
+    pi = pass.instance renderer
     out.push pi
   out
 
@@ -987,51 +1028,51 @@ export scene = (args...) -> new Scene args...
 
 
 
-class View
-  @generateAccessors()
+# class View
+#   @generateAccessors()
 
-  constructor: (cfg={}) ->
-    @_camera = cfg.camera ? new Camera
-    @_width  = null
-    @_height = null
+#   constructor: (cfg={}) ->
+#     @_camera = cfg.camera ? new Camera
+#     @_width  = null
+#     @_height = null
 
-    @_scopes = new Map
-    @_renderers = new Set
-    @updateSize()
+#     @_scopes = new Map
+#     @_renderers = new Set
+#     @updateSize()
 
-  @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
-  @setter 'height' , (height) -> @_height = height ; @updateSize()
+#   @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
+#   @setter 'height' , (height) -> @_height = height ; @updateSize()
 
-  updateSize: (sceneWidth, sceneHeight) -> 
-    width  = @width  ? sceneWidth
-    height = @height ? sceneHeight
-    @camera.aspect = width / height
+#   updateSize: (sceneWidth, sceneHeight) -> 
+#     width  = @width  ? sceneWidth
+#     height = @height ? sceneHeight
+#     @camera.aspect = width / height
 
-  _selectRenderer: (obj) ->
-    for renderer from @renderers
-      if renderer.handles obj
-        return renderer
-    return null
+#   _selectRenderer: (obj) ->
+#     for renderer from @renderers
+#       if renderer.handles obj
+#         return renderer
+#     return null
 
-  add: (obj) ->
-    renderer = @_selectRenderer obj
-    if not renderer
-      msg = 'No registred renderer can handle the provided object'
-      throw {msg, obj}
+#   add: (obj) ->
+#     renderer = @_selectRenderer obj
+#     if not renderer
+#       msg = 'No registred renderer can handle the provided object'
+#       throw {msg, obj}
     
-    scope = @scopes.get renderer
-    if not scope
-      scope = new Set
-      @scopes.set renderer, scope
-    scope.add obj
-    renderer.add obj
+#     scope = @scopes.get renderer
+#     if not scope
+#       scope = new Set
+#       @scopes.set renderer, scope
+#     scope.add obj
+#     renderer.add obj
 
-  addRenderer: (renderer) ->
-    @renderers.add renderer.addView() 
+#   addRenderer: (renderer) ->
+#     @renderers.add renderer.addView() 
 
-  render: ->
-    @renderers.forEach (renderer) =>
-      renderer.render @camera   
+#   render: ->
+#     @renderers.forEach (renderer) =>
+#       renderer.render @camera   
 
 
 class SceneDOM
