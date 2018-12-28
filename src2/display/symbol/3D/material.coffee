@@ -85,7 +85,7 @@ export class ShaderBuilder
     @attributes = {}
     @locals     = {}
     @uniforms   = {}
-    @outputs    = {color: 'vec4'}
+    @outputs    = {}
 
   resetPrecision: ->
     @precision =
@@ -255,8 +255,8 @@ export class Material extends Lazy.LazyManager
     super cfg 
     @_variable = 
       input  : cfg.input  || {}
-      output : cfg.output || {}
       locals : cfg.locals || {}
+      output : Object.assign {color: 'vec4'}, (cfg.output || {})
   @getter 'variable', -> @_variable
 
   vertexCode   : -> ''

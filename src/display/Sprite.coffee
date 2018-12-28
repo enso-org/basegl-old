@@ -11,7 +11,7 @@ import * as Buffer   from 'basegl/data/buffer'
 import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture, Vec2} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 import * as M from 'gl-matrix'
@@ -274,6 +274,60 @@ bvec4 not(bvec4 x)
 
 
 
+class WatchableSet
+  @generateAccessors()
+
+  constructor: (args...) ->
+    @_data      = new Set args...
+    @_onAdded   = EventDispatcher.create()
+    @_onDeleted = EventDispatcher.create()
+
+  add: (a) -> 
+    @data.add a
+    @onAdded.dispatch a
+
+  delete: (a) ->
+    @data.delete a
+    @onDeleted.dispatch a
+
+  forEach: (args...) ->
+    @data.forEach args...
+
+
+
+
+class WatchableMap
+  @generateAccessors()
+
+  constructor: (args...) ->
+    @_data      = new Map args...
+    @_onSet     = EventDispatcher.create()
+    @_onDeleted = EventDispatcher.create()
+
+  set: (k,v) -> 
+    @data.set k,v
+    @onSet.dispatch k,v
+
+  delete: (a) ->
+    @data.delete a
+    @onDeleted.dispatch a
+
+  forEach: (args...) ->
+    @data.forEach args...
+
+  watchAndMap: (set, trans) ->
+    set.forEach (a) =>
+      @set a, trans(a)
+    set.onAdded.addEventListener (a) => 
+      @set a, trans(a)
+    set.onDeleted.addEventListener (a) =>
+      @delete a
+
+
+
+##############
+### Camera ###
+##############
 
 class Camera extends DisplayObject
   @generateAccessors()
@@ -294,22 +348,46 @@ class Camera extends DisplayObject
   @setter 'near' , (val) -> @_near   = val; @dirtyCfg.set()
   @setter 'far'  , (val) -> @_far    = val; @dirtyCfg.set()
   @getter 'viewMatrix' , -> @update(); @__viewMatrix
-
-  variables: (displayAspect) ->
-    projectionMatrix = @projectionMatrix displayAspect
-    {@viewMatrix, projectionMatrix, zoom: float 1}
+  @getter 'variables'  , -> {@viewMatrix, zoom: float 1}
 
   update: ->
     if @dirtyCfg.isSet || @transform.dirty.isSet
       super.update()
       @_viewMatrix.invertFrom @transform.matrix
     @dirtyCfg.unset()
+  
+  instance: (target) ->
+    new CameraInstance @, target
 
-  projectionMatrix: (displayAspect) ->
-    fovRad = @fov * Math.PI / 180
-    projectionMatrix = mat4()
-    projectionMatrix.perspective fovRad, displayAspect, @near, @far
-    projectionMatrix
+
+
+######################
+### CameraInstance ###
+######################
+
+class CameraInstance 
+  @generateAccessors()
+
+  constructor: (@_camera, @_target) ->
+    @_dirtySize         = new Lazy.Manager
+    @__projectionMatrix = mat4()
+    
+    @target.size.onChanged.addEventListener =>
+      @dirtySize.set()
+    @dirtySize.set()
+
+  @getter 'viewMatrix'       , -> @camera.viewMatrix
+  @getter 'projectionMatrix' , -> @_update(); @_projectionMatrix
+  @getter 'variables'        , -> Object.assign {@projectionMatrix}, @camera.variables
+
+  _update: ->
+    if @dirtySize.isSet
+      fovRad = @camera.fov * Math.PI / 180
+      aspect = @target.size.x / @target.size.y
+      @_projectionMatrix.perspective fovRad, aspect, @camera.near, @camera.far
+      @dirtySize.unset()
+
+
 
 class Sprite extends DisplayObject
   @generateAccessors()
@@ -411,6 +489,7 @@ export spriteBasicMaterial = (cfg={}) ->
       uv               : vec2
       bbox             : vec2
       zoom             : float
+    output: cfg.output
     
 
 
@@ -462,13 +541,15 @@ export class SpriteSystem extends DisplayObject
 
 fragment_lib2 = allowOverloading fragment_lib
 
-symbolBasciMaterialFragmentShader = (shapeShader) ->
+symbolBasicMaterialFragmentShader = (shapeShader) ->
   [fragment_lib2, shapeShader, fragmentRunner].join '\n'
 
 
 export symbolBasicMaterial = (shapeShader, cfg) -> 
   spriteBasicMaterial Property.extend cfg,
-    fragment: symbolBasciMaterialFragmentShader shapeShader
+    fragment: symbolBasicMaterialFragmentShader shapeShader
+    output: 
+      symbolID: 'vec4'
 
 
 export class Symbol extends DisplayObject
@@ -641,6 +722,35 @@ fence = (gl) ->
     setTimeout check
 
 
+
+class WebGL2RenderingContextEx
+  constructor: (@gl) ->
+
+  withFramebuffer: (target, framebuffer, f) ->
+    @bindFramebuffer target, framebuffer
+    out = f()
+    @bindFramebuffer target, null
+    out
+
+
+srcProto = WebGL2RenderingContext.prototype
+tgtProto = WebGL2RenderingContextEx.prototype
+for field in Object.keys srcProto
+  do (field) =>
+    desc = Object.getOwnPropertyDescriptor srcProto, field
+    if typeof desc.value == 'function'
+      Object.defineProperty tgtProto, field, 
+        get: Property.fastFunction {field},     -> @gl.$field.bind @gl
+        set: Property.fastFunction {field}, (v) -> @gl.$field = v
+        configurable: true
+    else
+      Object.defineProperty tgtProto, field, 
+        get: Property.fastFunction {field},     -> @gl.$field
+        set: Property.fastFunction {field}, (v) -> @gl.$field = v
+        configurable: true
+          
+
+
 class GPURenderer
   @mixin Lazy.LazyManager
 
@@ -654,8 +764,9 @@ class GPURenderer
     @_dom.style.width  = '100%'
     @_dom.style.height = '100%'
 
-    @_gl = @_dom.getContext "webgl2"
-      # premultipliedAlpha: false
+    # @_gl = @_dom.getContext("webgl2")
+    @_gl = new WebGL2RenderingContextEx @_dom.getContext("webgl2")
+
     if !@_gl then throw "WebGL not supported"
     @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
     @_gl.enable(@_gl.BLEND);
@@ -674,11 +785,10 @@ class GPURenderer
     @_pipeline = [@renderViewsPass, screenDrawPass @]
     @_pipelineInstance = null
 
-  @getter 'width' , -> @dom.width
-  @getter 'height', -> @dom.height
+    @_size = Vec2.observableFrom [0, 0] # FIXME: make it nicer
+    @size.onChanged.addEventListener =>
+      @_updateSize()
     
-
-
   add: (a) -> 
     @renderViewsPass.add a
 
@@ -692,11 +802,11 @@ class GPURenderer
       @dirty.set()
     gpuMesh
 
-  updateSize: (width, height) -> 
-    if (@dom.width != width || @dom.height != height)
-      @dom.width  = width
-      @dom.height = height
-      @_gl.viewport 0, 0, width, height
+  _updateSize: () -> 
+    if (@dom.width != @size.x || @dom.height != @size.y)
+      @dom.width  = @size.x
+      @dom.height = @size.y
+      @_gl.viewport 0, 0, @size.x, @size.y
       @_pipelineInstance = pipelineInstance @, @pipeline
 
   render: -> 
@@ -748,7 +858,7 @@ class Pass
     @_run     = cfg.run     || (->)
 
   instance: (renderer) ->
-    new PassInstance renderer, @
+    new PassInstance @, renderer
 
 
 
@@ -761,56 +871,87 @@ class PassInstance
 
   @getter 'gl', -> @renderer.gl
 
-  constructor: (@_renderer, @pass) ->
-    outputNum     = 0
-    @textures     = {}
-    @attachements = []
-    @framebuffer  = null
+  constructor: (@pass, @_renderer) ->
+    outputNum         = 0
+    @outputs          = {}
+    @rootAttachements = []
+    @rootFramebuffer  = null
 
     outputKeys = Object.keys @pass.outputs
     outputSize = outputKeys.length
 
     if outputSize > 0
-      @framebuffer = @gl.createFramebuffer()
-      @gl.bindFramebuffer @gl.FRAMEBUFFER, @framebuffer
+      @rootFramebuffer = @gl.createFramebuffer()
+      @gl.bindFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer
 
-      # Creating textures
+      # Creating output textures
       for outputNum in [0 ... outputSize]
         name        = outputKeys[outputNum]
         level       = 0
         noImage     = null
-        texture_    = @gl.createTexture()
+        output      = @gl.createTexture()
         attachement = @gl.COLOR_ATTACHMENT0 + outputNum
-        @textures[name] = texture texture_
-        @attachements.push attachement
-        @gl.bindTexture @gl.TEXTURE_2D, texture_
-        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @renderer.width, @renderer.height, 0,  #FIXME literal
+        @outputs[name] = texture output
+        @rootAttachements.push attachement
+        @gl.bindTexture @gl.TEXTURE_2D, output
+        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
                        @gl.RGBA, @gl.UNSIGNED_BYTE, noImage
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
         @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
-                                 texture_, level
+                                 output, level
 
       @gl.bindFramebuffer @gl.FRAMEBUFFER, null # FIXME -> withFramebuffer
 
+
+      @outputMap = new Map
+      outputNames = Object.keys @outputs
+      for name, ix in outputNames
+        @outputMap.set name, ix
+      
+
   run: (state) ->
-    for output, texture_ of @textures
-      state[output] = texture_
+    for name, output of @outputs
+      state[name] = output
  
-    if @framebuffer
-      @gl.bindFramebuffer @gl.FRAMEBUFFER, @framebuffer
-      @gl.clear @gl.COLOR_BUFFER_BIT
-      @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
-      @gl.drawBuffers @attachements
-    @pass.run state
-    if @framebuffer
-      @gl.bindFramebuffer @gl.FRAMEBUFFER, null #FIXME -> withFramebuffer
-      @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there?    
+    if @rootFramebuffer
+      @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
+        @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
+        @gl.drawBuffers @rootAttachements
+        @gl.clear @gl.COLOR_BUFFER_BIT
+        @_run state
+        @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
+    else    
+      @_run state
     state
+
+  test: (element) ->
+    elOutputName = Object.keys element.mesh.material.variable.output
+    console.log elOutputName
+    console.log @outputs
+
+    framebuffer  = @gl.createFramebuffer()
+    level        = 0
+    attachements = [] 
+    @gl.withFramebuffer @gl.FRAMEBUFFER, framebuffer, =>
+      for name, ix in elOutputName
+        outputIx = @outputMap.get(name)
+        if outputIx?
+          attachement = @gl.COLOR_ATTACHMENT0 + outputIx
+          output      = @outputs[name].glValue()
+          attachements.push attachement
+          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
+                                  output, level
+
+    {framebuffer, attachements}
+
+
+  _run: (state) ->
+    @pass.run state  
 
 
 symbolMousePass = new Pass
-  inputs: ['color', 'family', 'symbol']
+  inputs: ['color', 'symbolID', 'shapeID']
   run: ->
 
 
@@ -864,18 +1005,13 @@ class RenderViewsPass extends Pass
   constructor: (@_renderer, cfg={}) ->
     super
       outputs:
-        color  : vec3
-        family : float
-        symbol : float
-    @_camera   = cfg.camera ? new Camera
-    @_width    = null
-    @_height   = null
-    @_elements = new Map
+        color    : vec3
+        symbolID : float
+        shapeID  : float
 
-    @_views    = new Set
+    @_views    = new WatchableSet
     @_mainView = @newView()
 
-    @camera.position.z = 300
 
   newView: (cfg) -> 
     view = new View cfg
@@ -885,22 +1021,33 @@ class RenderViewsPass extends Pass
   addView: (view) ->
     @views.add view
   
-
-  # @setter 'width'  , (width)  -> @_width  = width  ; @updateSize()
-  # @setter 'height' , (height) -> @_height = height ; @updateSize()
-  
   add: (element) ->
-    instance = @renderer.addMesh element 
-    @elements.set element, instance
-    ## ## ## ## ## ##
     @mainView.add element
 
-  run: ->
-    @elements.forEach (instance) =>
-      instance.draw @camera
+  instance: (renderer) ->
+    new RenderViewsPassInstance @, renderer
+  
 
 
 renderViewsPass = (args...) -> new RenderViewsPass args...
+
+
+
+class RenderViewsPassInstance extends PassInstance
+  @generateAccessors()
+
+  constructor: (pass, renderer) ->
+    super pass, renderer
+
+    @_views = new WatchableMap
+    @views.watchAndMap pass.views, (view) =>
+      view.instance @, renderer
+
+  _run: ->
+    @views.forEach (view) =>
+      view.draw()
+
+  
 
 
 
@@ -910,22 +1057,46 @@ class View
 
   constructor: (cfg={}) ->
     @_camera   = cfg.camera || new Camera
-    @_elements = new Set
+    @_elements = new WatchableSet
+
+    @camera.position.z = 300
 
   add: (element) -> 
     @elements.add element
 
+  instance: (pass, renderer) ->
+    new ViewInstance @, pass, renderer
+
 
 
 class ViewInstance
+  @generateAccessors()
+
+  constructor: (@_view, @_pass, @_renderer) ->
+    @_camera   = @view.camera.instance @renderer
+    @_elements = new WatchableMap
+    @elements.watchAndMap @view.elements, (element) =>
+      {framebuffer, attachements} = @pass.test element
+      mesh        = @renderer.addMesh element
+      {framebuffer, attachements, mesh}
+
+  draw: ->
+    @elements.forEach (element) =>
+      
+      @renderer.gl.bindFramebuffer @renderer.gl.FRAMEBUFFER, element.framebuffer
+      # @renderer.gl.clear @renderer.gl.COLOR_BUFFER_BIT
+      # @renderer.gl.blendFuncSeparate @renderer.gl.SRC_ALPHA, @renderer.gl.ONE_MINUS_SRC_ALPHA, @renderer.gl.ONE, @renderer.gl.ONE_MINUS_SRC_ALPHA  
+      @renderer.gl.drawBuffers element.attachements
+      
+      element.mesh.draw @camera
+      @renderer.gl.bindFramebuffer @renderer.gl.FRAMEBUFFER, null # FIXME -> withFramebuffer
 
 
 
 pipelineInstance = (renderer, passes) ->
   out = []
   for pass in passes
-    pi = pass.instance renderer
-    out.push pi
+    out.push pass.instance(renderer)
   out
 
 runPipeline = (pipeline) -> 
@@ -963,7 +1134,8 @@ class Scene extends DisplayObject
     @renderers.add renderer
     layer = @dom.addLayer renderer.label
     layer.appendChild renderer.dom
-    renderer.updateSize @width, @height
+    renderer.size.xy = [@width, @height]
+    # renderer._updateSize @width, @height
     # @views.forEach (view) => 
     #   view.addRenderer renderer
 
@@ -981,7 +1153,8 @@ class Scene extends DisplayObject
     @_width  = width 
     @_height = height
     @renderers.forEach (renderer) =>
-      renderer.updateSize width, height
+      renderer.size.xy = [width, height]
+      # renderer._updateSize width, height
     # @views.forEach (view) =>
     #   view.updateSize width, height
 

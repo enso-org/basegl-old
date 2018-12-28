@@ -63,7 +63,8 @@ export class Mesh extends DisplayObject
       @logger.group "Binding variables", =>
         @_variables = newVariables
         @_shaderBuilder.resetVariables()
-        @_shaderBuilder.locals = @material.variable.locals
+        @_shaderBuilder.locals  = @material.variable.locals
+        @_shaderBuilder.outputs = @material.variable.output
         @_registerBoundVariables   @variables.bound 
         @_registerUnboundVariables @variables.unbound
         @_generateShader()
@@ -224,13 +225,7 @@ export class GPUMesh extends Lazy.LazyManager
         data  = @mesh.geometry.object.data
         vars  = Object.assign {}, data
         if camera?
-          #FIXME: computing projection matrix for every draw for every object
-          #       is time consuming. We should abstract it to some kind of 
-          #       CameraInstance for each scene.
-          width  = @_gl.canvas.width
-          height = @_gl.canvas.height
-          aspect = width / height
-          vars = Object.assign vars, camera.variables aspect
+          vars = Object.assign vars, camera.variables
         for key, val of vars
           glType = val.glType
           glVal  = val.glValue @_gl

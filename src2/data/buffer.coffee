@@ -1,5 +1,8 @@
-import * as Config from 'basegl/object/config'
+import * as Config          from 'basegl/object/config'
+import * as EventDispatcher from 'basegl/event/dispatcher'
 import {assert} from 'basegl/lib/runtime-check/assert'
+
+
 
 ##############
 ### Buffer ###
@@ -97,14 +100,14 @@ export class View
   
 
 
-##################
-### Observable ###
-##################
+################
+### Bindable ###
+################
 
-# Observable is a wrapper over any buffer-like object allowing to subscribe to
+# Bindable is a wrapper over any buffer-like object allowing to subscribe to
 # changes by monkey-patching its methods.
 
-export class Observable
+export class Bindable
 
   ### Properties ###
 
@@ -154,5 +157,68 @@ export class Observable
   onChangedRange: (offset, length) ->
     for ix in [offset ... offset + length]
       @onChanged ix
+
+
+
+##################
+### Observable ###
+##################
+
+# Observable is a wrapper over any buffer-like object allowing to subscribe to
+# changes.
+
+export class Observable
+  @generateAccessors()
+
+  ### Properties ###
+
+  constructor: (@_array) -> 
+    @_onChanged = EventDispatcher.create()
+  
+  @getter 'array'    , -> @_array
+  @getter 'buffer'   , -> @array.buffer
+  @getter 'length'   , -> @array.length
+  @getter 'rawArray' , -> @array.rawArray
+
+
+  ### Read / Write ###
+
+  read:         (ix)  -> @array.read         ix
+  readMultiple: (ixs) -> @array.readMultiple ixs 
+  
+  write: (ix, v) -> 
+    @array.write ix, v
+    @__onChanged ix
+  
+  writeMultiple: (ixs, vs) ->
+    @array.writeMultiple ixs, vs 
+    @__onChangedMultiple ixs
+
+  set: (array, offset=0) ->
+    @array.set array, offset
+    @__onChangedRange offset, array.length
+
+
+  ### Size Management ###
+
+  resize: (newLength) ->
+    oldLength = @_length
+    if oldLength != newLength
+      @array.resize newLength
+      @__onResized oldLength, newLength
+
+
+  ### Events ###  
+
+  __onResized: (oldSize, newSize) ->
+  __onChanged: (ix) -> @onChanged.dispatch ix
+
+  __onChangedMultiple: (ixs) ->
+    for ix in ixs
+      @__onChanged ix
+  
+  __onChangedRange: (offset, length) ->
+    for ix in [offset ... offset + length]
+      @__onChanged ix
 
 

@@ -372,7 +372,7 @@ arrayLast = (array) ->
 
 varPat = /\$[a-zA-Z0-9_]+/gi;
 
-fastFunction = (dict, f) ->
+export fastFunction = (dict, f) ->
   code1 = f.toString()
   code2 = code1.replace varPat, (dkey) -> 
     key = dkey.slice(1)

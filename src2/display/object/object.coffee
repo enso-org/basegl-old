@@ -27,9 +27,9 @@ export class Transform
     @mixins.constructor()
     @__matrix  = M.mat4.create()
     @_origin   = M.mat4.create()
-    @_position = Vec3.observableFrom [0,0,0]
-    @_scale    = Vec3.observableFrom [1,1,1]
-    @_rotation = Vec3.observableFrom [0,0,0]
+    @_position = Vec3.bindableFrom [0,0,0]
+    @_scale    = Vec3.bindableFrom [1,1,1]
+    @_rotation = Vec3.bindableFrom [0,0,0]
     @_position.array.onChanged = => @dirty.set()
     @_scale.array.onChanged    = => @dirty.set()
     @_rotation.array.onChanged = => @dirty.set()
@@ -89,9 +89,9 @@ window.EventObject = EventObject
 
 #     @__origin  = M.mat4.create()
 #     @__xform   = M.mat4.create()
-#     @_position = Vec3.observableFrom [0,0,0]
-#     @_scale    = Vec3.observableFrom [1,1,1]
-#     @_rotation = Vec3.observableFrom [0,0,0]
+#     @_position = Vec3.bindableFrom [0,0,0]
+#     @_scale    = Vec3.bindableFrom [1,1,1]
+#     @_rotation = Vec3.bindableFrom [0,0,0]
 #     @_position.array.onChanged = => @dirty.set()
 #     @_scale.array.onChanged    = => @dirty.set()
 #     @_rotation.array.onChanged = => @dirty.set()

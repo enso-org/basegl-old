@@ -181,6 +181,12 @@ export class BufferType extends Type
       buffer.array.set args 
       buffer
 
+  @bindableFrom: (args) ->
+    buffer = @from args
+    buffer.array = new Buffer.Bindable buffer.array
+    buffer
+
+  @getter 'onChanged', -> @array.onChanged
   @observableFrom: (args) ->
     buffer = @from args
     buffer.array = new Buffer.Observable buffer.array

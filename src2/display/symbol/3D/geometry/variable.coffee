@@ -125,7 +125,7 @@ export class Attribute extends Lazy.LazyManager
     if @_type == undefined then throw 'Type required' 
     if @_size == undefined then throw 'Size required' 
     @logger.info "Allocating space for #{@_size} elements"
-    @_data = new Buffer.Observable (@type.glType.newBuffer @size, {default: rawArray @_default})
+    @_data = new Buffer.Bindable (@type.glType.newBuffer @size, {default: rawArray @_default})
     
     @_initEventHandlers()
 
