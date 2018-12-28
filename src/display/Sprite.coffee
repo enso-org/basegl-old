@@ -874,40 +874,43 @@ class PassInstance
   constructor: (@pass, @_renderer) ->
     outputNum         = 0
     @outputs          = {}
-    @rootAttachements = []
     @rootFramebuffer  = null
 
     outputKeys = Object.keys @pass.outputs
     outputSize = outputKeys.length
 
+    level       = 0
+    
     if outputSize > 0
-      @rootFramebuffer = @gl.createFramebuffer()
-      @gl.bindFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer
+      
 
       # Creating output textures
       for outputNum in [0 ... outputSize]
         name        = outputKeys[outputNum]
-        level       = 0
         noImage     = null
-        output      = @gl.createTexture()
-        attachement = @gl.COLOR_ATTACHMENT0 + outputNum
-        @outputs[name] = texture output
-        @rootAttachements.push attachement
-        @gl.bindTexture @gl.TEXTURE_2D, output
+        val         = @gl.createTexture()
+        output      = texture val
+        @outputs[name] = output
+        @gl.bindTexture @gl.TEXTURE_2D, val
         @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
                        @gl.RGBA, @gl.UNSIGNED_BYTE, noImage
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
         @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
-        @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
-                                 output, level
+        
+      # Creating root framebuffer
+      @rootFramebuffer = @gl.createFramebuffer()
+      @rootAttachements = []
+      @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
+        for outputNum in [0 ... outputSize]
+          name        = outputKeys[outputNum]
+          output      = @outputs[name]
+          val         = output.glValue()
+          attachement = @gl.COLOR_ATTACHMENT0 + outputNum
+          @rootAttachements.push attachement
+          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
+                                  val, level
 
-      @gl.bindFramebuffer @gl.FRAMEBUFFER, null # FIXME -> withFramebuffer
 
-
-      @outputMap = new Map
-      outputNames = Object.keys @outputs
-      for name, ix in outputNames
-        @outputMap.set name, ix
       
 
   run: (state) ->
@@ -925,29 +928,39 @@ class PassInstance
       @_run state
     state
 
-  test: (element) ->
+  addMesh: (element) ->
     elOutputName = Object.keys element.mesh.material.variable.output
-    console.log elOutputName
-    console.log @outputs
-
     framebuffer  = @gl.createFramebuffer()
     level        = 0
     attachements = [] 
     @gl.withFramebuffer @gl.FRAMEBUFFER, framebuffer, =>
       for name, ix in elOutputName
-        outputIx = @outputMap.get(name)
-        if outputIx?
-          attachement = @gl.COLOR_ATTACHMENT0 + outputIx
-          output      = @outputs[name].glValue()
+        output = @outputs[name]
+        if output?
+          attachement = @gl.COLOR_ATTACHMENT0 + ix
+          val         = output.glValue()
           attachements.push attachement
           @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
-                                  output, level
+                                   val, level
 
-    {framebuffer, attachements}
+    mesh = @renderer.addMesh element
+    new FramebufferMesh @gl, mesh, framebuffer, attachements
 
 
   _run: (state) ->
     @pass.run state  
+
+
+class FramebufferMesh
+  @generateAccessors()
+
+  constructor: (@_gl, @_mesh, @_framebuffer, @_attachements) ->
+
+  draw: (camera) ->
+    @gl.withFramebuffer @gl.FRAMEBUFFER, @framebuffer, =>
+      @gl.drawBuffers @attachements
+      @mesh.draw camera
+
 
 
 symbolMousePass = new Pass
@@ -1005,9 +1018,9 @@ class RenderViewsPass extends Pass
   constructor: (@_renderer, cfg={}) ->
     super
       outputs:
+        shapeID  : float
         color    : vec3
         symbolID : float
-        shapeID  : float
 
     @_views    = new WatchableSet
     @_mainView = @newView()
@@ -1076,20 +1089,11 @@ class ViewInstance
     @_camera   = @view.camera.instance @renderer
     @_elements = new WatchableMap
     @elements.watchAndMap @view.elements, (element) =>
-      {framebuffer, attachements} = @pass.test element
-      mesh        = @renderer.addMesh element
-      {framebuffer, attachements, mesh}
+      @pass.addMesh element
 
   draw: ->
     @elements.forEach (element) =>
-      
-      @renderer.gl.bindFramebuffer @renderer.gl.FRAMEBUFFER, element.framebuffer
-      # @renderer.gl.clear @renderer.gl.COLOR_BUFFER_BIT
-      # @renderer.gl.blendFuncSeparate @renderer.gl.SRC_ALPHA, @renderer.gl.ONE_MINUS_SRC_ALPHA, @renderer.gl.ONE, @renderer.gl.ONE_MINUS_SRC_ALPHA  
-      @renderer.gl.drawBuffers element.attachements
-      
-      element.mesh.draw @camera
-      @renderer.gl.bindFramebuffer @renderer.gl.FRAMEBUFFER, null # FIXME -> withFramebuffer
+      element.draw @camera
 
 
 
