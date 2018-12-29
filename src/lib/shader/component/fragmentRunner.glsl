@@ -3,6 +3,7 @@
 int drawBuffer = 0;
 int displayMode = 0;
 float pointerEvents = 1.0;
+int pointerEvents2 = 1;
 
 void main() {
   vec2      p     = local.xy ;
@@ -45,7 +46,8 @@ void main() {
           output_color = vec4(0.0);
       }
   }
-  output_symbolID    = vec4(0.5,0.6,0.7,0.8);
+  output_id = ivec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
+  output_id *= pointerEvents2;
   
   // gl_FragColor = vec4(luv.x, luv.y, 0.0, 1.0);
 }

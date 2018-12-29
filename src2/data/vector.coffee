@@ -24,7 +24,7 @@ class GLType
       @bufferType = @item.bufferType
     else
       @bufferType = cfg.bufferType    
-      @item       = null
+      @item       = @
       @size       = 1
       @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
 

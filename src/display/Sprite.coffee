@@ -30,7 +30,7 @@ import vertexBody     from 'basegl/lib/shader/component/vertexBody'
 import fragmentHeader from 'basegl/lib/shader/component/fragmentHeader'
 import fragmentRunner from 'basegl/lib/shader/component/fragmentRunner'
 import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
-
+import * as Promise from 'bluebird';
 
 
 builtins = '''
@@ -549,7 +549,7 @@ export symbolBasicMaterial = (shapeShader, cfg) ->
   spriteBasicMaterial Property.extend cfg,
     fragment: symbolBasicMaterialFragmentShader shapeShader
     output: 
-      symbolID: 'vec4'
+      id: 'ivec4'
 
 
 export class Symbol extends DisplayObject
@@ -564,31 +564,16 @@ export class Symbol extends DisplayObject
 
 
 
-frameRequested = false
 
 
-
-resizeCanvasToDisplaySize = (canvas, multiplier) ->
-  multiplier = multiplier || 1
-  width  = canvas.clientWidth  * multiplier | 0
-  height = canvas.clientHeight * multiplier | 0
-  if (canvas.width != width ||  canvas.height != height)
-    canvas.width  = width
-    canvas.height = height
-    true
-  false
-
-
-
-
-
-
-
+######################################################################
+######################################################################
+######################################################################
 
 export test = (shape) ->
   scene = new Scene
     dom: 'test'
-  gpuRenderer = new GPURenderer
+  gpuRenderer = new GPURenderer scene
 
 
   # v2 = scene.addView()
@@ -597,8 +582,6 @@ export test = (shape) ->
 
   scene.addRenderer gpuRenderer
   
-  gl = gpuRenderer.gl
-
   ss  = new Symbol shape
   ss2 = new Symbol shape
 
@@ -611,115 +594,11 @@ export test = (shape) ->
   sp1_2.position.x = 100
   sp1_2.update()
 
-
-  # console.log input_color.getGLTexture(gl)input_color
-  # width  = gl.canvas.clientWidth 
-  # height = gl.canvas.clientHeight
-
-  # aspect = width / height
-
-  # console.log ">>>", fsbox.shader.fragment
-  # console.log ">>>", ss.shader.fragment
-
-  
-  # camera = scene.mainView.camera
-  # camera = new Camera
-  #   aspect: aspect
-
-  # camera.position.z = 300
-
-
-
-  {pbo, array2, size} = testx(gl, 1,1) # scene.width, scene.height)
-
-  maxloops = 5 
-  currentloop = 0
-  
-  cxc = 20
-  renderloop = ->
-    currentloop += 1
-    # window.requestAnimationFrame renderloop
-    # if frameRequested then return
-    # frameRequested = true
-    go()
-
-  go = ->
-    # camera.rotation.z += 0.1
-    # console.log ""
-    # console.log "---"
+  scene.onFrame.addEventListener =>
     sp1.position.x += 1
-    # console.log sp1
-    sp1.update()
-    # console.log "---"
-    # console.log ""
-    # ss.update()
-    # meshRegistry.update()
-    # gpuRenderer.dirty.set()
-    # gpuRenderer.render camera
-    scene.render()
-
-    # a = 0
-    # for i in [0...1000000]
-    #   for j in [0...10]
-    #     a = i + j
-
-    if cxc == 0 then return
-    cxc -= 1
-
-    window.requestAnimationFrame renderloop
-    if frameRequested
-      return
-    frameRequested = true
-    
-    
-    
-    # ssm.draw(camera.viewProjectionMatrix)
-    
-    gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
-    # gl.readPixels 0, 0, scene.width, scene.height, gl.RGBA, gl.UNSIGNED_BYTE, 0
-    gl.readPixels scene.mouse.x, scene.height-scene.mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0
-    # gl.readPixels(mouse.x, pickingTexture.height - mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
-    fence(gl).then ->
-      gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, array2, 0, 4
-      gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
-      # console.log ">", array2
-      render()
-      gl.finish()
-
-  renderloop()
-
-
-render = ->
-  frameRequested = false
-  # renderer.render(scene, camera)  
-
-
-testx = (gl, width, height) ->
+    ss.update()
   
-  bytesPerPixel = 4
-  bytesPerRow = width * bytesPerPixel
-  size = bytesPerRow * height
-  array  = new Uint8Array size
-  array2 = new Uint8Array size
-  pbo = gl.createBuffer()
-  offset = 0
-  gl.bindBuffer gl.PIXEL_PACK_BUFFER, pbo
-  gl.bufferData gl.PIXEL_PACK_BUFFER, array, gl.DYNAMIC_READ
-  gl.bindBuffer gl.PIXEL_PACK_BUFFER, null
-  {pbo, array2, size}
-  
-fence = (gl) ->
-  return new Promise (resolve) =>
-    sync = gl.fenceSync gl.SYNC_GPU_COMMANDS_COMPLETE, 0
-    gl.flush()
-    check = () ->
-      status = gl.getSyncParameter sync, gl.SYNC_STATUS
-      if status == gl.SIGNALED
-        gl.deleteSync sync
-        resolve()
-      else
-        setTimeout check
-    setTimeout check
+
 
 
 
@@ -730,6 +609,12 @@ class WebGL2RenderingContextEx
     @bindFramebuffer target, framebuffer
     out = f()
     @bindFramebuffer target, null
+    out
+
+  withBuffer: (target, buffer, f) ->
+    @bindBuffer target, buffer
+    out = f()
+    @bindBuffer target, null
     out
 
 
@@ -754,7 +639,7 @@ for field in Object.keys srcProto
 class GPURenderer
   @mixin Lazy.LazyManager
 
-  constructor: ->
+  constructor: (@_scene) ->
     @mixins.constructor
       label: @constructor.name
     
@@ -764,14 +649,12 @@ class GPURenderer
     @_dom.style.width  = '100%'
     @_dom.style.height = '100%'
 
-    # @_gl = @_dom.getContext("webgl2")
     @_gl = new WebGL2RenderingContextEx @_dom.getContext("webgl2")
 
     if !@_gl then throw "WebGL not supported"
     @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
     @_gl.enable(@_gl.BLEND);
     # gl.disable(gl.DEPTH_TEST);
-    # @updateSize()
 
     @_attributeRegistry = new Variable.GPUAttributeRegistry @gl    
     @_gpuMeshRegistry   = new Mesh.GPUMeshRegistry          @gl
@@ -781,8 +664,8 @@ class GPURenderer
 
     @_meshes = new Map
 
-    @renderViewsPass = renderViewsPass @
-    @_pipeline = [@renderViewsPass, screenDrawPass @]
+    @renderViewsPass = renderViewsPass()
+    @_pipeline = new Pipeline [@renderViewsPass, screenDrawPass(), new PixelReadPass(@scene.mouse)]
     @_pipelineInstance = null
 
     @_size = Vec2.observableFrom [0, 0] # FIXME: make it nicer
@@ -807,10 +690,11 @@ class GPURenderer
       @dom.width  = @size.x
       @dom.height = @size.y
       @_gl.viewport 0, 0, @size.x, @size.y
-      @_pipelineInstance = pipelineInstance @, @pipeline
+      @_pipelineInstance = @pipeline.instance @
 
   render: -> 
-    runPipeline @pipelineInstance
+    state = @pipelineInstance.run()
+    state.pixelData #FIXME: change to collective promise
 
   update: ->
     if @dirty.isSet
@@ -852,38 +736,20 @@ export class GPURendererView
 
 class Pass
   @generateAccessors()
-  constructor: (cfg={}) ->
-    @_inputs  = cfg.inputs  || []
-    @_outputs = cfg.outputs || {}
-    @_run     = cfg.run     || (->)
-
-  instance: (renderer) ->
-    new PassInstance @, renderer
-
-
-
-####################
-### PassInstance ### 
-####################
-
-class PassInstance
-  @generateAccessors()
 
   @getter 'gl', -> @renderer.gl
 
-  constructor: (@pass, @_renderer) ->
+  constructor: (@_pass, @_renderer) ->
     outputNum         = 0
     @outputs          = {}
     @rootFramebuffer  = null
 
-    outputKeys = Object.keys @pass.outputs
-    outputSize = outputKeys.length
-
+    passOutputs = @pass.outputs || {}
+    outputKeys  = Object.keys passOutputs
+    outputSize  = outputKeys.length
     level       = 0
     
     if outputSize > 0
-      
-
       # Creating output textures
       for outputNum in [0 ... outputSize]
         name        = outputKeys[outputNum]
@@ -910,10 +776,11 @@ class PassInstance
           @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
                                   val, level
 
+    @pass.instanceConstructor.call @
 
       
-
-  run: (state) ->
+  _run: (state) -> @pass.instanceRun.call @, state  
+  run:  (state) ->
     for name, output of @outputs
       state[name] = output
  
@@ -947,8 +814,7 @@ class PassInstance
     new FramebufferMesh @gl, mesh, framebuffer, attachements
 
 
-  _run: (state) ->
-    @pass.run state  
+  
 
 
 class FramebufferMesh
@@ -963,37 +829,68 @@ class FramebufferMesh
 
 
 
-symbolMousePass = new Pass
-  inputs: ['color', 'symbolID', 'shapeID']
-  run: ->
 
 
+#####################
+### PixelReadPass ###
+#####################
+
+class PixelReadPass
+  @generateAccessors()
+  
+  constructor: (@_mouse) ->
+
+  instanceConstructor: ->
+    pixelBytes = 4
+    @pixelData  = new Uint8Array pixelBytes
+    @pixelBuffer = @gl.createBuffer()
+    @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
+      @gl.bufferData @gl.PIXEL_PACK_BUFFER, @pixelData, @gl.DYNAMIC_READ
+
+  instanceRun: (state) ->
+    @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
+      @gl.readPixels @pass.mouse.x, @pass.mouse.y, 1, 1, @gl.RGBA, @gl.UNSIGNED_BYTE, 0
+    promise = fence(@gl).then =>
+      @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
+        @gl.getBufferSubData @gl.PIXEL_PACK_BUFFER, 0, @pixelData, 0, 4
+      @pixelData
+    state.pixelData = promise
+
+
+fence = (gl) ->
+  return new Promise (resolve) =>
+    sync = gl.fenceSync gl.SYNC_GPU_COMMANDS_COMPLETE, 0
+    gl.flush()
+    check = () ->
+      status = gl.getSyncParameter sync, gl.SYNC_STATUS
+      if status == gl.SIGNALED
+        gl.deleteSync sync
+        resolve()
+      else
+        setTimeout check
+    setTimeout check
 
 
 ######################
 ### ScreenDrawPass ###
 ######################
 
-class ScreenDrawPass extends Pass
+class ScreenDrawPass
   @generateAccessors()
 
-  constructor: (@_renderer, cfg={}) ->
-    super()
-
-    material = 
-      new Material.Raw
-        fragment: fullScreenFragmentShader
-
+  instanceConstructor: ->
+    material = new Material.Raw
+      fragment: fullScreenFragmentShader
     geometry = Geometry.rectangle
       object :
         input_color: texture()
+    @fullScreenBox = Mesh.create geometry, material
+    @fullScreenBoxInstance = @renderer.addMesh @fullScreenBox
 
-    @_fullScreenBox         = Mesh.create geometry, material
-    @_fullScreenBoxInstance = @renderer.addMesh @fullScreenBox 
-
-  run: (state) ->
+  instanceRun: (state) ->
     @fullScreenBox.geometry.object.data.input_color = state.color
     @fullScreenBoxInstance.draw()
+
     
 
 screenDrawPass = (args...) -> new ScreenDrawPass args...
@@ -1012,19 +909,17 @@ void main() {
 ### RenderViewPass ###
 ######################
 
-class RenderViewsPass extends Pass 
+class RenderViewsPass
   @generateAccessors()
 
-  constructor: (@_renderer, cfg={}) ->
-    super
-      outputs:
-        shapeID  : float
-        color    : vec3
-        symbolID : float
+  constructor: ->
+    @_outputs =
+      shapeID  : float
+      color    : vec3
+      symbolID : float
 
     @_views    = new WatchableSet
     @_mainView = @newView()
-
 
   newView: (cfg) -> 
     view = new View cfg
@@ -1037,28 +932,35 @@ class RenderViewsPass extends Pass
   add: (element) ->
     @mainView.add element
 
-  instance: (renderer) ->
-    new RenderViewsPassInstance @, renderer
+  instanceConstructor: ->
+    @views = new WatchableMap
+    @views.watchAndMap @pass.views, (view) =>
+      view.instance @, @renderer
   
+  instanceRun: (state) ->
+    @views.forEach (view) =>
+      view.draw()
+
+
 
 
 renderViewsPass = (args...) -> new RenderViewsPass args...
 
 
 
-class RenderViewsPassInstance extends PassInstance
-  @generateAccessors()
+# class RenderViewsPassInstance extends Pass
+#   @generateAccessors()
 
-  constructor: (pass, renderer) ->
-    super pass, renderer
+#   constructor: (pass, renderer) ->
+#     super pass, renderer
 
-    @_views = new WatchableMap
-    @views.watchAndMap pass.views, (view) =>
-      view.instance @, renderer
+#     @_views = new WatchableMap
+#     @views.watchAndMap pass.views, (view) =>
+#       view.instance @, renderer
 
-  _run: ->
-    @views.forEach (view) =>
-      view.draw()
+#   _run: ->
+#     @views.forEach (view) =>
+#       view.draw()
 
   
 
@@ -1096,19 +998,32 @@ class ViewInstance
       element.draw @camera
 
 
+class Pipeline
+  @generateAccessors()
+  constructor: (@_passes) ->
+  instance: (renderer) ->
+    passInstances = []
+    for pass in @passes
+      passInstance = new Pass pass, renderer
+      passInstances.push passInstance
+    new PipelineInstance passInstances
 
-pipelineInstance = (renderer, passes) ->
-  out = []
-  for pass in passes
-    out.push pass.instance(renderer)
-  out
 
-runPipeline = (pipeline) -> 
-  state = {}
-  for pass in pipeline
-    state = pass.run state
-  state
+class PipelineInstance
+  @generateAccessors()
+  constructor: (@_passes) ->
+  run: ->
+    state = {}
+    for pass in @passes
+      state = pass.run state
+    state
 
+
+
+
+#############
+### Scene ###
+#############
 
 class Scene extends DisplayObject
   @generateAccessors()
@@ -1128,11 +1043,18 @@ class Scene extends DisplayObject
 
     @_mouse = {x:0,y:0}
 
+    @_onFrame = EventDispatcher.create()
+
+    @__renderLoopStarted = false
+    @__frameRequested    = false
+    @startRenderLoop()
+
+
     window.addEventListener 'mousemove', (e) =>
       # Mouse position can be non integer and negative e.g. when div position
       # is non integer.
       @mouse.x = Math.min(@width ,Math.max(0,Math.round(e.x - @dom.position.x)))
-      @mouse.y = Math.min(@height,Math.max(0,Math.round(e.y - @dom.position.y)))
+      @mouse.y = @height - Math.min(@height,Math.max(0,Math.round(e.y - @dom.position.y)))
 
   addRenderer: (renderer) ->
     @renderers.add renderer
@@ -1176,10 +1098,14 @@ class Scene extends DisplayObject
     
     # @renderers.forEach (renderer) =>
     #   renderer.begin()
+    promises = []
     @renderers.forEach (renderer) =>
       renderer.update()
     @renderers.forEach (renderer) =>
-      renderer.render()
+      promise = renderer.render()
+      promises.push promise
+
+    Promise.all promises
     # @renderers.forEach (renderer) =>
     #   renderer.finish()
     
@@ -1191,6 +1117,31 @@ class Scene extends DisplayObject
       # @xView.render()
     # console.log "^^^^^^^^^"
     # console.log "" 
+
+  stopRenderLoop: ->
+    @_renderLoopStarted = false
+
+  startRenderLoop: ->
+    if not @_renderLoopStarted
+      @_renderLoopStarted = true
+      @renderLoop()
+
+  renderLoop: ->
+    @onFrame.dispatch()
+
+    if not @_frameRequested
+      @_frameRequested = true
+      frameRendered = @render()
+      frameRendered.then =>
+        @_frameRequested = false
+
+    if @_renderLoopStarted
+      window.requestAnimationFrame @renderLoop.bind(@)
+
+
+
+
+  
 
 
 export scene = (args...) -> new Scene args...
