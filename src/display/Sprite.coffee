@@ -549,7 +549,7 @@ export symbolBasicMaterial = (shapeShader, cfg) ->
   spriteBasicMaterial Property.extend cfg,
     fragment: symbolBasicMaterialFragmentShader shapeShader
     output: 
-      id: 'ivec4'
+      id: 'vec4'
 
 
 export class Symbol extends DisplayObject
@@ -650,6 +650,7 @@ class GPURenderer
     @_dom.style.height = '100%'
 
     @_gl = new WebGL2RenderingContextEx @_dom.getContext("webgl2")
+    extSupported = @_gl.getExtension 'EXT_color_buffer_float'
 
     if !@_gl then throw "WebGL not supported"
     @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
@@ -692,9 +693,7 @@ class GPURenderer
       @_gl.viewport 0, 0, @size.x, @size.y
       @_pipelineInstance = @pipeline.instance @
 
-  render: -> 
-    state = @pipelineInstance.run()
-    state.pixelData #FIXME: change to collective promise
+  render: -> @pipelineInstance.run()
 
   update: ->
     if @dirty.isSet
@@ -739,12 +738,12 @@ class Pass
 
   @getter 'gl', -> @renderer.gl
 
-  constructor: (@_pass, @_renderer) ->
+  constructor: (@_def, @_renderer) ->
     outputNum         = 0
     @outputs          = {}
     @rootFramebuffer  = null
 
-    passOutputs = @pass.outputs || {}
+    passOutputs = @def.outputBuffers || {}
     outputKeys  = Object.keys passOutputs
     outputSize  = outputKeys.length
     level       = 0
@@ -756,12 +755,24 @@ class Pass
         noImage     = null
         val         = @gl.createTexture()
         output      = texture val
+        type        = @gl.UNSIGNED_BYTE
+        internalFormat = @gl.RGBA
+        format         = @gl.RGBA
+        if name == 'id'
+          internalFormat = @gl.RGBA32F
+          format         = @gl.RGBA
+          type           = @gl.FLOAT
         @outputs[name] = output
         @gl.bindTexture @gl.TEXTURE_2D, val
-        @gl.texImage2D @gl.TEXTURE_2D, level, @gl.RGBA, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
-                       @gl.RGBA, @gl.UNSIGNED_BYTE, noImage
-        @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
-        @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
+        @gl.texImage2D @gl.TEXTURE_2D, level, internalFormat, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
+                       format, type, noImage
+        # @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
+        # @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
+        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.LINEAR);
+        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.LINEAR);
+        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_S, @gl.CLAMP_TO_EDGE);
+        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_T, @gl.CLAMP_TO_EDGE);
+
         
       # Creating root framebuffer
       @rootFramebuffer = @gl.createFramebuffer()
@@ -775,25 +786,28 @@ class Pass
           @rootAttachements.push attachement
           @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
                                   val, level
+        console.log ">>>", (@gl.checkFramebufferStatus(@gl.FRAMEBUFFER) == @gl.FRAMEBUFFER_COMPLETE)
+        
 
-    @pass.instanceConstructor.call @
+    @def.instance @
 
       
-  _run: (state) -> @pass.instanceRun.call @, state  
+  _run: (state) -> @def.run state, @
   run:  (state) ->
-    for name, output of @outputs
-      state[name] = output
- 
+    out = null
     if @rootFramebuffer
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
         @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
         @gl.drawBuffers @rootAttachements
         @gl.clear @gl.COLOR_BUFFER_BIT
-        @_run state
+        out = @_run state
         @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
     else    
-      @_run state
-    state
+      out = @_run state
+    if out == null then out = {}
+    for name, output of @outputs
+      out[name] = output
+    out
 
   addMesh: (element) ->
     elOutputName = Object.keys element.mesh.material.variable.output
@@ -830,7 +844,6 @@ class FramebufferMesh
 
 
 
-
 #####################
 ### PixelReadPass ###
 #####################
@@ -839,22 +852,38 @@ class PixelReadPass
   @generateAccessors()
   
   constructor: (@_mouse) ->
+    @_inputs = ['color', 'id']
 
-  instanceConstructor: ->
-    pixelBytes = 4
-    @pixelData  = new Uint8Array pixelBytes
-    @pixelBuffer = @gl.createBuffer()
-    @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
-      @gl.bufferData @gl.PIXEL_PACK_BUFFER, @pixelData, @gl.DYNAMIC_READ
+  instance: (pass) ->
+    gl = pass.gl
+    pixelBytes       = 4
+    pass.pixelData   = new Uint8Array pixelBytes
+    pass.pixelBuffer = gl.createBuffer()
+    gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
+      gl.bufferData gl.PIXEL_PACK_BUFFER, pass.pixelData, gl.DYNAMIC_READ
 
-  instanceRun: (state) ->
-    @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
-      @gl.readPixels @pass.mouse.x, @pass.mouse.y, 1, 1, @gl.RGBA, @gl.UNSIGNED_BYTE, 0
-    promise = fence(@gl).then =>
-      @gl.withBuffer @gl.PIXEL_PACK_BUFFER, @pixelBuffer, =>
-        @gl.getBufferSubData @gl.PIXEL_PACK_BUFFER, 0, @pixelData, 0, 4
-      @pixelData
-    state.pixelData = promise
+  run: (state, pass) ->
+    gl = pass.gl
+    # console.log state
+
+    framebuffer  = gl.createFramebuffer()
+    gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>
+      attachement = gl.COLOR_ATTACHMENT0
+      val         = state.color.glValue() #FIXME: hardcoded layer
+      level       = 0
+      gl.framebufferTexture2D gl.FRAMEBUFFER, attachement, gl.TEXTURE_2D, 
+                                val, level
+
+    gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>                                
+      gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
+        gl.readPixels pass.def.mouse.x, pass.def.mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0
+
+    promise = fence(gl).then =>
+      gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
+        gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData, 0, 4
+      # console.log pass.pixelData
+      pass.pixelData
+    {pixelData: promise}
 
 
 fence = (gl) ->
@@ -878,18 +907,22 @@ fence = (gl) ->
 class ScreenDrawPass
   @generateAccessors()
 
-  instanceConstructor: ->
+  constructor: ->
+    @_inputs = ['color']
+
+  instance: (pass) ->
     material = new Material.Raw
       fragment: fullScreenFragmentShader
     geometry = Geometry.rectangle
       object :
         input_color: texture()
-    @fullScreenBox = Mesh.create geometry, material
-    @fullScreenBoxInstance = @renderer.addMesh @fullScreenBox
+    pass.fullScreenBox = Mesh.create geometry, material
+    pass.fullScreenBoxInstance = pass.renderer.addMesh pass.fullScreenBox
 
-  instanceRun: (state) ->
-    @fullScreenBox.geometry.object.data.input_color = state.color
-    @fullScreenBoxInstance.draw()
+  run: (state, pass) ->
+    pass.fullScreenBox.geometry.object.data.input_color = state.color
+    pass.fullScreenBoxInstance.draw()
+    null
 
     
 
@@ -913,10 +946,9 @@ class RenderViewsPass
   @generateAccessors()
 
   constructor: ->
-    @_outputs =
-      shapeID  : float
-      color    : vec3
-      symbolID : float
+    @_outputBuffers =
+      color : vec3
+      id    : float
 
     @_views    = new WatchableSet
     @_mainView = @newView()
@@ -932,40 +964,19 @@ class RenderViewsPass
   add: (element) ->
     @mainView.add element
 
-  instanceConstructor: ->
-    @views = new WatchableMap
-    @views.watchAndMap @pass.views, (view) =>
-      view.instance @, @renderer
+  instance: (pass) ->
+    pass.views = new WatchableMap
+    pass.views.watchAndMap @views, (view) =>
+      view.instance pass, pass.renderer
   
-  instanceRun: (state) ->
-    @views.forEach (view) =>
+  run: (state, pass) ->
+    pass.views.forEach (view) =>
       view.draw()
-
-
-
+    null
 
 renderViewsPass = (args...) -> new RenderViewsPass args...
 
-
-
-# class RenderViewsPassInstance extends Pass
-#   @generateAccessors()
-
-#   constructor: (pass, renderer) ->
-#     super pass, renderer
-
-#     @_views = new WatchableMap
-#     @views.watchAndMap pass.views, (view) =>
-#       view.instance @, renderer
-
-#   _run: ->
-#     @views.forEach (view) =>
-#       view.draw()
-
   
-
-
-
 
 class View
   @generateAccessors()
@@ -998,6 +1009,10 @@ class ViewInstance
       element.draw @camera
 
 
+
+
+
+
 class Pipeline
   @generateAccessors()
   constructor: (@_passes) ->
@@ -1008,17 +1023,44 @@ class Pipeline
       passInstances.push passInstance
     new PipelineInstance passInstances
 
-
 class PipelineInstance
   @generateAccessors()
   constructor: (@_passes) ->
   run: ->
-    state = {}
+    funcs = []
     for pass in @passes
-      state = pass.run state
-    state
+      do (pass) =>
+        func = (state) =>
+          names  = pass.def.inputs || []
+          inputs = (state[name] for name in names)
+          Promise.all(inputs).then (resolvedInputs) =>
+            localState = zipObject names, resolvedInputs
+            passOutput = pass.run localState
+            Object.assign state, passOutput
+            state
+        funcs.push func
 
+    promise = promiseChain funcs, {}
+    promise = promise.then (state) =>
+      inputs = Object.values state
+      await Promise.all inputs
+    promise
 
+promiseChain = (funcs, init) ->
+  promise = new Promise (resolve) => resolve {}
+  for func in funcs
+    do (func) =>
+      promise = promise.then (state) =>
+        await func state
+  promise
+
+zipObject = (keys, vals) ->
+  obj = {}
+  for i in [0...keys.length] by 1
+    key = keys[i]
+    val = vals[i]
+    obj[key] = val
+  obj
 
 
 #############

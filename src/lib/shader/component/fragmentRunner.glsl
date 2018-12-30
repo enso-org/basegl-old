@@ -46,8 +46,8 @@ void main() {
           output_color = vec4(0.0);
       }
   }
-  output_id = ivec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
-  output_id *= pointerEvents2;
+  output_id = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
+  output_id *= pointerEvents;
   
   // gl_FragColor = vec4(luv.x, luv.y, 0.0, 1.0);
 }
