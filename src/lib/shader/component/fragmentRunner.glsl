@@ -46,8 +46,23 @@ void main() {
           output_color = vec4(0.0);
       }
   }
-  output_id = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
-  output_id *= pointerEvents;
+//   output_id = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
+//   output_id *= pointerEvents;
+  output_id = ivec4(1,2,3,4);
   
+//   int x = 8388607;
+//   float xx = intBitsToFloat(x);
+//   int xxx = floatBitsToInt(xx);
+  
+//   if (x == xxx) {
+//       output_id = vec4(1.0,0.0,0.0,1.0);
+//   } else {
+//       output_id = vec4(0.0,1.0,0.0,1.0);      
+//   }
   // gl_FragColor = vec4(luv.x, luv.y, 0.0, 1.0);
 }
+// 3124124124 -> -1170843172
+// 3124124125 -> -1170843171
+// 53280955
+
+// 8388608

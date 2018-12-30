@@ -32,6 +32,8 @@ import fragmentRunner from 'basegl/lib/shader/component/fragmentRunner'
 import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 import * as Promise from 'bluebird';
 
+import * as twgl from 'twgl.js'
+
 
 builtins = '''
 float radians(float degrees)  
@@ -549,7 +551,9 @@ export symbolBasicMaterial = (shapeShader, cfg) ->
   spriteBasicMaterial Property.extend cfg,
     fragment: symbolBasicMaterialFragmentShader shapeShader
     output: 
-      id: 'vec4'
+      id: 'ivec4'
+        # type: 'vec4'
+        # precision: 'highp'
 
 
 export class Symbol extends DisplayObject
@@ -752,26 +756,33 @@ class Pass
       # Creating output textures
       for outputNum in [0 ... outputSize]
         name        = outputKeys[outputNum]
-        noImage     = null
-        val         = @gl.createTexture()
-        output      = texture val
-        type        = @gl.UNSIGNED_BYTE
+        # noImage     = null
+        # val         = @gl.createTexture()
+        # type        = @gl.UNSIGNED_BYTE
         internalFormat = @gl.RGBA
-        format         = @gl.RGBA
+        # format         = @gl.RGBA
         if name == 'id'
-          internalFormat = @gl.RGBA32F
-          format         = @gl.RGBA
-          type           = @gl.FLOAT
+          internalFormat = @gl.RGBA32I
+          # format         = @gl.RGBA_INTEGER
+          # type           = @gl.INT
+        # @gl.bindTexture @gl.TEXTURE_2D, val
+        # @gl.texImage2D @gl.TEXTURE_2D, level, internalFormat, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
+                      #  format, type, noImage
+
+        val = twgl.createTexture @gl,
+          internalFormat: internalFormat
+          width:  @renderer.size.x
+          height: @renderer.size.y
+            
+        output      = texture val
         @outputs[name] = output
-        @gl.bindTexture @gl.TEXTURE_2D, val
-        @gl.texImage2D @gl.TEXTURE_2D, level, internalFormat, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
-                       format, type, noImage
-        # @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.NEAREST
-        # @gl.texParameteri @gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.NEAREST
-        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.LINEAR);
-        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.LINEAR);
-        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_S, @gl.CLAMP_TO_EDGE);
-        @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_T, @gl.CLAMP_TO_EDGE);
+        
+        
+          
+        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.LINEAR);
+        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.LINEAR);
+        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_S, @gl.CLAMP_TO_EDGE);
+        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_T, @gl.CLAMP_TO_EDGE);
 
         
       # Creating root framebuffer
@@ -780,6 +791,7 @@ class Pass
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
         for outputNum in [0 ... outputSize]
           name        = outputKeys[outputNum]
+          console.log ">>", outputNum, name
           output      = @outputs[name]
           val         = output.glValue()
           attachement = @gl.COLOR_ATTACHMENT0 + outputNum
@@ -799,7 +811,9 @@ class Pass
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
         @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
         @gl.drawBuffers @rootAttachements
-        @gl.clear @gl.COLOR_BUFFER_BIT
+        # @gl.clear @gl.COLOR_BUFFER_BIT
+        @gl.clearBufferfv @gl.COLOR, 0, new Float32Array(4)
+        @gl.clearBufferiv @gl.COLOR, 1, new Int32Array(4)
         out = @_run state
         @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
     else    
@@ -843,6 +857,23 @@ class FramebufferMesh
 
 
 
+# function DoubleToIEEE(f)
+# {
+#     var buf = new ArrayBuffer(8);
+#     (new Float64Array(buf))[0] = f;
+#     return [ (new Uint32Array(buf))[0] ,(new Uint32Array(buf))[1] ];
+# }
+
+int8    = new Int8Array 4
+int16   = new Int16Array int8.buffer, 0, 1
+int32   = new Int32Array int8.buffer, 0, 1
+uint32  = new Uint32Array int8.buffer, 0, 1
+float32 = new Float32Array int8.buffer, 0, 1
+
+floatToIntBits = (f) ->
+	float32[0] = f
+	int32
+
 
 #####################
 ### PixelReadPass ###
@@ -857,7 +888,8 @@ class PixelReadPass
   instance: (pass) ->
     gl = pass.gl
     pixelBytes       = 4
-    pass.pixelData   = new Uint8Array pixelBytes
+    # pass.pixelData   = new Uint8Array pixelBytes
+    pass.pixelData   = new Int32Array pixelBytes
     pass.pixelBuffer = gl.createBuffer()
     gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
       gl.bufferData gl.PIXEL_PACK_BUFFER, pass.pixelData, gl.DYNAMIC_READ
@@ -869,19 +901,19 @@ class PixelReadPass
     framebuffer  = gl.createFramebuffer()
     gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>
       attachement = gl.COLOR_ATTACHMENT0
-      val         = state.color.glValue() #FIXME: hardcoded layer
+      val         = state.id.glValue() #FIXME: hardcoded layer
       level       = 0
       gl.framebufferTexture2D gl.FRAMEBUFFER, attachement, gl.TEXTURE_2D, 
                                 val, level
 
     gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>                                
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
-        gl.readPixels pass.def.mouse.x, pass.def.mouse.y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0
+        gl.readPixels pass.def.mouse.x, pass.def.mouse.y, 1, 1, gl.RGBA_INTEGER, gl.INT, 0
 
     promise = fence(gl).then =>
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
         gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData, 0, 4
-      # console.log pass.pixelData
+      console.log pass.pixelData
       pass.pixelData
     {pixelData: promise}
 
