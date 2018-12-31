@@ -41,7 +41,6 @@ export class Buffer
     else new @type arg
 
   @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @_array.buffer
   @getter 'length'   , -> @_array.length
   @getter 'rawArray' , -> @_array
 
@@ -83,19 +82,16 @@ export class Buffer
 # a defined elements shift.
 
 export class View
+  @generateAccessors()
 
   ### Properties ###
-  constructor: (@_array, @_offset=0, @_length=0) ->
-  @getter 'array'  , -> @_array
-  @getter 'buffer' , -> @_array.buffer
-  @getter 'length' , -> @_length
-  @getter 'offset' , -> @_offset
+  constructor: (@_buffer, @_offset=0, @_length=0) ->
 
   ### Read / Write ###
-  read:          (x)    -> @_array.read          (x + @_offset)
-  write:         (x, v) -> @_array.write         (x + @_offset), v
-  readMultiple:  (x)    -> @_array.readMultiple  (x + @_offset for x from x)
-  writeMultiple: (x, v) -> @_array.writeMultiple (x + @_offset for x from x), v
+  read:          (x)    -> @buffer.read          (x + @offset)
+  write:         (x, v) -> @buffer.write         (x + @offset), v
+  readMultiple:  (x)    -> @buffer.readMultiple  (x + @offset for x from x)
+  writeMultiple: (x, v) -> @buffer.writeMultiple (x + @offset for x from x), v
 
   
 
@@ -108,32 +104,30 @@ export class View
 # changes by monkey-patching its methods.
 
 export class Bindable
+  @generateAccessors()
 
   ### Properties ###
-
-  constructor: (@_array) -> 
-  @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'length'   , -> @array.length
-  @getter 'rawArray' , -> @array.rawArray
-
+  
+  constructor: (@_buffer) -> 
+  @getter 'length'   , -> @buffer.length
+  @getter 'rawArray' , -> @buffer.rawArray
 
   ### Read / Write ###
 
-  read:         (ix)  -> @array.read         ix
-  readMultiple: (ixs) -> @array.readMultiple ixs 
+  read:         (ix)  -> @buffer.read         ix
+  readMultiple: (ixs) -> @buffer.readMultiple ixs 
   
   write: (ix, v) -> 
-    @array.write ix, v
+    @buffer.write ix, v
     @onChanged ix
   
   writeMultiple: (ixs, vs) ->
-    @array.writeMultiple ixs, vs 
+    @buffer.writeMultiple ixs, vs 
     @onChangedMultiple ixs
 
-  set: (array, offset=0) ->
-    @array.set array, offset
-    @onChangedRange offset, array.length
+  set: (buffer, offset=0) ->
+    @buffer.set buffer, offset
+    @onChangedRange offset, buffer.length
 
 
   ### Size Management ###
@@ -141,7 +135,7 @@ export class Bindable
   resize: (newLength) ->
     oldLength = @_length
     if oldLength != newLength
-      @array.resize newLength
+      @buffer.resize newLength
       @onResized oldLength, newLength
 
 
@@ -172,31 +166,28 @@ export class Observable
 
   ### Properties ###
 
-  constructor: (@_array) -> 
+  constructor: (@_buffer) -> 
     @_onChanged = EventDispatcher.create()
-  
-  @getter 'array'    , -> @_array
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'length'   , -> @array.length
-  @getter 'rawArray' , -> @array.rawArray
+  @getter 'length'   , -> @buffer.length
+  @getter 'rawArray' , -> @buffer.rawArray
 
 
   ### Read / Write ###
 
-  read:         (ix)  -> @array.read         ix
-  readMultiple: (ixs) -> @array.readMultiple ixs 
+  read:         (ix)  -> @buffer.read         ix
+  readMultiple: (ixs) -> @buffer.readMultiple ixs 
   
   write: (ix, v) -> 
-    @array.write ix, v
+    @buffer.write ix, v
     @__onChanged ix
   
   writeMultiple: (ixs, vs) ->
-    @array.writeMultiple ixs, vs 
+    @buffer.writeMultiple ixs, vs 
     @__onChangedMultiple ixs
 
-  set: (array, offset=0) ->
-    @array.set array, offset
-    @__onChangedRange offset, array.length
+  set: (buffer, offset=0) ->
+    @buffer.set buffer, offset
+    @__onChangedRange offset, buffer.length
 
 
   ### Size Management ###
@@ -204,7 +195,7 @@ export class Observable
   resize: (newLength) ->
     oldLength = @_length
     if oldLength != newLength
-      @array.resize newLength
+      @buffer.resize newLength
       @__onResized oldLength, newLength
 
 
