@@ -913,7 +913,9 @@ class PixelReadPass
     promise = fence(gl).then =>
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
         gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData, 0, 4
-      console.log pass.pixelData
+
+      if pass.pixelData[3] != 0
+        console.log pass.pixelData
       pass.pixelData
     {pixelData: promise}
 

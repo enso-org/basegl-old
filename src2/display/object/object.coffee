@@ -30,9 +30,9 @@ export class Transform
     @_position = Vec3.bindableFrom [0,0,0]
     @_scale    = Vec3.bindableFrom [1,1,1]
     @_rotation = Vec3.bindableFrom [0,0,0]
-    @_position.array.onChanged = => @dirty.set()
-    @_scale.array.onChanged    = => @dirty.set()
-    @_rotation.array.onChanged = => @dirty.set()
+    @_position.onChanged = => @dirty.set()
+    @_scale.onChanged    = => @dirty.set()
+    @_rotation.onChanged = => @dirty.set()
 
   @getter 'matrix' , -> @update(); @_matrix
   @setter 'origin' , (v) -> 

@@ -163,11 +163,18 @@ texture.type = Texture
 ### Abstraction ###
 
 export class BufferType extends Type
-  constructor: (@array) -> super()
+  @generateAccessors()
+
+  constructor: (@_buffer) -> super()
+  
+  @getter 'size'   , -> @constructor.size
+
+
+  @getter 'array', -> throw "!"
+
   @getter 'type'     , -> @constructor
-  @getter 'length'   , -> @glType.size
-  @getter 'buffer'   , -> @array.buffer
-  @getter 'rawArray' , -> @array.rawArray
+  # @getter 'buffer'   , -> @buffer.buffer
+  @getter 'rawArray' , -> @buffer.rawArray
   @getter 'glType'   , -> @constructor.glType
   
   @from: (args) ->
@@ -178,18 +185,20 @@ export class BufferType extends Type
       new @ (@glType.newBufferfromArray args)
     else
       buffer = @default()
-      buffer.array.set args 
+      buffer.buffer.set args 
       buffer
 
   @bindableFrom: (args) ->
     buffer = @from args
-    buffer.array = new Buffer.Bindable buffer.array
+    buffer._buffer = new Buffer.Bindable buffer.buffer
     buffer
 
-  @getter 'onChanged', -> @array.onChanged
+  @getter 'onChanged',     -> @buffer.onChanged
+  @setter 'onChanged', (v) -> @buffer.onChanged = v
+
   @observableFrom: (args) ->
     buffer = @from args
-    buffer.array = new Buffer.Observable buffer.array
+    buffer._buffer = new Buffer.Observable buffer.buffer
     buffer
 
   @default: -> new @ @glType.newBuffer()
@@ -199,10 +208,10 @@ export class BufferType extends Type
     arr = new Buffer.View base, offset, @size
     new @ arr
 
-  read:          (ix)      -> @array.read          ix
-  write:         (ix,v)    -> @array.write         ix, v
-  readMultiple:  (ixs)     -> @array.readMultiple  ixs
-  writeMultiple: (ixs, vs) -> @array.writeMultiple ixs, vs
+  read:          (ix)      -> @buffer.read          ix
+  write:         (ix,v)    -> @buffer.write         ix, v
+  readMultiple:  (ixs)     -> @buffer.readMultiple  ixs
+  writeMultiple: (ixs, vs) -> @buffer.writeMultiple ixs, vs
   glValue:                 -> @rawArray
 
   clone: ->
@@ -239,12 +248,15 @@ export class Float extends Type
   toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
 
 export class Vec2 extends BufferType
+  @size: 2
   @glType: webGL.types.float_vec2
 
 export class Vec3 extends BufferType
+  @size: 3
   @glType: webGL.types.float_vec3
 
 export class Vec4 extends BufferType
+  @size: 4
   @glType: webGL.types.float_vec4
   @default: ->
     array = super.default()
@@ -252,6 +264,7 @@ export class Vec4 extends BufferType
     array
 
 export class Mat2 extends BufferType
+  @size: 4
   @glType: webGL.types.float_mat2
   @default: ->
     array = super.default()
@@ -260,6 +273,7 @@ export class Mat2 extends BufferType
     array
 
 export class Mat3 extends BufferType
+  @size: 9
   @glType: webGL.types.float_mat3
   @default: ->
     array = super.default()
@@ -269,6 +283,7 @@ export class Mat3 extends BufferType
     array
 
 export class Mat4 extends BufferType
+  @size: 16
   @glType: webGL.types.float_mat4
   @default: ->
     array = super.default()
