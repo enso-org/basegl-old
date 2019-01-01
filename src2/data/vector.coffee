@@ -6,68 +6,7 @@ import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 
 
-##############
-### GLType ###
-##############
-
-### Definition ###
-
-class GLType
-  constructor: (@id, cfg) ->
-    @name      = cfg.name
-    @code      = WebGLRenderingContext[@id]
-    @uniSetter = cfg.uniSetter
-    if cfg.item
-      @item       = cfg.item
-      @size       = cfg.size
-      @byteSize   = @size * @item.byteSize
-      @bufferType = @item.bufferType
-    else
-      @bufferType = cfg.bufferType    
-      @item       = @
-      @size       = 1
-      @byteSize   = cfg.byteSize || @bufferType.BYTES_PER_ELEMENT
-
-  newBuffer: (elems=1, cfg) ->
-    new Buffer.Buffer @bufferType, (elems * @size), cfg
-
-  newBufferfromArray: (array, cfg) ->
-    new Buffer.Buffer @bufferType, array, cfg
-
-
-### Batch preparation ###
-
-typesCfg =
-  float        : {name: 'float'     , uniSetter: ((gl, loc, val) -> gl.uniform1fv loc, val) , bufferType: Float32Array}
-  int          : {name: 'int'       , uniSetter: ((gl, loc, val) -> gl.uniform1iv loc, val) , bufferType: Int32Array}
-  float_vec2   : {name: 'vec2'      , uniSetter: ((gl, loc, val) -> gl.uniform2fv loc, val) , item: 'float' , size: 2}
-  float_vec3   : {name: 'vec3'      , uniSetter: ((gl, loc, val) -> gl.uniform3fv loc, val) , item: 'float' , size: 3}
-  float_vec4   : {name: 'vec4'      , uniSetter: ((gl, loc, val) -> gl.uniform4fv loc, val) , item: 'float' , size: 4}
-  int_vec2     : {name: 'ivec2'     , uniSetter: ((gl, loc, val) -> gl.uniform2iv loc, val) , item: 'int'   , size: 2}
-  int_vec3     : {name: 'ivec3'     , uniSetter: ((gl, loc, val) -> gl.uniform3iv loc, val) , item: 'int'   , size: 3}
-  int_vec4     : {name: 'ivec4'     , uniSetter: ((gl, loc, val) -> gl.uniform4iv loc, val) , item: 'int'   , size: 4}
-  float_mat2   : {name: 'mat2'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix2fv loc, false, val) , item: 'float' , size: 4}
-  float_mat3   : {name: 'mat3'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix3fv loc, false, val) , item: 'float' , size: 9}
-  float_mat4   : {name: 'mat4'      , uniSetter: ((gl, loc, val) -> gl.uniformMatrix4fv loc, false, val) , item: 'float' , size: 16}
-  sampler2D    : {name: 'sampler2D' , uniSetter: ((gl, loc, val) -> gl.uniform1i  loc, val) , item: 'float' , size: null}
-
-webGL = {types: {}}
-for name,cfg of typesCfg
-  if cfg.item?
-    cfg.item = webGL.types[cfg.item]
-  glName = name.toUpperCase()
-  webGL.types[name] = new GLType glName, cfg
-
-notImplementError = (cons, fn) -> 
-  throw "Type #{cons} does not implement '#{fn}' method"
-
-export class Type
-  @default : -> notImplementError @name, 'default'
-  
-  toGLSL   : -> notImplementError @constructor.name, 'toGLSL'
-  @getter 'rawArray', -> notImplementError @constructor.name, 'rawArray'
-
-
+GL = WebGLRenderingContext
 
 ###############
 ### Texture ###
@@ -76,9 +15,12 @@ export class Type
 class TextureWrapper
   @generateAccessors()
 
-  @glType: webGL.types.sampler2D
+  @gl:
+    name: 'sampler2D'
+    uniSetter: (gl, loc, val) -> gl.uniform1i  loc, val
+
   @getter 'type'   , -> Texture # FIXME: outside reference, we use it while rendering mesh
-  @getter 'glType' , -> @constructor.glType
+  @getter 'gl'     , -> @constructor.gl
 
   constructor: (@_texture) ->
   glValue: -> @texture
@@ -87,9 +29,12 @@ class TextureWrapper
 class Texture
   @generateAccessors()
 
-  @glType: webGL.types.sampler2D
+  @gl:
+    name: 'sampler2D'
+    uniSetter: (gl, loc, val) -> gl.uniform1i  loc, val
+
   @getter 'type'   , -> @constructor
-  @getter 'glType' , -> @constructor.glType
+  @getter 'gl'     , -> @type.gl
   
   constructor: (url) ->
     @_onLoaded = singleShotEventDispatcher() 
@@ -162,34 +107,147 @@ texture.type = Texture
 
 ### Abstraction ###
 
-export class BufferType extends Type
+
+
+
+
+
+getConstructorChain = (cls) ->
+  chain = []
+  while cls != Object
+    chain.unshift cls
+    cls = Object.getPrototypeOf(cls.prototype).constructor
+  chain
+
+smartConstructor = (cls, cfg={}) ->
+  fnName = cfg.constructor || null
+  if fnName == null
+    fn = (args...) => new cls args...
+  else 
+    fn = cls[fnName].bind cls
+
+  consChain = getConstructorChain cls
+  for cons in consChain
+    for key in Object.getOwnPropertyNames cons
+      if not (key in ['length', 'name'])
+        prop = cons[key]
+        if typeof prop == 'function'
+          fn[key] = prop.bind cls
+        else
+          fn[key] = prop
+  
+  fn
+
+
+
+##############################
+### Smart class generation ###
+##############################
+
+gl = (cls) ->
+  if not cls.size?
+    cls.size = 1
+  if not cls.item?
+    cls.item = cls
+  if not cls.bufferType?
+    if cls.item == cls
+      throw "Cannot infer bufferType"
+    cls.bufferType = cls.item.bufferType
+  if not cls.byteSize?
+    if cls.item == cls
+      cls.byteSize = cls.bufferType.BYTES_PER_ELEMENT * cls.size
+    else
+      cls.byteSize = cls.item.byteSize * cls.size
+  if not cls.gl.name?
+    cls.gl.name = cls.name.toLowerCase()
+
+  if not cls.gl.code?
+    codeName = cls.name.toUpperCase()
+    if cls.item != cls
+      codeName = cls.item.name.toUpperCase() + '_' + codeName
+    cls.gl.code = GL[codeName]
+
+  proto = cls.prototype
+  cls.getter 'type'       , -> @constructor
+  cls.getter 'gl'         , -> @type.gl
+  cls.getter 'item'       , -> @type.item
+  cls.getter 'bufferType' , -> @type.bufferType
+  cls.getter 'size'       , -> @type.size  
+  cls.newBuffer = (elems=1, cfg) ->
+    new Buffer.Buffer @bufferType, (elems * @size), cfg
+
+  smartCons = smartConstructor cls,
+    constructor: 'from'
+  smartCons.type = cls
+  smartCons
+
+
+
+#####################
+### Numeric types ###
+#####################
+
+class NumberBase
+  @generateAccessors()
+  constructor : (@_array) -> 
+  @default: -> @from 0
+  @from : (a) -> 
+    if a.constructor == Number
+      array = new @bufferType [a]
+      new @ array
+    else
+      new @ a
+  @getter 'value',     -> @array[0]
+  @setter 'value', (v) -> @array[0] = v  
+  glValue: -> @array
+
+export float = gl class Float extends NumberBase
+  @bufferType : Float32Array
+  @gl: uniSetter: (gl, loc, val) -> gl.uniform1fv loc, val
+  toGLSL: -> if @value % 1 == 0 then "#{@value}.0" else "#{@value}"
+
+export int = gl class Int extends NumberBase
+  @bufferType : Int32Array
+  @gl: uniSetter: (gl, loc, val) -> gl.uniform1iv loc, val
+  toGLSL: -> "#{@value}"
+
+export uint = gl class UInt extends NumberBase
+  @bufferType : Uint32Array
+  @gl: uniSetter: (gl, loc, val) -> gl.uniform1uiv loc, val
+  toGLSL: -> "#{@value}"
+
+
+
+####################
+### Vector types ###
+####################
+
+export class VecBase
   @generateAccessors()
 
-  constructor: (@_buffer) -> super()
-  
-  @getter 'size'   , -> @constructor.size
+  constructor: (@_buffer) ->
+  @getter 'array', -> @buffer.array
 
-
-  @getter 'array', -> throw "!"
-
-  @getter 'type'     , -> @constructor
-  # @getter 'buffer'   , -> @buffer.buffer
-  @getter 'rawArray' , -> @buffer.rawArray
-  @getter 'glType'   , -> @constructor.glType
-  
-  @from: (args) ->
+  @from: (args...) ->
     len = args.length
     if len == 0
       @default() 
-    else if len == @glType.size
-      new @ (@glType.newBufferfromArray args)
+    else if len == @size
+      @fromArray args
     else
       buffer = @default()
       buffer.buffer.set args 
       buffer
 
+  @fromArray: (array, cfg) ->
+    buffer = new Buffer.Buffer @bufferType, array, cfg
+    new @ buffer
+
+  @default: -> 
+    new @ @newBuffer()
+
   @bindableFrom: (args) ->
-    buffer = @from args
+    buffer = @from args...
     buffer._buffer = new Buffer.Bindable buffer.buffer
     buffer
 
@@ -197,11 +255,9 @@ export class BufferType extends Type
   @setter 'onChanged', (v) -> @buffer.onChanged = v
 
   @observableFrom: (args) ->
-    buffer = @from args
+    buffer = @from args...
     buffer._buffer = new Buffer.Observable buffer.buffer
     buffer
-
-  @default: -> new @ @glType.newBuffer()
 
   # View another buffer as desired type without copying.
   @view: (base, offset=0) ->
@@ -212,69 +268,127 @@ export class BufferType extends Type
   write:         (ix,v)    -> @buffer.write         ix, v
   readMultiple:  (ixs)     -> @buffer.readMultiple  ixs
   writeMultiple: (ixs, vs) -> @buffer.writeMultiple ixs, vs
-  glValue:                 -> @rawArray
+  glValue:                 -> @array
 
   clone: ->
-    new @ (@glType.newBufferfromArray @rawArray)
+    @type.fromArray @array
 
   set: (src) ->
-    for i in [0 ... @glType.size]
+    for i in [0 ... @size]
       @write i, src.read(i)
 
   toGLSL: ->
-    name = @glType.name
-    args = @rawArray.join ','
-    args = (toGLSL a for a in @rawArray)
+    name = @gl.name
+    args = @array.join ','
+    args = (toGLSL a for a in @array)
     "#{name}(#{args.join(',')})"
 
-    
-Property.swizzleFieldsXYZW2 BufferType
-Property.swizzleFieldsRGBA2 BufferType
-Property.addIndexFields2    BufferType, 16
+Property.swizzleFieldsXYZW2 VecBase
+Property.swizzleFieldsRGBA2 VecBase
+Property.addIndexFields2    VecBase, 16
 
 
-### Basic types ###
 
-export class Float extends Type
-  @glType  : webGL.types.float
-  @default : -> new Float 0
-
-  constructor: (@number=0) -> super()
-  @getter 'type'    , -> @constructor  
-  @getter 'glType'  , -> @constructor.glType
-  @getter 'rawArray', -> new Float32Array [@number]
-
-  glValue: -> @rawArray
-  toGLSL: -> if @number % 1 == 0 then "#{@number}.0" else "#{@number}"
-
-export class Vec2 extends BufferType
+export vec2 = gl class Vec2 extends VecBase
   @size: 2
-  @glType: webGL.types.float_vec2
+  @item: float
+  @gl: 
+    textureFormat: GL.RG32F
+    uniSetter: (gl, loc, val) -> gl.uniform2fv loc, val
 
-export class Vec3 extends BufferType
+export ivec2 = gl class IVec2 extends VecBase
+  @size: 2
+  @item: int
+  @gl: 
+    textureFormat: GL.RG32I
+    uniSetter: (gl, loc, val) -> gl.uniform2iv loc, val
+
+export uivec2 = gl class UIVec2 extends VecBase
+  @size: 2
+  @item: uint
+  @gl: 
+    textureFormat: GL.RG32UI
+    uniSetter: (gl, loc, val) -> gl.uniform2uiv loc, val
+
+
+
+export vec3 = gl class Vec3 extends VecBase
   @size: 3
-  @glType: webGL.types.float_vec3
+  @item: float
+  @gl:
+    textureFormat: GL.RGB32F 
+    uniSetter: (gl, loc, val) -> gl.uniform3fv loc, val
 
-export class Vec4 extends BufferType
-  @size: 4
-  @glType: webGL.types.float_vec4
+export ivec3 = gl class IVec3 extends VecBase
+  @size: 3
+  @item: int
+  @gl: 
+    textureFormat: GL.RGB32I 
+    uniSetter: (gl, loc, val) -> gl.uniform3iv loc, val
+
+export uivec3 = gl class UIVec3 extends VecBase
+  @size: 3
+  @item: uint
+  @gl: 
+    textureFormat: GL.RGB32UI 
+    uniSetter: (gl, loc, val) -> gl.uniform3uiv loc, val
+
+
+
+class Vec4Base extends VecBase
   @default: ->
     array = super.default()
     array[3] = 1
     array
 
-export class Mat2 extends BufferType
+export vec4 = gl class Vec4 extends Vec4Base
   @size: 4
-  @glType: webGL.types.float_mat2
+  @item: float
+  @gl: 
+    textureFormat: GL.RGBA32F 
+    uniSetter: (gl, loc, val) -> gl.uniform4fv loc, val
+
+export ivec4 = gl class IVec4 extends Vec4Base
+  @size: 4
+  @item: int
+  @gl: 
+    textureFormat: GL.RGBA32I 
+    uniSetter: (gl, loc, val) -> gl.uniform4iv loc, val
+
+export uivec4 = gl class UIVec4 extends Vec4Base
+  @size: 4
+  @item: uint
+  @gl: 
+    textureFormat: GL.RGBA32UI 
+    uniSetter: (gl, loc, val) -> gl.uniform4uiv loc, val
+
+
+
+class Mat2Base extends VecBase
   @default: ->
     array = super.default()
     array[0] = 1
     array[3] = 1
     array
 
-export class Mat3 extends BufferType
-  @size: 9
-  @glType: webGL.types.float_mat3
+export mat2 = gl class Mat2 extends Mat2Base
+  @size : 4
+  @item : float
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix2fv loc, false, val
+
+export imat2 = gl class IMat2 extends Mat2Base
+  @size : 4
+  @item : int
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix2iv loc, false, val
+
+export uimat2 = gl class UIMat2 extends Mat2Base
+  @size : 4
+  @item : uint
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix2uiv loc, false, val
+
+
+
+class Mat3Base extends VecBase
   @default: ->
     array = super.default()
     array[0] = 1
@@ -282,9 +396,24 @@ export class Mat3 extends BufferType
     array[8] = 1
     array
 
-export class Mat4 extends BufferType
-  @size: 16
-  @glType: webGL.types.float_mat4
+export mat3 = gl class Mat3 extends Mat3Base
+  @size : 9
+  @item : float
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix3fv loc, false, val
+
+export imat3 = gl class IMat3 extends Mat3Base
+  @size : 9
+  @item : int
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix3iv loc, false, val
+
+export uimat3 = gl class UIMat3 extends Mat3Base
+  @size : 9
+  @item : uint
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix3uiv loc, false, val
+  
+
+
+class Mat4Base extends VecBase
   @default: ->
     array = super.default()
     array[0]  = 1
@@ -294,33 +423,35 @@ export class Mat4 extends BufferType
     array
 
   perspective: (fovy, aspect, near, far) -> 
-    Matrix.mat4.perspective @rawArray, fovy, aspect, near, far
+    Matrix.mat4.perspective @array, fovy, aspect, near, far
 
-  invert:              -> @invertFrom @rawArray
+  invert:              -> @invertFrom @array
   inverted:            -> @clone().invert()
-  invertFrom: (matrix) -> Matrix.mat4.invert @rawArray, matrix
+  invertFrom: (matrix) -> Matrix.mat4.invert @array, matrix
+  
+export mat4 = gl class Mat4 extends Mat4Base
+  @size : 16
+  @item : float
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix4fv loc, false, val
+
+export imat4 = gl class IMat4 extends Mat4Base
+  @size : 16
+  @item : int
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix4iv loc, false, val
+
+export uimat4 = gl class UIMat4 extends Mat4Base
+  @size : 16
+  @item : uint
+  @gl   : uniSetter: (gl, loc, val) -> gl.uniformMatrix4uiv loc, false, val
+  
+  
   
   
 
+
+
+  
 ### Smart constructors ###
-
-export float = (args...) => new Float args...
-export vec2 = (args...) => Vec2.from args
-export vec3 = (args...) => Vec3.from args
-export vec4 = (args...) => Vec4.from args
-export mat2 = (args...) => Mat2.from args
-export mat3 = (args...) => Mat3.from args
-export mat4 = (args...) => Mat4.from args
-
-float.type = Float
-vec2.type = Vec2
-vec3.type = Vec3
-vec4.type = Vec4
-mat2.type = Mat2
-mat3.type = Mat3
-mat4.type = Mat4
-
-
 
 
 export value = (a) ->

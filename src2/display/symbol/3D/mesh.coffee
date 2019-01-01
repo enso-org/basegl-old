@@ -71,7 +71,7 @@ export class Mesh extends DisplayObject
 
   _registerBoundVariables: (matches) ->
     matches.forEach (cfg, varName) =>
-      glType   = cfg.type.glType
+      glType   = cfg.type.gl
       glslType = glType.name
       @logger.info "Using variable '#{varName}' from #{cfg.scope} scope"
       if cfg.scope == 'point' || cfg.scope == 'instance'
@@ -85,7 +85,7 @@ export class Mesh extends DisplayObject
     for varName in unbound      
       @logger.info "Creating uniform for not bound variable '#{varName}'"
       varDef = @material.variable.input[varName]
-      @_shaderBuilder.uniforms[varName] = varDef.type.glType.name
+      @_shaderBuilder.uniforms[varName] = varDef.type.gl.name
 
   _matchVariables: ->
     bound   = if @exposeAllVars then @_allGeoVarsFlat() else new Map
@@ -234,7 +234,7 @@ export class GPUMesh extends Lazy.LazyManager
             @_gl.bindTexture @_gl.TEXTURE_2D, glVal
             glVal = texID
             texID += 1
-          glType.uniSetter @_gl, @_varLoc[key], glVal
+          val.gl.uniSetter @_gl, @_varLoc[key], glVal
 
         pointCount    = @mesh.geometry.point.length
         instanceCount = @mesh.geometry.instance.length

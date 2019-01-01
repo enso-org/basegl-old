@@ -11,7 +11,7 @@ import * as Buffer   from 'basegl/data/buffer'
 import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture, Vec2} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 import * as M from 'gl-matrix'
@@ -673,7 +673,7 @@ class GPURenderer
     @_pipeline = new Pipeline [@renderViewsPass, screenDrawPass(), new PixelReadPass(@scene.mouse)]
     @_pipelineInstance = null
 
-    @_size = Vec2.observableFrom [0, 0] # FIXME: make it nicer
+    @_size = vec2.observableFrom [0, 0] # FIXME: make it nicer
     @size.onChanged.addEventListener =>
       @_updateSize()
     
@@ -791,15 +791,12 @@ class Pass
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
         for outputNum in [0 ... outputSize]
           name        = outputKeys[outputNum]
-          console.log ">>", outputNum, name
           output      = @outputs[name]
           val         = output.glValue()
           attachement = @gl.COLOR_ATTACHMENT0 + outputNum
           @rootAttachements.push attachement
           @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
                                   val, level
-        console.log ">>>", (@gl.checkFramebufferStatus(@gl.FRAMEBUFFER) == @gl.FRAMEBUFFER_COMPLETE)
-        
 
     @def.instance @
 

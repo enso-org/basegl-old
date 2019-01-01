@@ -26,10 +26,10 @@ export usage =
   dynamicCopy : WebGLRenderingContext.DYNAMIC_COPY
   streamCopy  : WebGLRenderingContext.STREAM_COPY
 
-rawArray = (a) ->
+toArray = (a) ->
   if      ArrayBuffer.isView a   then a
   else if a.constructor == Array then a
-  else    a.rawArray
+  else    a.array
 
 
 
@@ -125,7 +125,7 @@ export class Attribute extends Lazy.LazyManager
     if @_type == undefined then throw 'Type required' 
     if @_size == undefined then throw 'Size required' 
     @logger.info "Allocating space for #{@_size} elements"
-    @_data = new Buffer.Bindable (@type.glType.newBuffer @size, {default: rawArray @_default})
+    @_data = new Buffer.Bindable (@type.newBuffer @size, {default: toArray @_default})
     
     @_initEventHandlers()
 
@@ -195,23 +195,23 @@ export class Attribute extends Lazy.LazyManager
     if oldSize != newSize
       @logger.info "Resizing to handle up to #{newSize} elements"
       @_size = newSize
-      @data.resize (@size * @type.glType.size)
+      @data.resize (@size * @type.size)
       
 
   ### Indexing ###
 
-  read  : (ix)    -> @type.view @data, ix*@type.glType.size 
+  read  : (ix)    -> @type.view @data, ix*@type.size 
   write : (ix, v) -> @read(ix).set v
 
   set: (data) ->
     if data.constructor == Array
-      typeSize = @type.glType.size
-      buffer   = @type.glType.newBuffer data.length, {default: @_default.rawArray}
+      typeSize = @type.size
+      buffer   = @type.newBuffer data.length, {default: @_default.array}
       for i in [0 ... data.length]
         val    = Type.value data[i]
         offset = i * typeSize
-        buffer.set val.rawArray, offset
-      @data.set buffer.rawArray
+        buffer.set val.array, offset
+      @data.set buffer.array
     else if ArrayBuffer.isView data
       @data.set data
     else
@@ -357,9 +357,9 @@ export class GPUAttribute extends Lazy.LazyManager
 
   _initVariables: ->
     maxChunkSize   = 4
-    size           = @_attribute.type.glType.size
-    itemByteSize   = @_attribute.type.glType.item.byteSize
-    @itemType      = @_attribute.type.glType.item.code
+    size           = @_attribute.type.size
+    itemByteSize   = @_attribute.type.item.byteSize
+    @itemType      = @_attribute.type.item.gl.code
     @chunksNum     = Math.ceil (size/maxChunkSize)
     @chunkSize     = Math.min size, maxChunkSize
     @chunkByteSize = @chunkSize * itemByteSize
@@ -383,7 +383,7 @@ export class GPUAttribute extends Lazy.LazyManager
       if instanced then @_gl.vertexAttribDivisor(chunkLoc, 1)
 
   _updateAll: () ->
-    bufferRaw = @_attribute.data.rawArray
+    bufferRaw = @_attribute.data.array
     @logger.info "Updating all elements"
     attrUsage = @_attribute.usage 
     GL.withArrayBuffer @_gl, @_buffer, =>
@@ -395,10 +395,10 @@ export class GPUAttribute extends Lazy.LazyManager
       if @_attribute.dirty.isResized
         @_updateAll()
       else
-        bufferRaw     = @_attribute.data.rawArray
+        bufferRaw     = @_attribute.data.array
         range         = @_attribute.dirty.range
         srcOffset     = range.min
-        byteSize      = @_attribute.type.glType.item.byteSize
+        byteSize      = @_attribute.type.item.byteSize
         dstByteOffset = byteSize * srcOffset
         length        = range.max - range.min + 1
         @logger.info "Updating #{length} elements"

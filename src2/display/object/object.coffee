@@ -2,7 +2,7 @@ import * as M    from 'gl-matrix'
 import * as Lazy from 'basegl/object/lazy'
 
 import {EventObject} from 'basegl/display/object/event'
-import {Vec3}        from 'basegl/data/vector'
+import {vec3}        from 'basegl/data/vector'
 
 
 #####################
@@ -27,9 +27,9 @@ export class Transform
     @mixins.constructor()
     @__matrix  = M.mat4.create()
     @_origin   = M.mat4.create()
-    @_position = Vec3.bindableFrom [0,0,0]
-    @_scale    = Vec3.bindableFrom [1,1,1]
-    @_rotation = Vec3.bindableFrom [0,0,0]
+    @_position = vec3.bindableFrom [0,0,0]
+    @_scale    = vec3.bindableFrom [1,1,1]
+    @_rotation = vec3.bindableFrom [0,0,0]
     @_position.onChanged = => @dirty.set()
     @_scale.onChanged    = => @dirty.set()
     @_rotation.onChanged = => @dirty.set()

@@ -42,7 +42,7 @@ export class Buffer
 
   @getter 'array'    , -> @_array
   @getter 'length'   , -> @_array.length
-  @getter 'rawArray' , -> @_array
+  # @getter 'array' , -> @_array
 
   ### Read / Write ###
   read: (ix) -> 
@@ -110,7 +110,7 @@ export class Bindable
   
   constructor: (@_buffer) -> 
   @getter 'length'   , -> @buffer.length
-  @getter 'rawArray' , -> @buffer.rawArray
+  @getter 'array' , -> @buffer.array
 
   ### Read / Write ###
 
@@ -169,7 +169,7 @@ export class Observable
   constructor: (@_buffer) -> 
     @_onChanged = EventDispatcher.create()
   @getter 'length'   , -> @buffer.length
-  @getter 'rawArray' , -> @buffer.rawArray
+  @getter 'array' , -> @buffer.array
 
 
   ### Read / Write ###
