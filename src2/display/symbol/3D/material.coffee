@@ -1,5 +1,6 @@
 import * as Lazy     from 'basegl/object/lazy'
 import * as Property from 'basegl/object/Property'
+import {vec4} from 'basegl/data/vector'
 
 
 ###################
@@ -256,7 +257,7 @@ export class Material extends Lazy.LazyManager
     @_variable = 
       input  : cfg.input  || {}
       locals : cfg.locals || {}
-      output : Object.assign {color: 'vec4'}, (cfg.output || {})
+      output : Object.assign {color: vec4}, (cfg.output || {})
   @getter 'variable', -> @_variable
 
   vertexCode   : -> ''

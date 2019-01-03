@@ -11,7 +11,7 @@ import * as Buffer   from 'basegl/data/buffer'
 import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 import {logger}                             from 'logger'
-import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture} from 'basegl/data/vector'
+import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture, ivec3, ivec4} from 'basegl/data/vector'
 import * as _ from 'lodash'
 
 import * as M from 'gl-matrix'
@@ -33,6 +33,9 @@ import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 import * as Promise from 'bluebird';
 
 import * as twgl from 'twgl.js'
+
+
+GL = WebGL2RenderingContext
 
 
 builtins = '''
@@ -551,7 +554,7 @@ export symbolBasicMaterial = (shapeShader, cfg) ->
   spriteBasicMaterial Property.extend cfg,
     fragment: symbolBasicMaterialFragmentShader shapeShader
     output: 
-      id: 'ivec4'
+      id: ivec4
         # type: 'vec4'
         # precision: 'highp'
 
@@ -670,7 +673,7 @@ class GPURenderer
     @_meshes = new Map
 
     @renderViewsPass = renderViewsPass()
-    @_pipeline = new Pipeline [@renderViewsPass, screenDrawPass(), new PixelReadPass(@scene.mouse)]
+    @_pipeline = new Pipeline [@renderViewsPass, screenDrawPass(), new PixelReadPass(@scene.mouse, 'id')]
     @_pipelineInstance = null
 
     @_size = vec2.observableFrom [0, 0] # FIXME: make it nicer
@@ -743,59 +746,40 @@ class Pass
   @getter 'gl', -> @renderer.gl
 
   constructor: (@_def, @_renderer) ->
-    outputNum         = 0
-    @outputs          = {}
     @rootFramebuffer  = null
 
-    passOutputs = @def.outputBuffers || {}
-    outputKeys  = Object.keys passOutputs
-    outputSize  = outputKeys.length
-    level       = 0
+    @outputs      = {}
+    outputBuffers = @def.outputBuffers || {}
+    outputKeys    = Object.keys outputBuffers
+    outputSize   = outputKeys.length
     
+    for name, val of outputBuffers
+      @outputs[name] = {type: val.type, default: val}
+
     if outputSize > 0
-      # Creating output textures
-      for outputNum in [0 ... outputSize]
-        name        = outputKeys[outputNum]
-        # noImage     = null
-        # val         = @gl.createTexture()
-        # type        = @gl.UNSIGNED_BYTE
-        internalFormat = @gl.RGBA
-        # format         = @gl.RGBA
-        if name == 'id'
-          internalFormat = @gl.RGBA32I
-          # format         = @gl.RGBA_INTEGER
-          # type           = @gl.INT
-        # @gl.bindTexture @gl.TEXTURE_2D, val
-        # @gl.texImage2D @gl.TEXTURE_2D, level, internalFormat, @renderer.size.x, @renderer.size.y, 0,  #FIXME literal
-                      #  format, type, noImage
-
+      for name, output of @outputs
         val = twgl.createTexture @gl,
-          internalFormat: internalFormat
+          internalFormat: output.type.gl.textureFormat
           width:  @renderer.size.x
-          height: @renderer.size.y
-            
-        output      = texture val
-        @outputs[name] = output
-        
-        
-          
-        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MIN_FILTER, @gl.LINEAR);
-        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_MAG_FILTER, @gl.LINEAR);
-        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_S, @gl.CLAMP_TO_EDGE);
-        # @gl.texParameteri(@gl.TEXTURE_2D, @gl.TEXTURE_WRAP_T, @gl.CLAMP_TO_EDGE);
-
+          height: @renderer.size.y            
+        output.texture = texture val
+        output.texture.item = output.type
         
       # Creating root framebuffer
+      # We can make it simpler when the following issue gets resolved:
+      # https://github.com/greggman/twgl.js/issues/93
+      level = 0
       @rootFramebuffer = @gl.createFramebuffer()
-      @rootAttachements = []
+      @rootAttachments = []
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
+        outputNum = 0
         for outputNum in [0 ... outputSize]
           name        = outputKeys[outputNum]
-          output      = @outputs[name]
+          output      = @outputs[name].texture
           val         = output.glValue()
-          attachement = @gl.COLOR_ATTACHMENT0 + outputNum
-          @rootAttachements.push attachement
-          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
+          attachment = @gl.COLOR_ATTACHMENT0 + outputNum
+          @rootAttachments.push attachment
+          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachment, @gl.TEXTURE_2D, 
                                   val, level
 
     @def.instance @
@@ -807,36 +791,39 @@ class Pass
     if @rootFramebuffer
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
         @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
-        @gl.drawBuffers @rootAttachements
-        # @gl.clear @gl.COLOR_BUFFER_BIT
-        @gl.clearBufferfv @gl.COLOR, 0, new Float32Array(4)
-        @gl.clearBufferiv @gl.COLOR, 1, new Int32Array(4)
+        @gl.drawBuffers @rootAttachments
+        ix = 0
+        for name, output of @outputs
+          output.type.gl.clearBuffer @gl, ix, output.default.array
+          ix += 1
         out = @_run state
         @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
     else    
       out = @_run state
     if out == null then out = {}
     for name, output of @outputs
-      out[name] = output
+      out[name] = output.texture
     out
 
   addMesh: (element) ->
-    elOutputName = Object.keys element.mesh.material.variable.output
-    framebuffer  = @gl.createFramebuffer()
-    level        = 0
-    attachements = [] 
+    materialOutputs = element.mesh.material.variable.output
+    framebuffer     = @gl.createFramebuffer()
+    level           = 0
+    attachments    = [] 
     @gl.withFramebuffer @gl.FRAMEBUFFER, framebuffer, =>
-      for name, ix in elOutputName
+      ix = 0
+      for name, materialOutput of materialOutputs
         output = @outputs[name]
-        if output?
-          attachement = @gl.COLOR_ATTACHMENT0 + ix
-          val         = output.glValue()
-          attachements.push attachement
-          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachement, @gl.TEXTURE_2D, 
+        if output? && (output.type == materialOutput.type)
+          attachment = @gl.COLOR_ATTACHMENT0 + ix
+          val         = output.texture.glValue()
+          attachments.push attachment
+          @gl.framebufferTexture2D @gl.FRAMEBUFFER, attachment, @gl.TEXTURE_2D, 
                                    val, level
+        ix += 1
 
     mesh = @renderer.addMesh element
-    new FramebufferMesh @gl, mesh, framebuffer, attachements
+    new FramebufferMesh @gl, mesh, framebuffer, attachments
 
 
   
@@ -845,31 +832,14 @@ class Pass
 class FramebufferMesh
   @generateAccessors()
 
-  constructor: (@_gl, @_mesh, @_framebuffer, @_attachements) ->
+  constructor: (@_gl, @_mesh, @_framebuffer, @_attachments) ->
 
   draw: (camera) ->
     @gl.withFramebuffer @gl.FRAMEBUFFER, @framebuffer, =>
-      @gl.drawBuffers @attachements
+      @gl.drawBuffers @attachments
       @mesh.draw camera
 
 
-
-# function DoubleToIEEE(f)
-# {
-#     var buf = new ArrayBuffer(8);
-#     (new Float64Array(buf))[0] = f;
-#     return [ (new Uint32Array(buf))[0] ,(new Uint32Array(buf))[1] ];
-# }
-
-int8    = new Int8Array 4
-int16   = new Int16Array int8.buffer, 0, 1
-int32   = new Int32Array int8.buffer, 0, 1
-uint32  = new Uint32Array int8.buffer, 0, 1
-float32 = new Float32Array int8.buffer, 0, 1
-
-floatToIntBits = (f) ->
-	float32[0] = f
-	int32
 
 
 #####################
@@ -879,41 +849,54 @@ floatToIntBits = (f) ->
 class PixelReadPass
   @generateAccessors()
   
-  constructor: (@_mouse) ->
-    @_inputs = ['color', 'id']
+  constructor: (@_mouse, @_target) ->
+
+  @getter 'inputs', -> [@target]
 
   instance: (pass) ->
     gl = pass.gl
-    pixelBytes       = 4
-    # pass.pixelData   = new Uint8Array pixelBytes
-    pass.pixelData   = new Int32Array pixelBytes
-    pass.pixelBuffer = gl.createBuffer()
-    gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
-      gl.bufferData gl.PIXEL_PACK_BUFFER, pass.pixelData, gl.DYNAMIC_READ
+    pixelBytes  = 4
+    pass.target = null
+    
 
   run: (state, pass) ->
     gl = pass.gl
-    # console.log state
 
-    framebuffer  = gl.createFramebuffer()
-    gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>
-      attachement = gl.COLOR_ATTACHMENT0
-      val         = state.id.glValue() #FIXME: hardcoded layer
-      level       = 0
-      gl.framebufferTexture2D gl.FRAMEBUFFER, attachement, gl.TEXTURE_2D, 
+    target = state[@target]
+    if pass.target != target
+      pass.target = target
+
+      pass.framebuffer = gl.createFramebuffer()
+      gl.withFramebuffer gl.FRAMEBUFFER, pass.framebuffer, =>
+        attachment    = gl.COLOR_ATTACHMENT0
+        internalFormat = target.item.gl.textureFormat
+        info           = twgl.getFormatAndTypeForInternalFormat internalFormat
+        val            = target.glValue()
+        level          = 0
+        pass.framebuffer.format = info.format
+        pass.framebuffer.type   = info.type
+        gl.framebufferTexture2D gl.FRAMEBUFFER, attachment, gl.TEXTURE_2D, 
                                 val, level
+  
+        pass.pixelData   = target.item.zero()
+        pass.pixelBuffer = gl.createBuffer()
+        gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
+          gl.bufferData gl.PIXEL_PACK_BUFFER, pass.pixelData.array,
+                        gl.DYNAMIC_READ
 
-    gl.withFramebuffer gl.FRAMEBUFFER, framebuffer, =>                                
+    gl.withFramebuffer gl.FRAMEBUFFER, pass.framebuffer, =>                                
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
-        gl.readPixels pass.def.mouse.x, pass.def.mouse.y, 1, 1, gl.RGBA_INTEGER, gl.INT, 0
+        gl.readPixels pass.def.mouse.x, pass.def.mouse.y, 1, 1, 
+                      pass.framebuffer.format, pass.framebuffer.type, 0
 
     promise = fence(gl).then =>
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
-        gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData, 0, 4
+        gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData.array, 0, 4
 
-      if pass.pixelData[3] != 0
-        console.log pass.pixelData
+      if pass.pixelData.a != 0
+        console.log pass.pixelData.rgba
       pass.pixelData
+
     {pixelData: promise}
 
 
@@ -978,8 +961,8 @@ class RenderViewsPass
 
   constructor: ->
     @_outputBuffers =
-      color : vec3
-      id    : float
+      color : vec4.zero()
+      id    : ivec4.zero()
 
     @_views    = new WatchableSet
     @_mainView = @newView()

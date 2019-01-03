@@ -62,9 +62,13 @@ export class Mesh extends DisplayObject
     if bindingsChanged || materialChanged
       @logger.group "Binding variables", =>
         @_variables = newVariables
+        outputs     = {}
+        for name,output of @material.variable.output
+          outputs[name] = output.gl.name
+
         @_shaderBuilder.resetVariables()
         @_shaderBuilder.locals  = @material.variable.locals
-        @_shaderBuilder.outputs = @material.variable.output
+        @_shaderBuilder.outputs = outputs
         @_registerBoundVariables   @variables.bound 
         @_registerUnboundVariables @variables.unbound
         @_generateShader()

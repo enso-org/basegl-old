@@ -2,11 +2,12 @@
 import * as Property from "basegl/object/Property"
 import * as Buffer   from 'basegl/data/buffer'
 import * as Matrix   from 'gl-matrix'
+
 import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 
 
-GL = WebGLRenderingContext
+GL = WebGL2RenderingContext
 
 ###############
 ### Texture ###
@@ -147,28 +148,32 @@ smartConstructor = (cls, cfg={}) ->
 gl = (cls) ->
   if not cls.size?
     cls.size = 1
-  if not cls.item?
-    cls.item = cls
+  
   if not cls.bufferType?
-    if cls.item == cls
+    if not cls.item?
       throw "Cannot infer bufferType"
     cls.bufferType = cls.item.bufferType
   if not cls.byteSize?
-    if cls.item == cls
+    if not cls.item?
       cls.byteSize = cls.bufferType.BYTES_PER_ELEMENT * cls.size
     else
       cls.byteSize = cls.item.byteSize * cls.size
   if not cls.gl.name?
     cls.gl.name = cls.name.toLowerCase()
+  if not cls.gl.clearBuffer?
+    if not cls.item?
+      throw "Cannot infer clearBuffer"
+    cls.gl.clearBuffer = cls.item.gl.clearBuffer
 
   if not cls.gl.code?
     codeName = cls.name.toUpperCase()
-    if cls.item != cls
+    if cls.item?
       codeName = cls.item.name.toUpperCase() + '_' + codeName
     cls.gl.code = GL[codeName]
 
+  
+
   proto = cls.prototype
-  cls.getter 'type'       , -> @constructor
   cls.getter 'gl'         , -> @type.gl
   cls.getter 'item'       , -> @type.item
   cls.getter 'bufferType' , -> @type.bufferType
@@ -178,7 +183,13 @@ gl = (cls) ->
 
   smartCons = smartConstructor cls,
     constructor: 'from'
-  smartCons.type = cls
+  smartCons.type = smartCons
+  cls.getter 'type', -> smartCons
+
+  if not cls.item?
+    cls.item = smartCons
+  smartCons.item = cls.item
+  
   smartCons
 
 
@@ -203,17 +214,26 @@ class NumberBase
 
 export float = gl class Float extends NumberBase
   @bufferType : Float32Array
-  @gl: uniSetter: (gl, loc, val) -> gl.uniform1fv loc, val
+  @gl: 
+    textureFormat: GL.R32F
+    clearBuffer: (gl, ix, val) -> gl.clearBufferfv gl.COLOR, ix, val    
+    uniSetter: (gl, loc, val) -> gl.uniform1fv loc, val
   toGLSL: -> if @value % 1 == 0 then "#{@value}.0" else "#{@value}"
 
 export int = gl class Int extends NumberBase
   @bufferType : Int32Array
-  @gl: uniSetter: (gl, loc, val) -> gl.uniform1iv loc, val
+  @gl: 
+    textureFormat: GL.R32I
+    clearBuffer: (gl, ix, val) -> gl.clearBufferiv gl.COLOR, ix, val    
+    uniSetter: (gl, loc, val) -> gl.uniform1iv loc, val
   toGLSL: -> "#{@value}"
 
 export uint = gl class UInt extends NumberBase
   @bufferType : Uint32Array
-  @gl: uniSetter: (gl, loc, val) -> gl.uniform1uiv loc, val
+  @gl: 
+    textureFormat: GL.R32UI
+    clearBuffer: (gl, ix, val) -> gl.clearBufferuiv gl.COLOR, ix, val    
+    uniSetter: (gl, loc, val) -> gl.uniform1uiv loc, val
   toGLSL: -> "#{@value}"
 
 
@@ -243,8 +263,8 @@ export class VecBase
     buffer = new Buffer.Buffer @bufferType, array, cfg
     new @ buffer
 
-  @default: -> 
-    new @ @newBuffer()
+  @zero: -> new @ @newBuffer()
+  @default: -> @zero()
 
   @bindableFrom: (args) ->
     buffer = @from args...
@@ -286,7 +306,6 @@ export class VecBase
 Property.swizzleFieldsXYZW2 VecBase
 Property.swizzleFieldsRGBA2 VecBase
 Property.addIndexFields2    VecBase, 16
-
 
 
 export vec2 = gl class Vec2 extends VecBase
