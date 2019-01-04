@@ -806,6 +806,11 @@ class Pass
     out
 
   addMesh: (element) ->
+    geo      = element.mesh.geometry
+    material = new Material.Proxy element.mesh.material
+    pmesh    = Mesh.create geo, material
+    window.shader = pmesh.shader
+
     materialOutputs = element.mesh.material.variable.output
     framebuffer     = @gl.createFramebuffer()
     level           = 0

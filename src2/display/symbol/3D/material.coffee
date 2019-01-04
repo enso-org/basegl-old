@@ -198,6 +198,8 @@ export class ShaderBuilder
 
     fragmentCode.addSection "Material code"
     fragmentCode.addLine providedFragmentCode
+
+    # console.warn providedFragmentCode
     
     return
       vertex   : vertexCode.code
@@ -290,6 +292,26 @@ export class Raw extends Material
   @getter 'fragment' ,     -> @_fragment
   @setter 'vertex'   , (v) -> @_vertex   = v; @dirty.set()
   @setter 'fragment' , (v) -> @_fragment = v; @dirty.set()
+
+  vertexCode:   -> @vertex
+  fragmentCode: -> @fragment
+
+
+
+
+
+export class Proxy 
+  @generateAccessors()
+
+  constructor: (@_material) ->
+    @_variable = 
+      input  : @material.variable.input
+      locals : Object.assign {foo: vec4}, @material.variable.locals
+      output : {}
+  
+  @getter 'dirty'    , -> @material.dirty
+  @getter 'vertex'   , -> @material.vertex
+  @getter 'fragment' , -> @material.fragment
 
   vertexCode:   -> @vertex
   fragmentCode: -> @fragment
