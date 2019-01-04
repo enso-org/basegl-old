@@ -25,7 +25,11 @@ export class GLSLBuilder
   addLine           : (s) -> @addText "#{s}\n"
   addExpr           : (s) -> @code += s + ';\n'
   addAssignment     : (l, r)    -> @addExpr "#{l} = #{r}"
-  addDefinition     : (t, n, v) -> @addAssignment "#{t} #{n}", v
+  addDefinition     : (t, n, v) -> 
+    if v? 
+      @addAssignment "#{t} #{n}", v
+    else
+      @addExpr "#{t} #{n}"
   addInput          : (args...) -> @addAttr 'in'      , args...
   addOutput         : (args...) -> @addAttr 'out'     , args...
   addUniform        : (args...) -> @addAttr 'uniform' , args...
@@ -88,6 +92,14 @@ export class ShaderBuilder
     @uniforms   = {}
     @outputs    = {}
 
+    @fragment          = new GLSLBuilder
+    @fragmentBody      = new GLSLBuilder false
+    @fragmentAfterBody = new GLSLBuilder false
+
+    @vertex            = new GLSLBuilder
+    @vertexBody        = new GLSLBuilder false
+    @vertexAfterBody   = new GLSLBuilder false
+
   resetPrecision: ->
     @precision =
       vertex   : new ShaderPrecision
@@ -108,25 +120,21 @@ export class ShaderBuilder
     {name, type, prec}
 
   compute: (providedVertexCode, providedFragmentCode) ->
-    vertexCode     = new GLSLBuilder
-    vertexBodyCode = new GLSLBuilder false
-    fragmentCode   = new GLSLBuilder
-
     addSection = (s) =>
-      vertexCode.addSection s
-      fragmentCode.addSection s
+      @vertex.addSection s
+      @fragment.addSection s
       
     addSection 'Default precision declarations'
     for type, prec of @precision.vertex
-      vertexCode.addExpr "precision #{prec} #{type}"
+      @vertex.addExpr "precision #{prec} #{type}"
     for type, prec of @precision.fragment
-      fragmentCode.addExpr "precision #{prec} #{type}"
+      @fragment.addExpr "precision #{prec} #{type}"
 
     if @constants
       addSection 'Constants'
       for name,cfg of @constants
-        vertexCode.addDefinition   cfg.type, name , cfg.value
-        fragmentCode.addDefinition cfg.type, name , cfg.value
+        @vertex.addDefinition   cfg.type, name , cfg.value
+        @fragment.addDefinition cfg.type, name , cfg.value
 
     if @attributes
       addSection 'Attributes shared between vertex and fragment shaders'
@@ -134,10 +142,10 @@ export class ShaderBuilder
         v = @readVar name, cfg
         fragmentName = @mkFragmentName v.name
         vertexName   = @mkVertexName   v.name
-        vertexCode.addInput   v.type, vertexName  , {prec: v.prec}
-        vertexCode.addOutput  v.type, fragmentName, {prec: v.prec}
-        fragmentCode.addInput v.type, fragmentName, {prec: v.prec}
-        vertexBodyCode.addAssignment fragmentName, vertexName
+        @vertex.addInput   v.type, vertexName  , {prec: v.prec}
+        @vertex.addOutput  v.type, fragmentName, {prec: v.prec}
+        @fragment.addInput v.type, fragmentName, {prec: v.prec}
+        @vertexBody.addAssignment fragmentName, vertexName
 
     if @locals
       addSection 'Local variables shared between vertex and fragment shaders'
@@ -145,65 +153,67 @@ export class ShaderBuilder
         v = @readVar name, cfg
         fragmentName = @mkFragmentName v.name
         vertexName   = @mkVertexName   v.name
-        vertexCode.addOutput  v.type, fragmentName, {prec: v.prec}
-        fragmentCode.addInput v.type, fragmentName, {prec: v.prec}
+        @vertex.addOutput  v.type, fragmentName, {prec: v.prec}
+        @fragment.addInput v.type, fragmentName, {prec: v.prec}
     
     if @uniforms
       addSection 'Uniforms'
       for name,cfg of @uniforms
         v = @readVar name, cfg       
-        prec = 'mediump' # FIXME! We cannot get mismatch of prec between vertex and fragment shader!
-        vertexCode.addUniform   v.type, v.name, {prec}
-        fragmentCode.addUniform v.type, v.name, {prec}
+        prec = 'mediump' # FIXME! Hardcoded because we cannot get mismatch of prec between vertex and fragment shader!
+        @vertex.addUniform   v.type, v.name, {prec}
+        @fragment.addUniform v.type, v.name, {prec}
 
     if @outputs
-      fragmentCode.addSection 'Outputs'
+      @fragment.addSection 'Outputs'
       loc = 0    
       for name,cfg of @outputs
         v    = @readVar name, cfg 
         name = @mkOutputName v.name
         prec = v.prec       
-        fragmentCode.addOutput v.type, name, {prec, loc}
+        @fragment.addOutput v.type, name, {prec, loc}
         loc += 1
 
     
     ### Generating vertex code ###
 
-    vpart = partitionGLSL providedVertexCode
-
-    generateMain = (f) =>
-      vertexCode.addSection "Main entry point"
-      vertexCode.buildMain =>
-        vertexCode.addCommentSection "Passing values to fragment shader" 
-        vertexCode.addText vertexBodyCode.code
-        f?()
-
-    if vpart.left
-      logger.error "Error while generating vertex shader, reverting to default"
-      logger.error vpart.left
-      generateMain()
-    else
-      val = vpart.right
-      vertexCode.addSection "Material code"
-      vertexCode.addLine val.before
-      generateMain =>
-        vertexCode.addCommentSection "Material main code"
-        vertexCode.addLine val.body
-      if val.after.length > 0
-        vertexCode.addSection "Material code"      
-        vertexCode.addLine val.after
-
-
-    ### Generating fragment code ###
-
-    fragmentCode.addSection "Material code"
-    fragmentCode.addLine providedFragmentCode
-
-    # console.warn providedFragmentCode
+    handleMain = (providedCode, tgt, tgtBody, tgtAferBody) =>
     
+      part = partitionGLSL providedCode
+  
+      tgtBody.addSection "Main entry point"
+      if part.left
+        logger.error "Error while generating vertex shader, reverting to default"
+        logger.error part.left
+      else
+        val = part.right
+        tgt.addSection "Material code"
+        tgt.addLine val.before
+        tgtBody.addCommentSection "Material main code"
+        tgtBody.addLine val.body
+        if val.after.length > 0
+          tgtAferBody.addSection "Material code"      
+          tgtAferBody.addLine val.after
+  
+      
+
+
+    handleMain providedVertexCode, @vertex, @vertexBody, @vertexAfterBody
+    handleMain providedFragmentCode, @fragment, @fragmentBody, @fragmentAfterBody
+
+
+  @getter 'code', ->
+    assemble = (tgt, tgtBody, tgtAferBody) =>
+      tgt.buildMain =>
+        tgt.addText tgtBody.code
+        tgt.addText tgtAferBody.code
+
+    assemble @vertex, @vertexBody, @vertexAfterBody
+    assemble @fragment, @fragmentBody, @fragmentAfterBody
+
     return
-      vertex   : vertexCode.code
-      fragment : fragmentCode.code
+      vertex   : @vertex.code
+      fragment : @fragment.code
     
 
 
@@ -262,6 +272,7 @@ export class Material extends Lazy.LazyManager
       output : Object.assign {color: vec4}, (cfg.output || {})
   @getter 'variable', -> @_variable
 
+  generate     : (shaderBuilder) ->
   vertexCode   : -> ''
   fragmentCode : -> ''
   
@@ -303,11 +314,18 @@ export class Raw extends Material
 export class Proxy 
   @generateAccessors()
 
-  constructor: (@_material) ->
+  constructor: (@_material, @_targetOutputs) ->
+    outputs = {}
+    # console.log "---"
+    # console.log @material.variable.output
+    # console.log @targetOutputs
+    for name,output of @targetOutputs
+      outputs['proxy_' + name] = output.type
+
     @_variable = 
       input  : @material.variable.input
-      locals : Object.assign {foo: vec4}, @material.variable.locals
-      output : {}
+      locals : @material.variable.locals
+      output : outputs
   
   @getter 'dirty'    , -> @material.dirty
   @getter 'vertex'   , -> @material.vertex
@@ -315,3 +333,14 @@ export class Proxy
 
   vertexCode:   -> @vertex
   fragmentCode: -> @fragment
+  generate: (shaderBuilder) ->
+    # console.log @targetOutputs
+    fragment     = shaderBuilder.fragment
+    fragmentBody = shaderBuilder.fragmentBody
+    for name,output of @material.variable.output
+      glType = output.type.gl.name   
+      outputName      = 'output_' + name 
+      outputProxyName = 'output_proxy_' + name
+      fragment.addDefinition glType, outputName
+      fragmentBody.addExpr "convert(#{outputProxyName}, #{outputName})"
+ 

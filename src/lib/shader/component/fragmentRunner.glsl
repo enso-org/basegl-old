@@ -48,7 +48,7 @@ void main() {
   }
 //   output_id = vec4(symbolFamilyID_r,symbolID_r,float(sid),idMask);
 //   output_id *= pointerEvents;
-  output_id = ivec4(1,2,3,4);
+  output_id = vec4(1.5,2.0,3.0,4.0);
   
 //   int x = 8388607;
 //   float xx = intBitsToFloat(x);

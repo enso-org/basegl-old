@@ -106,7 +106,9 @@ export class Mesh extends DisplayObject
     @logger.info 'Generating shader'
     vcode = @material.vertexCode()
     fcode = @material.fragmentCode()
-    @_shader = @_shaderBuilder.compute vcode, fcode
+    @_shaderBuilder.compute vcode, fcode
+    @material.generate @_shaderBuilder
+    @_shader = @_shaderBuilder.code
 
   _lookupAttrScope: (name) ->
     for scopeName of @geometry.scope

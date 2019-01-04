@@ -839,3 +839,76 @@ vec4 color_mergeLCH (float d1, float d2, vec4 c1, vec4 c2) {
 // vec3 color_mergeLCH (float d1, float d2, vec3 c1, vec3 c2) {
 //     return color_mergeLCH(d1, d2, c1, c2, 0.0);
 // }
+
+
+void convert (inout int   outp, int inp) { outp = int(inp)   ; }
+void convert (inout float outp, int inp) { outp = float(inp) ; }
+void convert (inout vec2  outp, int inp) { outp = vec2(inp)  ; }
+void convert (inout vec3  outp, int inp) { outp = vec3(inp)  ; }
+void convert (inout vec4  outp, int inp) { outp = vec4(inp)  ; }
+void convert (inout ivec2 outp, int inp) { outp = ivec2(inp) ; }
+void convert (inout ivec3 outp, int inp) { outp = ivec3(inp) ; }
+void convert (inout ivec4 outp, int inp) { outp = ivec4(inp) ; }
+
+void convert (inout int   outp, float inp) { outp = int(inp)   ; }
+void convert (inout float outp, float inp) { outp = float(inp) ; }
+void convert (inout vec2  outp, float inp) { outp = vec2(inp)  ; }
+void convert (inout vec3  outp, float inp) { outp = vec3(inp)  ; }
+void convert (inout vec4  outp, float inp) { outp = vec4(inp)  ; }
+void convert (inout ivec2 outp, float inp) { outp = ivec2(inp) ; }
+void convert (inout ivec3 outp, float inp) { outp = ivec3(inp) ; }
+void convert (inout ivec4 outp, float inp) { outp = ivec4(inp) ; }
+
+void convert (inout int   outp, vec2 inp) { outp = int(inp)          ; }
+void convert (inout float outp, vec2 inp) { outp = float(inp)        ; }
+void convert (inout vec2  outp, vec2 inp) { outp = vec2(inp)         ; }
+void convert (inout vec3  outp, vec2 inp) { outp = vec3(inp,0.0)     ; }
+void convert (inout vec4  outp, vec2 inp) { outp = vec4(inp,0.0,0.0) ; }
+void convert (inout ivec2 outp, vec2 inp) { outp = ivec2(inp)        ; }
+void convert (inout ivec3 outp, vec2 inp) { outp = ivec3(inp,0)      ; }
+void convert (inout ivec4 outp, vec2 inp) { outp = ivec4(inp,0,0)    ; }
+
+void convert (inout int   outp, vec3 inp) { outp = int(inp)      ; }
+void convert (inout float outp, vec3 inp) { outp = float(inp)    ; }
+void convert (inout vec2  outp, vec3 inp) { outp = vec2(inp)     ; }
+void convert (inout vec3  outp, vec3 inp) { outp = vec3(inp)     ; }
+void convert (inout vec4  outp, vec3 inp) { outp = vec4(inp,0.0) ; }
+void convert (inout ivec2 outp, vec3 inp) { outp = ivec2(inp)    ; }
+void convert (inout ivec3 outp, vec3 inp) { outp = ivec3(inp)    ; }
+void convert (inout ivec4 outp, vec3 inp) { outp = ivec4(inp,0)  ; }
+
+void convert (inout int   outp, vec4 inp) { outp = int(inp)   ; }
+void convert (inout float outp, vec4 inp) { outp = float(inp) ; }
+void convert (inout vec2  outp, vec4 inp) { outp = vec2(inp)  ; }
+void convert (inout vec3  outp, vec4 inp) { outp = vec3(inp)  ; }
+void convert (inout vec4  outp, vec4 inp) { outp = vec4(inp)  ; }
+void convert (inout ivec2 outp, vec4 inp) { outp = ivec2(inp) ; }
+void convert (inout ivec3 outp, vec4 inp) { outp = ivec3(inp) ; }
+void convert (inout ivec4 outp, vec4 inp) { outp = ivec4(inp) ; }
+
+void convert (inout int   outp, ivec2 inp) { outp = int(inp)          ; }
+void convert (inout float outp, ivec2 inp) { outp = float(inp)        ; }
+void convert (inout vec2  outp, ivec2 inp) { outp = vec2(inp)         ; }
+void convert (inout vec3  outp, ivec2 inp) { outp = vec3(inp,0.0)     ; }
+void convert (inout vec4  outp, ivec2 inp) { outp = vec4(inp,0.0,0.0) ; }
+void convert (inout ivec2 outp, ivec2 inp) { outp = ivec2(inp)        ; }
+void convert (inout ivec3 outp, ivec2 inp) { outp = ivec3(inp,0)      ; }
+void convert (inout ivec4 outp, ivec2 inp) { outp = ivec4(inp,0,0)    ; }
+
+void convert (inout int   outp, ivec3 inp) { outp = int(inp)      ; }
+void convert (inout float outp, ivec3 inp) { outp = float(inp)    ; }
+void convert (inout vec2  outp, ivec3 inp) { outp = vec2(inp)     ; }
+void convert (inout vec3  outp, ivec3 inp) { outp = vec3(inp)     ; }
+void convert (inout vec4  outp, ivec3 inp) { outp = vec4(inp,0.0) ; }
+void convert (inout ivec2 outp, ivec3 inp) { outp = ivec2(inp)    ; }
+void convert (inout ivec3 outp, ivec3 inp) { outp = ivec3(inp)    ; }
+void convert (inout ivec4 outp, ivec3 inp) { outp = ivec4(inp,0)  ; }
+
+void convert (inout int   outp, ivec4 inp) { outp = int(inp)   ; }
+void convert (inout float outp, ivec4 inp) { outp = float(inp) ; }
+void convert (inout vec2  outp, ivec4 inp) { outp = vec2(inp)  ; }
+void convert (inout vec3  outp, ivec4 inp) { outp = vec3(inp)  ; }
+void convert (inout vec4  outp, ivec4 inp) { outp = vec4(inp)  ; }
+void convert (inout ivec2 outp, ivec4 inp) { outp = ivec2(inp) ; }
+void convert (inout ivec3 outp, ivec4 inp) { outp = ivec3(inp) ; }
+void convert (inout ivec4 outp, ivec4 inp) { outp = ivec4(inp) ; }

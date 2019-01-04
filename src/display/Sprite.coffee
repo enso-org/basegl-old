@@ -554,7 +554,7 @@ export symbolBasicMaterial = (shapeShader, cfg) ->
   spriteBasicMaterial Property.extend cfg,
     fragment: symbolBasicMaterialFragmentShader shapeShader
     output: 
-      id: ivec4
+      id: vec4
         # type: 'vec4'
         # precision: 'highp'
 
@@ -790,7 +790,10 @@ class Pass
     out = null
     if @rootFramebuffer
       @gl.withFramebuffer @gl.FRAMEBUFFER, @rootFramebuffer, =>
-        @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
+        # @gl.blendFuncSeparate @gl.ONE, @gl.ZERO, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
+        # @gl.blendFuncSeparate @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA, @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA                  
+        @gl.blendFunc @gl.ONE, @gl.ONE_MINUS_SRC_ALPHA
+        window.gl = @gl
         @gl.drawBuffers @rootAttachments
         ix = 0
         for name, output of @outputs
@@ -807,7 +810,7 @@ class Pass
 
   addMesh: (element) ->
     geo      = element.mesh.geometry
-    material = new Material.Proxy element.mesh.material
+    material = new Material.Proxy element.mesh.material, @outputs
     pmesh    = Mesh.create geo, material
     window.shader = pmesh.shader
 
@@ -819,7 +822,7 @@ class Pass
       ix = 0
       for name, materialOutput of materialOutputs
         output = @outputs[name]
-        if output? && (output.type == materialOutput.type)
+        if output? # && (output.type == materialOutput.type)
           attachment = @gl.COLOR_ATTACHMENT0 + ix
           val         = output.texture.glValue()
           attachments.push attachment
@@ -827,7 +830,8 @@ class Pass
                                    val, level
         ix += 1
 
-    mesh = @renderer.addMesh element
+    # mesh = @renderer.addMesh element
+    mesh = @renderer.addMesh pmesh
     new FramebufferMesh @gl, mesh, framebuffer, attachments
 
 
@@ -967,7 +971,7 @@ class RenderViewsPass
   constructor: ->
     @_outputBuffers =
       color : vec4.zero()
-      id    : ivec4.zero()
+      id    : vec4.zero()
 
     @_views    = new WatchableSet
     @_mainView = @newView()
