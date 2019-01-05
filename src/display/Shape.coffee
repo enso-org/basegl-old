@@ -84,14 +84,17 @@ export class Canvas
   code: () ->
     @codeLines.join '\n'
 
-  defShape: (sdf, bb, cd=defCd, generateID=@genNewColorID) ->
+  defShape: (sdf, bb, cd=defCd, generateID=@genNewColorID, doInitColors=true) ->
     @shapeNum += 1
     shape = new CanvasShape @shapeNum
 
     @addCodeLine "float #{shape.name}   = #{sdf};"
     @addCodeLine "float  #{shape.densityName} = sdf_render(#{shape.name});"
     @addCodeLine "vec4  #{shape.bbName} = #{bb};"
-    @addCodeLine "vec4  #{shape.cdName} = color_init(#{shape.densityName}, #{cd});"
+    if doInitColors
+      @addCodeLine "vec4  #{shape.cdName} = color_init(#{shape.densityName}, #{cd});"
+    else
+      @addCodeLine "vec4  #{shape.cdName} = #{cd};"
     shape.id = generateID shape.name
     shape
 
@@ -156,7 +159,7 @@ export class Canvas
     glsl = "sdf_quadraticCurve(p, vec2(#{g_cx},#{g_cy}), vec2(#{g_x},#{g_y}));"
     @defShape glsl, bb
 
-  union:         (s1,s2)   -> @defShape "sdf_union(#{s1.name},#{s2.name})"       , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
+  union:         (s1,s2)   -> @defShape "sdf_union(#{s1.name},#{s2.name})"       , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2), false
   unionRound:    (r,s1,s2) -> @defShape "sdf_unionRound(#{s1.name},#{s2.name},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
   intersection:  (s1,s2)   -> @defShape "sdf_intersection(#{s1.name},#{s2.name})", "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @intersectIDLayers(s1,s2)
   difference:    (s1,s2)   -> @defShape "sdf_difference(#{s1.name},#{s2.name})" , "bbox_union(#{s1.bbName},#{s2.bbName})"    , s1.cdName, @diffIDLayers(s1,s2)
