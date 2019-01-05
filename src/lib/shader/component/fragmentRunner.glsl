@@ -17,7 +17,12 @@ void main() {
 
   if (drawBuffer == 0) {
       if (displayMode == 0) {
-          output_color = vec4(toGamma(lch2rgb(shape.cd.rgb)), shape.cd.a * alpha);
+        //   float aa = shape.cd.a * alpha;
+        //   vec3  cd = toGamma(lch2rgb(shape.cd.rgb)) * aa;
+        //   vec3  cd = (lch2rgb(shape.cd.rgb)) * aa;
+        //   vec3  cd = (shape.cd.rgb) * aa;
+        //   output_color = vec4(cd, aa);
+          output_color = shape.cd;
       } else if (displayMode == 1) {
           vec3 col = distanceMeter(shape.density, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
           col = Uncharted2ToneMapping(col);

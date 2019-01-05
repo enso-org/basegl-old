@@ -20,11 +20,17 @@ import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 
 
 myShape = basegl.expr ->
-  (circle(50) - circle(30).moveX(10))
+  plane().fill(Color.rgb([0,0.5,0,1]))
+  # (circle(50) - circle(30).moveX(10)).fill(Color.rgb([0,0.5,0,1]))
 
+myShape2 = basegl.expr ->
+  c = (circle(50) - circle(30).moveX(10)).fill(Color.rgb([1,0,0,1]))
+  b = circle(50).moveX(-10).fill(Color.rgb([0,0,1,0.3]))
+  c + b
+  # circle(50).fill(Color.rgb([1,0,0,1]))
 
 main = () ->
-  Sprite.test(myShape)
+  Sprite.test(myShape, myShape2)
   # canvas = document.getElementById("canvas")
   # gl = canvas.getContext("webgl2")
   # if (!gl) 

@@ -146,11 +146,16 @@ float sdf_grow   (float size, float d)  { return d - size;  }
 float sdf_shrink (float size, float d)  { return d + size;  }
 float sdf_border (float d)              { return abs(d);    }
 float sdf_flatten(float a)              { return clamp(-a); }
-float sdf_render (float d)              { return clamp((0.5 - d) / zoom); }
-float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoom / w); }
+// float sdf_render (float d)              { return clamp((0.5 - d) / zoom); }
+// float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoom / w); }
 
 float sdf_removeOutside (float d) { return (d > 0.0) ?  INF : d; }
 float sdf_removeInside  (float d) { return (d < 0.0) ? -INF : d; }
+
+float sdf_render(float d) {
+  float anti = fwidth(d);
+  return (1.0 - smoothstep(-anti, anti, d));
+}
 
 
 //////////////////////
@@ -734,112 +739,127 @@ const vec3 wref =  vec3(1.0, 1.0, 1.0);
 float sRGB(float t){ return mix(1.055*pow(t, 1./2.4) - 0.055, 12.92*t, step(t, 0.0031308)); }
 vec3 sRGB(in vec3 c) { return vec3 (sRGB(c.x), sRGB(c.y), sRGB(c.z)); }
 
-//-----------------Lch-----------------
 
-float xyzF(float t){ return mix(pow(t,1./3.), 7.787037*t + 0.139731, step(t,0.00885645)); }
-float xyzR(float t){ return mix(t*t*t , 0.1284185*(t - 0.139731), step(t,0.20689655)); }
-vec3 rgb2lch(in vec3 c)
-{
-	c  *= mat3( 0.4124, 0.3576, 0.1805,
-          		0.2126, 0.7152, 0.0722,
-                0.0193, 0.1192, 0.9505);
-    c.x = xyzF(c.x/wref.x);
-	c.y = xyzF(c.y/wref.y);
-	c.z = xyzF(c.z/wref.z);
-	vec3 lab = vec3(max(0.,116.0*c.y - 16.0), 500.0*(c.x - c.y), 200.0*(c.y - c.z));
-    return vec3(lab.x, length(vec2(lab.y,lab.z)), atan(lab.z, lab.y));
+vec4 rgb_init (vec4 color) {
+    color.rgb *= color.a;
+    return color;
 }
 
-vec4 rgb2lch(vec4 c) {
-    return vec4(rgb2lch(c.rgb), c.a);
-}
-vec3 hue2rgb(float hue) {
-    float R = abs(hue * 6.0 - 3.0) - 1.0;
-    float G = 2.0 - abs(hue * 6.0 - 2.0);
-    float B = 2.0 - abs(hue * 6.0 - 4.0);
-    return clamp(vec3(R,G,B), 0.0, 1.0);
-}
-vec3 hsl2rgb(vec3 hsl) {
-    vec3 rgb = hue2rgb(hsl.x);
-    float C = (1.0 - abs(2.0 * hsl.z - 1.0)) * hsl.y;
-    return (rgb - 0.5) * C + hsl.z;
-}
-vec3 hsl2lch(vec3 c) {
-    return rgb2lch(hsl2rgb(c));
-}
-vec4 hsl2lch(vec4 c) {
-    return vec4(hsl2lch(c.xyz), c.a);
-}
+// //-----------------Lch-----------------
 
-vec3 lch2rgb(in vec3 c)
-{
-    c = vec3(c.x, cos(c.z) * c.y, sin(c.z) * c.y);
-
-    float lg = 1./116.*(c.x + 16.);
-    vec3 xyz = vec3(wref.x*xyzR(lg + 0.002*c.y),
-    				wref.y*xyzR(lg),
-    				wref.z*xyzR(lg - 0.005*c.z));
-
-    vec3 rgb = xyz*mat3( 3.2406, -1.5372,-0.4986,
-          		        -0.9689,  1.8758, 0.0415,
-                	     0.0557,  -0.2040, 1.0570);
-
-    return rgb;
-}
-
-//cheaply lerp around a circle
-float lerpAng(in float a, in float b, in float x)
-{
-    float ang = mod(mod((a-b), TAU) + PI*3., TAU)-PI;
-    return ang*x+b;
-}
-
-//Linear interpolation between two colors in Lch space
-vec3 lerpLch(in vec3 a, in vec3 b, in float x)
-{
-    float hue = lerpAng(a.z, b.z, x);
-    return vec3(mix(b.xy, a.xy, x), hue);
-}
-
-
-
-
-
-
-
-
-
-// FIXME: fix transparent aa - fwidth is obsolete now, see sdf_render for reference
-vec4 color_mergeLCH (float d2, float d1, vec4 c2, vec4 c1, float width) {
-  float w1  = width + fwidth(d1);
-  float w2  = width + fwidth(d2);
-  float p1  = sdf_render(d1);
-  float p2  = sdf_render(d2);
-  float pb1 = c1.a * c1.a * smoothstep(1.0-clamp((d1/w1) + 0.5));
-  float pb2 = c2.a * c2.a * smoothstep(1.0-clamp((d2/w2)));
-  vec3  c3  = mix (c1.rgb, pb1, c2.rgb, (1.0-pb1)*pb2);
-  float aa  = p1 * c1.a + p2 * c2.a;
-  aa /= max(p1, p2); // unpremultiply
-  return vec4(c3, aa);
-}
-
-// vec3 color_mergeLCH (float d1, float d2, vec3 c1, vec3 c2, float width) {
-//   float w1  = width + fwidth(d1);
-//   float w2  = width + fwidth(d2);
-//   float pb1 = smoothstep(1.0-clamp((d1/w1) + 0.5));
-//   float pb2 = smoothstep(1.0-clamp((d2/w2)));
-//   vec3  c3  = mix (c1, pb1, c2, (1.0-pb1)*pb2);
-//   return c3;
+// float xyzF(float t){ return mix(pow(t,1./3.), 7.787037*t + 0.139731, step(t,0.00885645)); }
+// float xyzR(float t){ return mix(t*t*t , 0.1284185*(t - 0.139731), step(t,0.20689655)); }
+// vec3 rgb2lch(in vec3 c)
+// {
+// 	c  *= mat3( 0.4124, 0.3576, 0.1805,
+//           		0.2126, 0.7152, 0.0722,
+//                 0.0193, 0.1192, 0.9505);
+//     c.x = xyzF(c.x/wref.x);
+// 	c.y = xyzF(c.y/wref.y);
+// 	c.z = xyzF(c.z/wref.z);
+// 	vec3 lab = vec3(max(0.,116.0*c.y - 16.0), 500.0*(c.x - c.y), 200.0*(c.y - c.z));
+//     return vec3(lab.x, length(vec2(lab.y,lab.z)), atan(lab.z, lab.y));
 // }
 
-vec4 color_mergeLCH (float d1, float d2, vec4 c1, vec4 c2) {
-    return color_mergeLCH(d1, d2, c1, c2, 0.0);
-}
+// vec4 rgb2lch(vec4 c) {
+//     return vec4(rgb2lch(c.rgb), c.a);
+// }
+// vec3 hue2rgb(float hue) {
+//     float R = abs(hue * 6.0 - 3.0) - 1.0;
+//     float G = 2.0 - abs(hue * 6.0 - 2.0);
+//     float B = 2.0 - abs(hue * 6.0 - 4.0);
+//     return clamp(vec3(R,G,B), 0.0, 1.0);
+// }
+// vec3 hsl2rgb(vec3 hsl) {
+//     vec3 rgb = hue2rgb(hsl.x);
+//     float C = (1.0 - abs(2.0 * hsl.z - 1.0)) * hsl.y;
+//     return (rgb - 0.5) * C + hsl.z;
+// }
+// vec3 hsl2lch(vec3 c) {
+//     return rgb2lch(hsl2rgb(c));
+// }
+// vec4 hsl2lch(vec4 c) {
+//     return vec4(hsl2lch(c.xyz), c.a);
+// }
+
+// vec3 lch2rgb(in vec3 c)
+// {
+//     c = vec3(c.x, cos(c.z) * c.y, sin(c.z) * c.y);
+
+//     float lg = 1./116.*(c.x + 16.);
+//     vec3 xyz = vec3(wref.x*xyzR(lg + 0.002*c.y),
+//     				wref.y*xyzR(lg),
+//     				wref.z*xyzR(lg - 0.005*c.z));
+
+//     vec3 rgb = xyz*mat3( 3.2406, -1.5372,-0.4986,
+//           		        -0.9689,  1.8758, 0.0415,
+//                 	     0.0557,  -0.2040, 1.0570);
+
+//     return rgb;
+// }
+
+// //cheaply lerp around a circle
+// float lerpAng(in float a, in float b, in float x)
+// {
+//     float ang = mod(mod((a-b), TAU) + PI*3., TAU)-PI;
+//     return ang*x+b;
+// }
+
+// //Linear interpolation between two colors in Lch space
+// vec3 lerpLch(in vec3 a, in vec3 b, in float x)
+// {
+//     float hue = lerpAng(a.z, b.z, x);
+//     return vec3(mix(b.xy, a.xy, x), hue);
+// }
+
+
+
+
+
+
+
+
+
+// // FIXME: fix transparent aa - fwidth is obsolete now, see sdf_render for reference
+// vec4 color_mergeLCH (float d2, float d1, vec4 c2, vec4 c1, float width) {
+//   float w1  = width + fwidth(d1);
+//   float w2  = width + fwidth(d2);
+//   float p1  = sdf_render(d1);
+//   float p2  = sdf_render(d2);
+//   float pb1 = c1.a * c1.a * smoothstep(1.0-clamp((d1/w1) + 0.5));
+//   float pb2 = c2.a * c2.a * smoothstep(1.0-clamp((d2/w2)));
+//   vec3  c3  = mix (c1.rgb, pb1, c2.rgb, (1.0-pb1)*pb2);
+//   float aa  = p1 * c1.a + p2 * c2.a;
+//   aa /= max(p1, p2); // unpremultiply
+//   return vec4(c3, aa);
+// }
+
+// // vec3 color_mergeLCH (float d1, float d2, vec3 c1, vec3 c2, float width) {
+// //   float w1  = width + fwidth(d1);
+// //   float w2  = width + fwidth(d2);
+// //   float pb1 = smoothstep(1.0-clamp((d1/w1) + 0.5));
+// //   float pb2 = smoothstep(1.0-clamp((d2/w2)));
+// //   vec3  c3  = mix (c1, pb1, c2, (1.0-pb1)*pb2);
+// //   return c3;
+// // }
+
+// vec4 color_mergeLCH (float d1, float d2, vec4 c1, vec4 c2) {
+//     return color_mergeLCH(d1, d2, c1, c2, 0.0);
+// }
 
 // vec3 color_mergeLCH (float d1, float d2, vec3 c1, vec3 c2) {
 //     return color_mergeLCH(d1, d2, c1, c2, 0.0);
 // }
 
+vec4 color_merge (float d1, float d2, vec4 c1, vec4 c2) {
+    return c2 + (c1 * (1.0 - c2.a));
+}
+
+vec4 color_init (float density, vec4 color) {
+    color.a *= density;
+    color.rgb *= color.a;
+    return color;
+}
 
 void convert (inout int   outp, int inp) { outp = int(inp)   ; }
 void convert (inout float outp, int inp) { outp = float(inp) ; }

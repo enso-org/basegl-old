@@ -33,7 +33,8 @@ mkShapeIDName = (n) -> mkIDName(mkShapeName(n))
 ##################
 
 defCdC = Color.rgb [1,0,0,1]
-defCd  = "rgb2lch(#{GLSL.toCode defCdC})"
+# defCd  = "rgb2lch(#{GLSL.toCode defCdC})"
+defCd  = "(#{GLSL.toCode defCdC})"
 
 export class CanvasShape
   constructor: (@shapeNum, @id) ->
@@ -41,6 +42,7 @@ export class CanvasShape
     @idName = mkIDName @name
     @bbName = mkBBName @name
     @cdName = mkCDName @name
+    @densityName = "#{@name}_density"
 
 export class Canvas
   constructor: () ->
@@ -87,8 +89,9 @@ export class Canvas
     shape = new CanvasShape @shapeNum
 
     @addCodeLine "float #{shape.name}   = #{sdf};"
+    @addCodeLine "float  #{shape.densityName} = sdf_render(#{shape.name});"
     @addCodeLine "vec4  #{shape.bbName} = #{bb};"
-    @addCodeLine "vec4  #{shape.cdName} = #{cd};"
+    @addCodeLine "vec4  #{shape.cdName} = color_init(#{shape.densityName}, #{cd});"
     shape.id = generateID shape.name
     shape
 
@@ -153,9 +156,9 @@ export class Canvas
     glsl = "sdf_quadraticCurve(p, vec2(#{g_cx},#{g_cy}), vec2(#{g_x},#{g_y}));"
     @defShape glsl, bb
 
-  union:         (s1,s2)   -> @defShape "sdf_union(#{s1.name},#{s2.name})"       , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_mergeLCH(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
-  unionRound:    (r,s1,s2) -> @defShape "sdf_unionRound(#{s1.name},#{s2.name},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_mergeLCH(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
-  intersection:  (s1,s2)   -> @defShape "sdf_intersection(#{s1.name},#{s2.name})", "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_mergeLCH(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @intersectIDLayers(s1,s2)
+  union:         (s1,s2)   -> @defShape "sdf_union(#{s1.name},#{s2.name})"       , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
+  unionRound:    (r,s1,s2) -> @defShape "sdf_unionRound(#{s1.name},#{s2.name},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
+  intersection:  (s1,s2)   -> @defShape "sdf_intersection(#{s1.name},#{s2.name})", "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @intersectIDLayers(s1,s2)
   difference:    (s1,s2)   -> @defShape "sdf_difference(#{s1.name},#{s2.name})" , "bbox_union(#{s1.bbName},#{s2.bbName})"    , s1.cdName, @diffIDLayers(s1,s2)
   grow:          (s1,r)    -> @defShape "sdf_grow(#{GLSL.toCode r},#{s1.name})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
   outside:       (s1)      -> @defShape "sdf_removeInside(#{s1.name})"          , s1.bbName                                  , s1.cdName
@@ -171,11 +174,13 @@ export class Canvas
       c = c.copy()
       c.a = 1
     conv = if c instanceof Color.RGB then 'rgb2lch' else 'hsl2lch'
+    conv = ""
     cc = "#{conv}(toLinear(#{GLSL.toCode c}))"
     @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
 
   fillGLSL:     (s1,s)    ->
-    cc = "rgb2lch(" + s + ")"
+    # cc = "rgb2lch(" + s + ")"
+    cc = "(" + s + ")"
     @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
 
 

@@ -577,7 +577,7 @@ export class Symbol extends DisplayObject
 ######################################################################
 ######################################################################
 
-export test = (shape) ->
+export test = (shape, shape2) ->
   scene = new Scene
     dom: 'test'
   gpuRenderer = new GPURenderer scene
@@ -590,20 +590,23 @@ export test = (shape) ->
   scene.addRenderer gpuRenderer
   
   ss  = new Symbol shape
-  ss2 = new Symbol shape
+  ss2 = new Symbol shape2
 
   scene.add ss
   scene.add ss2
 
 
   sp1 = ss.create()
+  sp1.variable.bbox.xy = [700,500]
+
   sp1_2 = ss2.create()
-  sp1_2.position.x = 100
+  # sp1_2.position.x = 100
   sp1_2.update()
 
   scene.onFrame.addEventListener =>
-    sp1.position.x += 1
+    # sp1_2.position.x += 0.1
     ss.update()
+    ss2.update()
   
 
 
@@ -656,11 +659,11 @@ class GPURenderer
     @_dom.style.width  = '100%'
     @_dom.style.height = '100%'
 
-    @_gl = new WebGL2RenderingContextEx @_dom.getContext("webgl2")
+    @_gl = new WebGL2RenderingContextEx @_dom.getContext("webgl2", {alpha:false})
     extSupported = @_gl.getExtension 'EXT_color_buffer_float'
 
     if !@_gl then throw "WebGL not supported"
-    @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
+    # @_gl.blendFunc(@_gl.SRC_ALPHA, @_gl.ONE_MINUS_SRC_ALPHA);
     @_gl.enable(@_gl.BLEND);
     # gl.disable(gl.DEPTH_TEST);
 
@@ -800,7 +803,7 @@ class Pass
           output.type.gl.clearBuffer @gl, ix, output.default.array
           ix += 1
         out = @_run state
-        @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
+        # @gl.blendFunc @gl.SRC_ALPHA, @gl.ONE_MINUS_SRC_ALPHA #FIXME: should be there? 
     else    
       out = @_run state
     if out == null then out = {}
@@ -953,9 +956,21 @@ screenDrawPass = (args...) -> new ScreenDrawPass args...
 
 
 fullScreenFragmentShader = '''
+float gm = 2.2;
+vec3 toGamma(vec3 v) {
+  return pow(v, vec3(1.0 / gm));
+}
+
+vec4 toGamma(vec4 v) {
+  return vec4(toGamma(v.rgb), v.a);
+}
+
 void main() {
   vec3 uv = (position + 1.0) / 2.0;
   output_color = texture(input_color, uv.xy);
+  output_color.rgb /= output_color.a;
+  output_color.rgb = toGamma(output_color.rgb);
+  output_color.rgb *= output_color.a;
 }
 '''
 
