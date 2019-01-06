@@ -27,7 +27,7 @@ export callRecBase = (func, base, args) ->
 
 
 ### GLSL value / expr ###
-export toExpr = TypeClass.define()
+export toExpr = TypeClass.define('toExpr')
 export toCode = (obj, args...) -> (toExpr obj, args...).expr
 TypeClass.implement Number  , toExpr, -> expr (if Reflect.isIntegral @ then @ + '.0' else @.toString()), 'float'
 TypeClass.implement Boolean , toExpr, -> expr @.toString(), 'bool'

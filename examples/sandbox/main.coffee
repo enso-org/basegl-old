@@ -26,7 +26,7 @@ myShape = basegl.expr ->
 myShape2 = basegl.expr ->
   c = (circle(50) - circle(30).moveX(10)).fill(Color.rgb([1,0,0,1]))
   b = circle(50).moveX(-10).fill(Color.rgb([0,0,1,0.5]))
-  c + b
+  c - b
   # circle(50).fill(Color.rgb([1,0,0,1]))
 
 main = () ->

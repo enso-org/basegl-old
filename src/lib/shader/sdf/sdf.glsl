@@ -697,15 +697,6 @@ vec4 bbox_grow (float d, vec4 bbox) {
     return bbox + vec4(-d,-d,d,d);
 }
 
-struct sdf_shape {
-  float density;
-  int   id;
-  vec4  bb;
-  vec4  cd;
-};
-
-
-
 
 
 //////////////////////////////////////////////////////////////////////
@@ -744,6 +735,75 @@ vec4 rgb_init (vec4 color) {
     color.rgb *= color.a;
     return color;
 }
+
+
+vec4 alpha_unpremultiply (vec4 color) {
+    color.rgb /= color.a;
+    return color;
+}
+
+vec4 alpha_premultiply (vec4 color) {
+    color.rgb *= color.a;
+    return color;
+}
+
+vec4 color_merge (float d1, float d2, vec4 c1, vec4 c2) {
+    return c2 + (c1 * (1.0 - c2.a));
+}
+
+vec4 color_init (float density, vec4 color) {
+    color.a *= density;
+    return alpha_premultiply(color);
+}
+
+
+struct sdf_shape {
+  float distance;
+  float density;
+  int   id;
+  vec4  bb;
+  vec4  cd;
+};
+
+
+sdf_shape sdf_shape_new (int id, float distance, vec4 bbox) {
+    float density = sdf_render(distance);
+    vec4  color   = color_init(density, toLinear(vec4(1.0,0.0,0.0,1.0)));
+    return sdf_shape(distance, density, id, bbox, color);    
+}
+
+sdf_shape sdf_shape_fill (int id, sdf_shape shape, vec4 newColor) {
+    vec4 color = color_init(shape.density, toLinear(newColor));
+    return sdf_shape(shape.distance, shape.density, id, shape.bb, color); 
+}
+
+// sdf_shape sdf_shape_difference (sdf_shape s1, sdf_shape s2) {
+//     float distance = sdf_difference(s1.distance, s2.distance);
+//     float density  = sdf_render(distance);
+//     vec4  bbox     = bbox_union(s1.bb, s2.bb);
+//     vec4  color    = color_init(density, alpha_unpremultiply(s1.cd));
+//     int   id       = id_difference(s1.distance, s2.distance, s1.id);
+//     return sdf_shape(distance, density, id, bbox, color);
+// }
+
+sdf_shape sdf_shape_difference (sdf_shape s1, sdf_shape s2) {
+    float distance = sdf_difference(s1.distance, s2.distance);
+    float density  = sdf_render(distance);
+    vec4  bbox     = bbox_union(s1.bb, s2.bb);
+    
+    // vec4  color    = alpha_unpremultiply(s1.cd);
+    vec4 color = s1.cd;
+    color /= color.a;//s1.density;
+    // if (s1.density != 0.0) {
+    //   color.a /= s1.density;
+    // }
+    color = color_init(density, color);
+    
+    int   id       = id_difference(s1.distance, s2.distance, s1.id);
+    return sdf_shape(distance, density, id, bbox, color);
+}
+
+
 
 // //-----------------Lch-----------------
 
@@ -851,15 +911,9 @@ vec4 rgb_init (vec4 color) {
 //     return color_mergeLCH(d1, d2, c1, c2, 0.0);
 // }
 
-vec4 color_merge (float d1, float d2, vec4 c1, vec4 c2) {
-    return c2 + (c1 * (1.0 - c2.a));
-}
 
-vec4 color_init (float density, vec4 color) {
-    color.a *= density;
-    color.rgb *= color.a;
-    return color;
-}
+
+
 
 void convert (inout int   outp, int inp) { outp = int(inp)   ; }
 void convert (inout float outp, int inp) { outp = float(inp) ; }

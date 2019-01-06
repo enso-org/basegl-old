@@ -447,14 +447,16 @@ redirections = redirectBuiltins()
 builtinsMap = new Set redirections.names
 
 
-anyVar = /([a-zA-Z_])[a-zA-Z_0-9]*/gm
+anyVar = /([a-zA-Z_])[a-zA-Z_0-9]* *\(/gm
 fragment_lib2 = fragment_lib.replace anyVar, (v) =>
-  if builtinsMap.has v then "overloaded_#{v}" else v
+  vv = v.slice(0,-1).trim()
+  if builtinsMap.has vv then "overloaded_#{v}" else v
 
 
 allowOverloading = (src) -> 
   src2 = src.replace anyVar, (v) =>
-    if builtinsMap.has v then "overloaded_#{v}" else v
+    vv = v.slice(0,-1).trim()
+    if builtinsMap.has vv then "overloaded_#{v}" else v
   redirections.code + '\n' + src2
 
 
@@ -905,8 +907,8 @@ class PixelReadPass
       gl.withBuffer gl.PIXEL_PACK_BUFFER, pass.pixelBuffer, =>
         gl.getBufferSubData gl.PIXEL_PACK_BUFFER, 0, pass.pixelData.array, 0, 4
 
-      if pass.pixelData.a != 0
-        console.log pass.pixelData.rgba
+      # if pass.pixelData.a != 0
+      #   console.log pass.pixelData.rgba
       pass.pixelData
 
     {pixelData: promise}

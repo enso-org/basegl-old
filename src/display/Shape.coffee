@@ -20,12 +20,6 @@ import fragmentHeader from 'basegl/lib/shader/component/fragmentHeader'
 import fragmentRunner from 'basegl/lib/shader/component/fragmentRunner'
 import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 
-mkBBName      = (n) -> n + '_bb'
-mkIDName      = (n) -> n + '_id'
-mkCDName      = (n) -> n + '_cd'
-mkShapeName   = (n) -> 'shape_' + n
-mkShapeIDName = (n) -> mkIDName(mkShapeName(n))
-
 
 
 ##################
@@ -38,11 +32,21 @@ defCd  = "(#{GLSL.toCode defCdC})"
 
 export class CanvasShape
   constructor: (@shapeNum, @id) ->
-    @name   = mkShapeName @shapeNum
-    @idName = mkIDName @name
-    @bbName = mkBBName @name
-    @cdName = mkCDName @name
-    @densityName = "#{@name}_density"
+    @name     = "shape_#{@shapeNum}"
+    @distance = "#{@name}_distance"
+    @id       = "#{@name}_id"
+    @bbox     = "#{@name}_bbox"
+    @color    = "#{@name}_color"
+    @density  = "#{@name}_density"
+
+
+class CanvasShape2
+  constructor: (@name, @id) ->
+
+TypeClass.implement CanvasShape2, GLSL.toExpr, -> GLSL.expr @name
+
+canvasShape = (name, id) -> new CanvasShape2 name, id
+
 
 export class Canvas
   constructor: () ->
@@ -56,27 +60,27 @@ export class Canvas
     @lastID += 1
     id
 
-  genNewColorID: (name) =>
-    id = @getNewID()
-    @addCodeLine "int #{mkIDName name} = newIDLayer(#{name}, #{id});"
-    id
+  # genNewColorID: (shape) =>
+  #   id = @getNewID()
+  #   @addCodeLine "int #{shape.id} = newIDLayer(#{shape.distance}, #{id});"
+  #   id
 
-  mergeIDLayers: (a,b) => (name) =>
-    @addCodeLine "int #{mkIDName name} = id_union(#{a.name}, #{b.name}, #{a.idName}, #{b.idName});"
-    null
+  # mergeIDLayers: (a,b) => (shape) =>
+  #   @addCodeLine "int #{shape.id} = id_union(#{a.distance}, #{b.distance}, #{a.id}, #{b.id});"
+  #   null
 
-  intersectIDLayers: (a,b) => (name) =>
-    @addCodeLine "int #{mkIDName name} = id_intersection(#{a.name}, #{b.name}, #{a.idName});"
-    null
+  # intersectIDLayers: (a,b) => (shape) =>
+  #   @addCodeLine "int #{shape.id} = id_intersection(#{a.distance}, #{b.distance}, #{a.id});"
+  #   null
 
-  diffIDLayers: (a,b) => (name) =>
-    @addCodeLine "int #{mkIDName name} = id_difference(#{a.name}, #{b.name}, #{a.idName});"
-    null
+  # diffIDLayers: (a,b) => (shape) =>
+  #   @addCodeLine "int #{shape.id} = id_difference(#{a.distance}, #{b.distance}, #{a.id});"
+  #   null
 
 
-  keepIDLayer: (a) => (name) =>
-    @addCodeLine "int #{mkIDName name} = #{mkIDName a.name};"
-    null
+  # keepIDLayer: (a) => (shape) =>
+  #   @addCodeLine "int #{shape.id} = #{a.id};"
+  #   null
 
   addCodeLine: (c) -> @codeLines.push c
   addBBLine:   (c) -> @bbLines.push c
@@ -84,110 +88,129 @@ export class Canvas
   code: () ->
     @codeLines.join '\n'
 
-  defShape: (sdf, bb, cd=defCd, generateID=@genNewColorID, doInitColors=true) ->
+  # defShape_OLD: (sdf, bb, cd=defCd, generateID=@genNewColorID, doInitColors=true) ->
+  #   @shapeNum += 1
+  #   shape = new CanvasShape @shapeNum
+
+  #   @addCodeLine "float #{shape.distance}   = #{sdf};"
+  #   @addCodeLine "float  #{shape.density} = sdf_render(#{shape.distance});"
+  #   @addCodeLine "vec4  #{shape.bbox} = #{bb};"
+  #   if doInitColors
+  #     @addCodeLine "vec4  #{shape.color} = color_init(#{shape.density}, #{cd});"
+  #   else
+  #     @addCodeLine "vec4  #{shape.color} = #{cd};"
+  #   shape.number = generateID shape
+  #   shape
+
+
+  newShape: () ->
+    id = @getNewID()
     @shapeNum += 1
-    shape = new CanvasShape @shapeNum
+    canvasShape "shape_#{@shapeNum}", id
 
-    @addCodeLine "float #{shape.name}   = #{sdf};"
-    @addCodeLine "float  #{shape.densityName} = sdf_render(#{shape.name});"
-    @addCodeLine "vec4  #{shape.bbName} = #{bb};"
-    if doInitColors
-      @addCodeLine "vec4  #{shape.cdName} = color_init(#{shape.densityName}, #{cd});"
-    else
-      @addCodeLine "vec4  #{shape.cdName} = #{cd};"
-    shape.id = generateID shape.name
+  newShapeAlias: () ->
+    @shapeNum += 1
+    canvasShape "shape_#{@shapeNum}"
+
+  # defShape_OLD: (distance, bbox) ->
+  #   shape = @newShape()
+  #   @addCodeLine "sdf_shape #{shape.name} = sdf_shape_new(#{shape.id}, #{distance}, #{bbox});"
+  #   shape    
+
+  defNewShape: (fn, bbox, args...) ->
+    gargs    = (GLSL.toCode arg for arg in args)
+    gargs.unshift 'origin'
+    gargs    = gargs.join ','
+    distance = "#{fn}(#{gargs})"
+    bb0      = GLSL.toCode bbox.x
+    bb1      = GLSL.toCode bbox.y
+    bbox     = "bbox_new(#{bb0}, #{bb1})"
+    @defShape 'new', [distance, bbox]
+    
+  defShape: (fn, args, cfg={}) ->
+    args = args.slice()
+    fnx  = 'sdf_shape_' + fn
+    if cfg.keepID
+      shape = @newShapeAlias() 
+    else 
+      shape = @newShape()
+      args.unshift "#{shape.id}"
+    gargs = (GLSL.toCode arg for arg in args)
+    gargs = gargs.join ','
+    @addCodeLine "sdf_shape #{shape.name} = #{fnx}(#{gargs});"    
     shape
+    
 
-  circle: (r, angle=0) ->
-    g_r  = GLSL.toCode r
-    bb   = "bbox_new(#{g_r},#{g_r})"
-    glsl = switch angle
-      when 0 then "sdf_circle(p,#{g_r})"
-      else        "sdf_circle(p,#{g_r}, #{GLSL.toCode angle})"
-    @defShape glsl, bb
 
-  halfplane: (angle = 0, fast = false) ->
-    g_a  = GLSL.toCode angle
-    g_0  = GLSL.toCode 0
-    bb   = "bbox_new(#{g_0},#{g_0})"
-    glsl = if fast then switch angle
-              when 0 then "sdf_halfplaneFast(p)"
-              else        "sdf_halfplaneFast(p, #{g_a})"
-           else switch angle
-              when 0 then "sdf_halfplane(p)"
-              else        "sdf_halfplane(p, #{g_a})"
-    @defShape glsl, bb
+  # halfplane: (angle = 0, fast = false) ->
+  #   g_a  = GLSL.toCode angle
+  #   g_0  = GLSL.toCode 0
+  #   bb   = "bbox_new(#{g_0},#{g_0})"
+  #   glsl = if fast then switch angle
+  #             when 0 then "sdf_halfplaneFast(p)"
+  #             else        "sdf_halfplaneFast(p, #{g_a})"
+  #          else switch angle
+  #             when 0 then "sdf_halfplane(p)"
+  #             else        "sdf_halfplane(p, #{g_a})"
+  #   @defShape_OLD glsl, bb
   
-  plane: () ->
-    g_0  = GLSL.toCode 0
-    bb   = "bbox_new(#{g_0},#{g_0})"
-    glsl = "sdf_plane(p)"
-    @defShape glsl, bb
 
-  pie: (angle) ->
-    g_a  = GLSL.toCode angle
-    g_0  = GLSL.toCode 0
-    bb   = "bbox_new(#{g_0},#{g_0})"
-    glsl = "sdf_pie(p,#{g_a})"
-    @defShape glsl, bb
+  # pie: (angle) ->
+  #   g_a  = GLSL.toCode angle
+  #   g_0  = GLSL.toCode 0
+  #   bb   = "bbox_new(#{g_0},#{g_0})"
+  #   glsl = "sdf_pie(p,#{g_a})"
+  #   @defShape_OLD glsl, bb
 
-  rect: (w,h, rs...) ->
-    g_w  = GLSL.toCode w
-    g_h  = GLSL.toCode h
-    bb   = "bbox_new(#{g_w}/2.0,#{g_h}/2.0)"
-    glsl = switch rs.length
-      when 0 then "sdf_rect(p,vec2(#{g_w}, #{g_h}));"
-      when 1 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), #{GLSL.toCode rs[0]});"
-      when 2 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[1]}));"
-      when 3 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[2]},#{GLSL.toCode rs[2]}));"
-      else        "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[2]},#{GLSL.toCode rs[3]}));"
-    @defShape glsl, bb
+  # rect: (w,h, rs...) ->
+  #   g_w  = GLSL.toCode w
+  #   g_h  = GLSL.toCode h
+  #   bb   = "bbox_new(#{g_w}/2.0,#{g_h}/2.0)"
+  #   glsl = switch rs.length
+  #     when 0 then "sdf_rect(p,vec2(#{g_w}, #{g_h}));"
+  #     when 1 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), #{GLSL.toCode rs[0]});"
+  #     when 2 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[1]}));"
+  #     when 3 then "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[2]},#{GLSL.toCode rs[2]}));"
+  #     else        "sdf_rect(p,vec2(#{g_w}, #{g_h}), vec4(#{GLSL.toCode rs[0]},#{GLSL.toCode rs[1]},#{GLSL.toCode rs[2]},#{GLSL.toCode rs[3]}));"
+  #   @defShape_OLD glsl, bb
 
-  triangle: (w, h) ->
-    g_w = GLSL.toCode w
-    g_h = GLSL.toCode h
-    bb   = "bbox_new(#{g_w}/2.0,#{g_h}/2.0)"
-    glsl = "sdf_triangle(p,#{g_w},#{g_h})"
-    @defShape glsl, bb
+  # triangle: (w, h) ->
+  #   g_w = GLSL.toCode w
+  #   g_h = GLSL.toCode h
+  #   bb   = "bbox_new(#{g_w}/2.0,#{g_h}/2.0)"
+  #   glsl = "sdf_triangle(p,#{g_w},#{g_h})"
+  #   @defShape_OLD glsl, bb
 
-  quadraticCurveTo: (cx,cy,x,y) ->
-    g_cx = GLSL.toCode cx
-    g_cy = GLSL.toCode cy
-    g_x  = GLSL.toCode x
-    g_y  = GLSL.toCode y
-    bb   = "bbox_new(0.0, 0.0)" # FIXME: http://pomax.nihongoresources.com/pages/bezier/
-    glsl = "sdf_quadraticCurve(p, vec2(#{g_cx},#{g_cy}), vec2(#{g_x},#{g_y}));"
-    @defShape glsl, bb
+  # quadraticCurveTo: (cx,cy,x,y) ->
+  #   g_cx = GLSL.toCode cx
+  #   g_cy = GLSL.toCode cy
+  #   g_x  = GLSL.toCode x
+  #   g_y  = GLSL.toCode y
+  #   bb   = "bbox_new(0.0, 0.0)" # FIXME: http://pomax.nihongoresources.com/pages/bezier/
+  #   glsl = "sdf_quadraticCurve(p, vec2(#{g_cx},#{g_cy}), vec2(#{g_x},#{g_y}));"
+  #   @defShape_OLD glsl, bb
 
-  union:         (s1,s2)   -> @defShape "sdf_union(#{s1.name},#{s2.name})"       , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2), false
-  unionRound:    (r,s1,s2) -> @defShape "sdf_unionRound(#{s1.name},#{s2.name},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @mergeIDLayers(s1,s2)
-  intersection:  (s1,s2)   -> @defShape "sdf_intersection(#{s1.name},#{s2.name})", "bbox_union(#{s1.bbName},#{s2.bbName})"    , "color_merge(#{s1.name},#{s2.name},#{s1.cdName},#{s2.cdName})", @intersectIDLayers(s1,s2)
-  difference:    (s1,s2)   -> @defShape "sdf_difference(#{s1.name},#{s2.name})" , "bbox_union(#{s1.bbName},#{s2.bbName})"    , s1.cdName, @diffIDLayers(s1,s2)
-  grow:          (s1,r)    -> @defShape "sdf_grow(#{GLSL.toCode r},#{s1.name})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
-  outside:       (s1)      -> @defShape "sdf_removeInside(#{s1.name})"          , s1.bbName                                  , s1.cdName
-  inside:        (s1)      -> @defShape "sdf_removeOutside(#{s1.name})"         , s1.bbName                                  , s1.cdName, @keepIDLayer(s1)
-  blur:          (s1,r, p) -> @defShape "sdf_blur(#{s1.name}, #{GLSL.toCode r}, #{GLSL.toCode p})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbName})" , s1.cdName
-  move:          (x,y)     -> @addCodeLine "p = sdf_translate(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
-  moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
-  rotate:        (a)       -> @addCodeLine "p = sdf_rotate(p, - #{GLSL.toCode a});"
-  moveTo:        (x,y)     -> @addCodeLine "p = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
-  repeat:        (x,y)     -> @addCodeLine "p = sdf_repeat(p, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
-  fill:          (s1,c)    ->
-    if c.a == undefined
-      c = c.copy()
-      c.a = 1
-    conv = if c instanceof Color.RGB then 'rgb2lch' else 'hsl2lch'
-    conv = ""
-    cc = "#{conv}(toLinear(#{GLSL.toCode c}))"
-    @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
+  # union:         (s1,s2)   -> @defShape_OLD "sdf_union(#{s1.distance},#{s2.distance})"       , "bbox_union(#{s1.bbox},#{s2.bbox})"    , "color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color})", @mergeIDLayers(s1,s2), false
+  # unionRound:    (r,s1,s2) -> @defShape_OLD "sdf_unionRound(#{s1.distance},#{s2.distance},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbox},#{s2.bbox})"    , "color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color})", @mergeIDLayers(s1,s2)
+  # intersection:  (s1,s2)   -> @defShape_OLD "sdf_intersection(#{s1.distance},#{s2.distance})", "bbox_union(#{s1.bbox},#{s2.bbox})"    , "alpha_unpremultiply(color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color}))", @intersectIDLayers(s1,s2)
+  # grow:          (s1,r)    -> @defShape_OLD "sdf_grow(#{GLSL.toCode r},#{s1.distance})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbox})" , s1.color
+  # outside:       (s1)      -> @defShape_OLD "sdf_removeInside(#{s1.distance})"          , s1.bbox                                  , s1.color
+  # inside:        (s1)      -> @defShape_OLD "sdf_removeOutside(#{s1.distance})"         , s1.bbox                                  , s1.color, @keepIDLayer(s1)
+  # blur:          (s1,r, p) -> @defShape_OLD "sdf_blur(#{s1.distance}, #{GLSL.toCode r}, #{GLSL.toCode p})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbox})" , s1.color
+  move:          (x,y)     -> @addCodeLine "origin = sdf_translate(origin, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
+  # moveTo:        (x,y)     -> @addCodeLine "origin = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
+  # moveTo:        (x,y)     -> @addCodeLine "origin = vec2(#{GLSL.toCode x}, #{GLSL.toCode y});"
+  # rotate:        (a)       -> @addCodeLine "origin = sdf_rotate(origin, - #{GLSL.toCode a});"
+  # repeat:        (x,y)     -> @addCodeLine "origin = sdf_repeat(origin, vec2(#{GLSL.toCode x}, #{GLSL.toCode y}));"
+    
 
-  fillGLSL:     (s1,s)    ->
-    # cc = "rgb2lch(" + s + ")"
-    cc = "(" + s + ")"
-    @defShape s1.name, s1.bbName, cc, @keepIDLayer(s1)
+  # fillGLSL:     (s1,s)    ->
+  #   # cc = "rgb2lch(" + s + ")"
+  #   cc = "(" + s + ")"
+  #   @defShape_OLD s1.distance, s1.bbox, cc, @keepIDLayer(s1)
 
 
-  glslShape: (code, bbox="vec4(0.0,0.0,0.0,0.0)") -> @defShape code, bbox
+  # glslShape: (code, bbox="vec4(0.0,0.0,0.0,0.0)") -> @defShape_OLD code, bbox
 
 
 
@@ -230,7 +253,7 @@ export class GLSLObjectRef
   basegl_sdfResolve: (r) -> @_post (@selector (r.renderShape @shape))
 
 
-glslBBRef = (shape, idx) -> new GLSLObjectRef shape, ((s) => s.bbName + '[' + idx + ']')
+glslBBRef = (shape, idx) -> new GLSLObjectRef shape, ((s) => s.bbox + '[' + idx + ']')
 
 protoBind     = (f) -> (args...) -> f @, args...
 protoBindCons = (t) -> protoBind (consAlias t)
@@ -248,6 +271,14 @@ export class Shape extends Composable
 
   @getter 'bbox', -> @_bbox
 
+  render: (r) ->
+    name  = 'sdf_' + @constructor.name.toLowerCase()
+    parms = @glslBinding()
+    r.canvas.defNewShape name, parms.bbox, parms.args...
+
+  glslBinding: ->
+    bbox: {x:0, y:0}
+    args: []
 
 
 #############
@@ -255,34 +286,34 @@ export class Shape extends Composable
 #############
 
 export class Circle extends Shape
-  constructor: (@radius, @angle=0) -> super()
-  renderGLSL: (r) -> r.canvas.circle @radius, @angle
+  constructor: (@radius, @angle=null) -> super()
+  glslBinding: -> 
+    bbox: {x:@radius, y:@radius}
+    args: if @angle == null then [@radius] else [@radius,@angle]
 export circle = consAlias Circle
 
 export class Plane extends Shape
-  constructor: () -> super()
-  renderGLSL: (r) -> r.canvas.plane()
 export plane = consAlias Plane
 
-export class Halfplane extends Shape
-  constructor: (@angle = 0, @fast = false) -> super()
-  renderGLSL: (r) -> r.canvas.halfplane @angle, @fast
-export halfplane = consAlias Halfplane
+# export class Halfplane extends Shape
+#   constructor: (@angle = 0, @fast = false) -> super()
+#   render: (r) -> r.canvas.halfplane @angle, @fast
+# export halfplane = consAlias Halfplane
 
-export class Pie extends Shape
-  constructor: (@angle) -> super()
-  renderGLSL: (r) -> r.canvas.pie @angle
-export pie = consAlias Pie
+# export class Pie extends Shape
+#   constructor: (@angle) -> super()
+#   render: (r) -> r.canvas.pie @angle
+# export pie = consAlias Pie
 
-export class Rect extends Shape
-  constructor: (@width, @height, @radiuses...) -> super()
-  renderGLSL: (r) -> r.canvas.rect @width, @height, @radiuses...
-export rect = consAlias Rect
+# export class Rect extends Shape
+#   constructor: (@width, @height, @radiuses...) -> super()
+#   render: (r) -> r.canvas.rect @width, @height, @radiuses...
+# export rect = consAlias Rect
 
-export class Triangle extends Shape
-  constructor: (@width, @height) -> super()
-  renderGLSL: (r) -> r.canvas.triangle @width, @height
-export triangle = consAlias Triangle
+# export class Triangle extends Shape
+#   constructor: (@width, @height) -> super()
+#   render: (r) -> r.canvas.triangle @width, @height
+# export triangle = consAlias Triangle
 
 
 ##############
@@ -291,12 +322,12 @@ export triangle = consAlias Triangle
 
 export class QuadraticCurve extends Shape
   constructor: (@control,@destination) -> super()
-  renderGLSL: (r) -> r.canvas.quadraticCurveTo(@control.x, @control.y, @destination.x, @destination.y)
+  render: (r) -> r.canvas.quadraticCurveTo(@control.x, @control.y, @destination.x, @destination.y)
 export quadraticCurve = consAlias QuadraticCurve
 
 export class Path extends Shape
   constructor: (@segments) -> super(); @addChildren @segments...
-  renderGLSL: (r) ->
+  render: (r) ->
     rsegments = []
     interiors = []
     offset    = point 0,0
@@ -316,7 +347,7 @@ export class Path extends Shape
     interior = "#{path.name}_pathInterior"
 
     r.canvas.addCodeLine "bool #{interior} = #{interiorCheckExpr};"
-    shape = r.canvas.defShape "(#{interior}) ? (-#{path.name}) : (#{path.name})", "bbox_new(0.0, 0.0)"
+    shape = r.canvas.defShape_OLD "(#{interior}) ? (-#{path.name}) : (#{path.name})", "bbox_new(0.0, 0.0)"
     shape
 export path = consAlias Path
 
@@ -337,7 +368,7 @@ foldl = (f, a, bs) =>
 
 export class Union extends Shape
   constructor: (@shapes...) -> super(); @addChildren @shapes...
-  renderGLSL: (r) ->
+  render: (r) ->
     rs = r.renderShapes @shapes...
     fold (r.canvas.union.bind r.canvas), rs
 Shape::union = protoBindCons Union
@@ -345,7 +376,7 @@ export union = consAlias Union
 
 export class Intersection extends Shape
   constructor: (@shapes...) -> super(); @addChildren @shapes...
-  renderGLSL: (r) ->
+  render: (r) ->
     rs = r.renderShapes @shapes...
     fold (r.canvas.intersection.bind r.canvas), rs
 Shape::intersection = protoBindCons Intersection
@@ -353,17 +384,20 @@ export intersection = consAlias Intersection
 
 export class UnionRound extends Shape
   constructor: (@radius, @shapes...) -> super(); @addChildren @shapes...
-  renderGLSL: (r) ->
+  render: (r) ->
     rs = r.renderShapes @shapes...
     fold ((a,b) => (r.canvas.unionRound.bind r.canvas) @radius,a,b), rs
 export unionRound = consAlias UnionRound
 
 
 export class Difference extends Shape
-  constructor: (@a, @b) -> super(); @addChildren @a, @b
-  renderGLSL: (r) ->
+  constructor: (@a, @b) -> 
+    super()
+    @addChildren @a, @b
+  render: (r) ->
     [a, b] = r.renderShapes @a, @b
-    r.canvas.difference a,b
+    r.canvas.defShape 'difference', [a, b], {keepID: true}
+    
 Shape::difference = protoBindCons Difference
 export difference = consAlias Difference
 
@@ -375,7 +409,7 @@ export difference = consAlias Difference
 
 export class Grow extends Shape
   constructor: (@a, @radius) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
     r.canvas.grow a, @radius
 Shape::grow = protoBindCons Grow
@@ -384,7 +418,7 @@ export grow = consAlias Grow
 
 export class Inside extends Shape
   constructor: (@a) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
     r.canvas.inside a
 Shape::inside = protoBindCons Inside
@@ -398,7 +432,7 @@ export inside = consAlias Inside
 
 export class Move extends Shape
   constructor: (@a, @x, @y) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     r_x = resolve r, @x
     r_y = resolve r, @y
     r.withNewTxCtx () =>
@@ -411,7 +445,7 @@ export move = consAlias Move
 
 export class Rotate extends Shape
   constructor: (@a, @angle) -> super(); @addChildren @a
-  renderGLSL: (r) -> r.withNewTxCtx () =>
+  render: (r) -> r.withNewTxCtx () =>
     r.canvas.rotate @angle
     r.renderShape @a
 Shape :: rotate = protoBindCons Rotate
@@ -419,7 +453,7 @@ export rotate = consAlias Rotate
 
 export class Repeat extends Shape
   constructor: (@a, @dir, @length) -> super(); @addChildren @a
-  renderGLSL: (r) -> r.withNewTxCtx () =>
+  render: (r) -> r.withNewTxCtx () =>
     len = @dir.length()
     if len > 0
       norm = @dir.normalize()
@@ -438,7 +472,7 @@ export repeat = consAlias Repeat
 
 export class Blur extends Shape
   constructor: (@a, @radius, @power=2.0) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
     r.canvas.blur a, @radius, @power
 Shape::blur = protoBindCons Blur
@@ -452,16 +486,21 @@ export blur = consAlias Blur
 
 export class Fill extends Shape
   constructor: (@a, @color) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
-    r.canvas.fill a, @color
+    c = @color
+    if c.a == undefined
+      c = c.copy()
+      c.a = 1
+    r.canvas.defShape 'fill', [a, c]
+    
 Shape::fill = protoBindCons Fill
 export fill = consAlias Fill
 
 
 export class FillGLSL extends Shape
   constructor: (@a, @color) -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
     r.canvas.fillGLSL a, @color
 Shape::fillGLSL = protoBindCons FillGLSL
@@ -475,13 +514,13 @@ export fillGLSL = consAlias FillGLSL
 
 export class CodeCtx extends Shape
   constructor: (@a, @post=()->"") -> super(); @addChildren @a
-  renderGLSL: (r) ->
+  render: (r) ->
     a = r.renderShape @a
-    r.canvas.defShape (@post a)
+    r.canvas.defShape_OLD (@post a)
 
 export class GLSLShape extends Shape
   constructor: (@code) -> super()
-  renderGLSL: (r) ->
+  render: (r) ->
     r.canvas.glslShape @code
 
 
@@ -548,9 +587,9 @@ export class GLSLRenderer
   withNewTxCtx: (f) ->
     oldCtx = @txCtx
     newCtx = @getNewTxCtx()
-    @canvas.addCodeLine "vec2 pp#{newCtx} = p;"
+    @canvas.addCodeLine "vec2 origin_#{newCtx} = origin;"
     out    = f(newCtx)
-    @canvas.addCodeLine "p = pp#{newCtx};"
+    @canvas.addCodeLine "origin = origin_#{newCtx};"
     @txCtx = oldCtx
     out
 
@@ -562,9 +601,9 @@ export class GLSLRenderer
     else
       shapeCache = {}
 
-    sdef = shape.renderGLSL @
+    sdef = shape.render @
     shapeCache[@txCtx] = sdef
-    if sdef.id? then @idmap.set sdef.id, shape
+    if sdef.number? then @idmap.set sdef.number, shape
     @done.set(shape, shapeCache)
 
     return sdef
@@ -574,7 +613,8 @@ export class GLSLRenderer
 
   render: (s) ->
     shape    = @renderShape(s)
-    defsCode = 'sdf_shape _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_shape(#{shape.name}, #{shape.idName}, #{shape.bbName}, #{shape.cdName});\n}"
+    # defsCode = 'sdf_shape _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_shape(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
+    defsCode = 'sdf_shape _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
     # new ShaderBuilder (new SDFShader {fragment: defsCode}), @idmap
     {fragment: defsCode}
 

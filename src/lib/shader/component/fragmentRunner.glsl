@@ -9,7 +9,7 @@ void main() {
   vec2      p     = local.xy ;
   sdf_shape shape = _main(p);
   int       sid   = shape.id;
-  float     alpha = sdf_render(shape.density);
+  float     alpha = sdf_render(shape.distance);
 
   float idMask           = (float(sid)) > 0. ? 1. : 0.; // shape.cd.a * float(sid)
   float symbolFamilyID_r = float(floor(symbolFamilyID + 0.5));
@@ -24,7 +24,7 @@ void main() {
         //   output_color = vec4(cd, aa);
           output_color = shape.cd;
       } else if (displayMode == 1) {
-          vec3 col = distanceMeter(shape.density, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
+          vec3 col = distanceMeter(shape.distance, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
           col = Uncharted2ToneMapping(col);
           output_color = vec4(pow(col, vec3(1./2.2)), 1.0 );
       } else if (displayMode == 2) {
