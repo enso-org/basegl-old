@@ -602,6 +602,8 @@ export test = (shape, shape2) ->
   sp1.variable.bbox.xy = [700,500]
 
   sp1_2 = ss2.create()
+  sp1_2.variable.bbox.xy = [200,200]
+  
   # sp1_2.position.x = 100
   sp1_2.update()
 

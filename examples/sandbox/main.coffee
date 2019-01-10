@@ -6,8 +6,9 @@ import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
 import {Vector}                            from "basegl/math/Vector"
 import {logger}                            from 'basegl/debug/logger'
 import * as basegl from 'basegl'
-import {circle, glslShape, union, grow, negate, rect, quadraticCurve, path, plane}      from 'basegl/display/Shape'
-import * as Color     from 'basegl/display/Color'
+import {circle, glslShape, union, grow, negate, triangle, rect, quadraticCurve, path, plane, halfPlane}      from 'basegl/display/Shape'
+import * as Shape  from 'basegl/display/Shape'
+import * as Color  from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
 
 import * as Sprite from 'basegl/display/Sprite'
@@ -24,10 +25,13 @@ myShape = basegl.expr ->
   # (circle(50) - circle(30).moveX(10)).fill(Color.rgb([0,0.5,0,1]))
 
 myShape2 = basegl.expr ->
-  c = (circle(50) - circle(30).moveX(10)).fill(Color.rgb([1,0,0,1]))
-  b = circle(50).moveX(-10).fill(Color.rgb([0,0,1,0.5]))
-  c - b
+  # c = (circle(50) - circle(30).moveX(10)).fill(Color.rgb([1,0,0,1]))
+  # b = circle(30).moveX(-30).fill(Color.rgb([0,0,1,0.5]))
+  # c + b
+  circle(50).alignx()
+  # circle(50)
   # circle(50).fill(Color.rgb([1,0,0,1]))
+  # Shape.rect(50,20)
 
 main = () ->
   Sprite.test(myShape, myShape2)

@@ -114,18 +114,18 @@ export class Canvas
 
   # defShape_OLD: (distance, bbox) ->
   #   shape = @newShape()
-  #   @addCodeLine "sdf_shape #{shape.name} = sdf_shape_new(#{shape.id}, #{distance}, #{bbox});"
+  #   @addCodeLine "sdf_symbol #{shape.name} = sdf_shape_new(#{shape.id}, #{distance}, #{bbox});"
   #   shape    
 
-  defNewShape: (fn, bbox, args...) ->
+  defNewShape: (fn, args...) ->
     gargs    = (GLSL.toCode arg for arg in args)
     gargs.unshift 'origin'
     gargs    = gargs.join ','
     distance = "#{fn}(#{gargs})"
-    bb0      = GLSL.toCode bbox.x
-    bb1      = GLSL.toCode bbox.y
-    bbox     = "bbox_new(#{bb0}, #{bb1})"
-    @defShape 'new', [distance, bbox]
+    # bb0      = GLSL.toCode bbox.x
+    # bb1      = GLSL.toCode bbox.y
+    # bbox     = "bbox_new(#{bb0}, #{bb1})"
+    @defShape 'new', [distance] # , bbox]
     
   defShape: (fn, args, cfg={}) ->
     args = args.slice()
@@ -137,7 +137,7 @@ export class Canvas
       args.unshift "#{shape.id}"
     gargs = (GLSL.toCode arg for arg in args)
     gargs = gargs.join ','
-    @addCodeLine "sdf_shape #{shape.name} = #{fnx}(#{gargs});"    
+    @addCodeLine "sdf_symbol #{shape.name} = #{fnx}(#{gargs});"    
     shape
     
 
@@ -190,9 +190,13 @@ export class Canvas
   #   glsl = "sdf_quadraticCurve(p, vec2(#{g_cx},#{g_cy}), vec2(#{g_x},#{g_y}));"
   #   @defShape_OLD glsl, bb
 
-  # union:         (s1,s2)   -> @defShape_OLD "sdf_union(#{s1.distance},#{s2.distance})"       , "bbox_union(#{s1.bbox},#{s2.bbox})"    , "color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color})", @mergeIDLayers(s1,s2), false
+  # union:         (s1,s2)   -> 
+  #   @defShape_OLD "sdf_union(#{s1.distance},#{s2.distance})", 
+  #                 "bbox_union(#{s1.bbox},#{s2.bbox})", 
+  #                 "color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color})"
+  #                 , @mergeIDLayers(s1,s2), false
   # unionRound:    (r,s1,s2) -> @defShape_OLD "sdf_unionRound(#{s1.distance},#{s2.distance},#{GLSL.toCode r})"      , "bbox_union(#{s1.bbox},#{s2.bbox})"    , "color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color})", @mergeIDLayers(s1,s2)
-  # intersection:  (s1,s2)   -> @defShape_OLD "sdf_intersection(#{s1.distance},#{s2.distance})", "bbox_union(#{s1.bbox},#{s2.bbox})"    , "alpha_unpremultiply(color_merge(#{s1.distance},#{s2.distance},#{s1.color},#{s2.color}))", @intersectIDLayers(s1,s2)
+       
   # grow:          (s1,r)    -> @defShape_OLD "sdf_grow(#{GLSL.toCode r},#{s1.distance})" , "bbox_grow(#{GLSL.toCode r},#{s1.bbox})" , s1.color
   # outside:       (s1)      -> @defShape_OLD "sdf_removeInside(#{s1.distance})"          , s1.bbox                                  , s1.color
   # inside:        (s1)      -> @defShape_OLD "sdf_removeOutside(#{s1.distance})"         , s1.bbox                                  , s1.color, @keepIDLayer(s1)
@@ -258,6 +262,15 @@ glslBBRef = (shape, idx) -> new GLSLObjectRef shape, ((s) => s.bbox + '[' + idx 
 protoBind     = (f) -> (args...) -> f @, args...
 protoBindCons = (t) -> protoBind (consAlias t)
 
+
+cammelToSnakeCase = (s) ->
+  s.split(/(?=[A-Z])/).join('_').toLowerCase()
+
+snakeToCammelCase = (s) ->
+  s.replace /_\w/g, (m) => m[1].toUpperCase()
+
+
+
 export class Shape extends Composable
   cons: () ->
     @mixin styleMixin
@@ -272,48 +285,88 @@ export class Shape extends Composable
   @getter 'bbox', -> @_bbox
 
   render: (r) ->
-    name  = 'sdf_' + @constructor.name.toLowerCase()
-    parms = @glslBinding()
-    r.canvas.defNewShape name, parms.bbox, parms.args...
+    parms   = @glslBinding() ? {}
+    nameSfx = if parms.nameSuffix? then "_#{parms.nameSuffix}" else ''
+    name    = cammelToSnakeCase(@constructor.name) + nameSfx
+    # bbox    = parms.bbox ? {x:0, y:0}
+    args    = parms.args ? []
+    r.canvas.defNewShape name, args...
 
   glslBinding: ->
-    bbox: {x:0, y:0}
-    args: []
 
 
 #############
 ### Prims ###
 #############
 
-export class Circle extends Shape
+export circle = consAlias class Circle extends Shape
   constructor: (@radius, @angle=null) -> super()
   glslBinding: -> 
     bbox: {x:@radius, y:@radius}
     args: if @angle == null then [@radius] else [@radius,@angle]
-export circle = consAlias Circle
 
-export class Plane extends Shape
-export plane = consAlias Plane
+export plane = consAlias class Plane extends Shape
 
-# export class Halfplane extends Shape
-#   constructor: (@angle = 0, @fast = false) -> super()
-#   render: (r) -> r.canvas.halfplane @angle, @fast
-# export halfplane = consAlias Halfplane
-
+export halfPlane = consAlias class HalfPlane extends Shape
+  constructor: (@dir = 0, @fast = false) -> super()
+  glslBinding: -> 
+    # TODO: Allow `dir` to be vector
+    switch @dir 
+      when 0             then {nameSuffix: 'top'}
+      when Math.PI * 0.5 then {nameSuffix: 'right'}
+      when Math.PI       then {nameSuffix: 'bottom'}
+      when Math.PI * 1.5 then {nameSuffix: 'left'}
+      else
+        args: [@dir]
+        nameSuffix: if @fast then 'fast' else null
+        
 # export class Pie extends Shape
 #   constructor: (@angle) -> super()
 #   render: (r) -> r.canvas.pie @angle
 # export pie = consAlias Pie
 
-# export class Rect extends Shape
-#   constructor: (@width, @height, @radiuses...) -> super()
-#   render: (r) -> r.canvas.rect @width, @height, @radiuses...
-# export rect = consAlias Rect
+export rect = consAlias class Rect extends Shape
+  constructor: (@args...) -> super()
+  glslBinding: ->
+    args: @args
+
+export triangle = consAlias class Triangle extends Shape
+  constructor: (@args...) -> super()
+  glslBinding: ->
+    args: @args
+
+export ellipse = consAlias class Ellipse extends Shape
+  constructor: (@args...) -> super()
+  glslBinding: ->
+    args: @args
+
+export ring = consAlias class Ring extends Shape
+  constructor: (@args...) -> super()
+  glslBinding: ->
+    args: @args
 
 # export class Triangle extends Shape
 #   constructor: (@width, @height) -> super()
 #   render: (r) -> r.canvas.triangle @width, @height
 # export triangle = consAlias Triangle
+
+
+s = fragment_lib
+
+input = fragment_lib
+targets = new Set
+pfx     = 'sdf_'
+pfxLen  = pfx.length
+funcDef = /[a-zA-Z_][a-zA-Z_0-9]* +([a-zA-Z_][a-zA-Z_0-9]*) *\(/gm
+m = funcDef.exec input
+while m
+  s = m[1]
+  if s.startsWith pfx
+    targets.add snakeToCammelCase(s.substr(pfxLen))
+  m = funcDef.exec input
+
+console.log targets
+
 
 
 ##############
@@ -370,7 +423,10 @@ export class Union extends Shape
   constructor: (@shapes...) -> super(); @addChildren @shapes...
   render: (r) ->
     rs = r.renderShapes @shapes...
-    fold (r.canvas.union.bind r.canvas), rs
+    # fold (r.canvas.union.bind r.canvas), rs
+    # FIXME: use all rs!
+    r.canvas.defShape 'union', [rs[0], rs[1]], {keepID: true}
+    
 Shape::union = protoBindCons Union
 export union = consAlias Union
 
@@ -378,7 +434,9 @@ export class Intersection extends Shape
   constructor: (@shapes...) -> super(); @addChildren @shapes...
   render: (r) ->
     rs = r.renderShapes @shapes...
-    fold (r.canvas.intersection.bind r.canvas), rs
+    # FIXME: use all rs!
+    r.canvas.defShape 'intersection', [rs[0], rs[1]], {keepID: true}
+    # fold (r.canvas.intersection.bind r.canvas), rs
 Shape::intersection = protoBindCons Intersection
 export intersection = consAlias Intersection
 
@@ -442,6 +500,16 @@ Shape::move  = protoBindCons Move
 Shape::moveX = (x) -> @move x,0
 Shape::moveY = (y) -> @move 0,y
 export move = consAlias Move
+
+
+export class Alignx extends Shape
+  constructor: (@a) -> super(); @addChildren @a
+  render: (r) ->
+    r.withNewTxCtx () =>
+      ra = r.renderShape @a
+      r.renderShape @a.moveX("-#{ra.name}.shape.bbox.minX")
+Shape::alignx  = protoBindCons Alignx
+export alignx = consAlias Alignx
 
 export class Rotate extends Shape
   constructor: (@a, @angle) -> super(); @addChildren @a
@@ -596,8 +664,8 @@ export class GLSLRenderer
   renderShape: (shape) ->
     shapeCache = @done.get(shape)
     if shapeCache != undefined
-        canvasShape = shapeCache[@txCtx]
-        if canvasShape != undefined then return canvasShape
+        cShape = shapeCache[@txCtx]
+        if cShape != undefined then return cShape
     else
       shapeCache = {}
 
@@ -613,8 +681,8 @@ export class GLSLRenderer
 
   render: (s) ->
     shape    = @renderShape(s)
-    # defsCode = 'sdf_shape _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_shape(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
-    defsCode = 'sdf_shape _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
+    # defsCode = 'sdf_symbol _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_symbol(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
+    defsCode = 'sdf_symbol _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
     # new ShaderBuilder (new SDFShader {fragment: defsCode}), @idmap
     {fragment: defsCode}
 
@@ -671,7 +739,7 @@ export class SDFShader extends Shader
     @fragment = cfg.fragment
 
   genFragmentCode: () ->
-    def  = @fragment.replace (/^sdf_shape\s+main/m), 'sdf_shape _main'
+    def  = @fragment.replace (/^sdf_symbol\s+main/m), 'sdf_symbol _main'
     code = [def, fragmentRunner].join '\n'
     code
 

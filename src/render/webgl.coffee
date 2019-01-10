@@ -49,7 +49,7 @@ export loadShader = (gl, name, shaderSource, shaderType) ->
     logfname = "printShaderError#{shaderErrorNumber}"
     console.error "Use '#{logfname}' to see its source"
     window[logfname] = ->
-      console.error(listCode shaderSource)
+      console.error(shaderSource)
     shaderErrorNumber += 1
 
     listCode shaderSource

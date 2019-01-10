@@ -1,35 +1,37 @@
 
 
-float mix (float a, float b, float w1, float w2) {
-    return (a * w1 + b * w2) / (w1 + w2);
-}
+// float mix (float a, float b, float w1, float w2) {
+//     return (a * w1 + b * w2) / (w1 + w2);
+// }
 
-vec2 mix (vec2 a, float w1, vec2 b, float w2) {
-    vec2 c;
-    float ws = w1 + w2;
-    c.x = (a.x * w1 + b.x * w2) / ws;
-    c.y = (a.y * w1 + b.y * w2) / ws;
-    return c;
-}
+// vec2 mix (vec2 a, float w1, vec2 b, float w2) {
+//     vec2 c;
+//     float ws = w1 + w2;
+//     c.x = (a.x * w1 + b.x * w2) / ws;
+//     c.y = (a.y * w1 + b.y * w2) / ws;
+//     return c;
+// }
 
-vec3 mix (vec3 a, float w1, vec3 b, float w2) {
-    vec3 c;
-    float ws = w1 + w2;
-    c.x = (a.x * w1 + b.x * w2) / ws;
-    c.y = (a.y * w1 + b.y * w2) / ws;
-    c.z = (a.z * w1 + b.z * w2) / ws;
-    return c;
-}
+// vec3 mix (vec3 a, float w1, vec3 b, float w2) {
+//     vec3 c;
+//     float ws = w1 + w2;
+//     c.x = (a.x * w1 + b.x * w2) / ws;
+//     c.y = (a.y * w1 + b.y * w2) / ws;
+//     c.z = (a.z * w1 + b.z * w2) / ws;
+//     return c;
+// }
 
-vec4 mix (vec4 a, float w1, vec4 b, float w2) {
-    vec4 c;
-    float ws = w1 + w2;
-    c.x = (a.x * w1 + b.x * w2) / ws;
-    c.y = (a.y * w1 + b.y * w2) / ws;
-    c.z = (a.z * w1 + b.z * w2) / ws;
-    c.w = (a.w * w1 + b.w * w2) / ws;
-    return c;
-}
+// vec4 mix (vec4 a, float w1, vec4 b, float w2) {
+//     vec4 c;
+//     float ws = w1 + w2;
+//     c.x = (a.x * w1 + b.x * w2) / ws;
+//     c.y = (a.y * w1 + b.y * w2) / ws;
+//     c.z = (a.z * w1 + b.z * w2) / ws;
+//     c.w = (a.w * w1 + b.w * w2) / ws;
+//     return c;
+// }
+
+
 
 
 float bismooth (float a, float exp) {
@@ -138,24 +140,72 @@ vec2 cartesian2polar (vec2 p) {
 
 
 
-////////////////////////////////
-////// Shape modification //////
-////////////////////////////////
 
-float sdf_grow   (float size, float d)  { return d - size;  }
-float sdf_shrink (float size, float d)  { return d + size;  }
-float sdf_border (float d)              { return abs(d);    }
-float sdf_flatten(float a)              { return clamp(-a); }
-// float sdf_render (float d)              { return clamp((0.5 - d) / zoom); }
-// float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoom / w); }
 
-float sdf_removeOutside (float d) { return (d > 0.0) ?  INF : d; }
-float sdf_removeInside  (float d) { return (d < 0.0) ? -INF : d; }
 
-float sdf_render(float d) {
-  float anti = fwidth(d);
-  return (1.0 - smoothstep(-anti, anti, d));
+
+
+
+
+
+
+/////////////////////
+////// Filters //////
+/////////////////////
+
+float sdf_blur (float d, float radius, float power) {
+    return 1.0-2.0*pow(clamp((radius - d) / radius),power);
 }
+
+
+
+
+/////////////////////////////////
+////// 2D Primitive shapes //////
+/////////////////////////////////
+
+
+struct x_bbox {
+    float minX;
+    float maxX;
+    float minY;
+    float maxY;
+};
+
+
+x_bbox x_bbox_ () {
+    return x_bbox(0.0,0.0,0.0,0.0);
+}
+
+x_bbox x_bbox_ (float a) {
+    float a2 = a/2.0;
+    return x_bbox(a2,a2,a2,a2);
+}
+
+x_bbox x_bbox_ (vec2 a) {
+    a /= 2.0;
+    float maxX = a.x;
+    float maxY = a.y;
+    float minX = -maxX;
+    float minY = -maxY;
+    return x_bbox(minX, maxX, minY, maxY);
+}
+
+x_bbox x_bbox_ (float w, float h) {
+    return x_bbox_ (vec2(w,h));
+}
+
+struct shape {
+    float  distance;
+    x_bbox bbox;
+};
+
+shape shape_ (float distance) {
+    return shape(distance, x_bbox_());
+}
+
+
+
 
 
 //////////////////////
@@ -167,6 +217,11 @@ float sdf_render(float d) {
 
 float sdf_inverse (float a) {
     return -a;
+}
+
+shape invert (shape s) {
+    s.distance *= -1.0;
+    return s;
 }
 
 
@@ -187,6 +242,20 @@ float sdf_unionChamfer (float a, float b, float r) {
 
 float sdf_union (float a, float b, float r) {
     return sdf_unionRound(a,b,r);
+}
+
+x_bbox unify (x_bbox a, x_bbox b) {
+    float minX = min(a.minX, b.minX);
+    float maxX = max(a.maxX, b.maxX);
+    float minY = min(a.minY, b.minY);
+    float maxY = max(a.maxY, b.maxY);
+    return x_bbox(minX, maxX, minY, maxY);
+}
+
+shape unify (shape a, shape b) {
+    float dist = min(a.distance, b.distance);
+    x_bbox bbox = unify(a.bbox, b.bbox);
+    return shape(dist,bbox);
 }
 
 
@@ -210,6 +279,40 @@ float sdf_intersection (float a, float b, float r) {
     return sdf_intersectionRound(a,b,r);
 }
 
+x_bbox intersect (x_bbox a, x_bbox b) {
+    float minX = max(a.minX, b.minX);
+    float maxX = min(a.maxX, b.maxX);
+    float minY = max(a.minY, b.minY);
+    float maxY = min(a.maxY, b.maxY);
+    return x_bbox(minX, maxX, minY, maxY);
+}
+
+shape intersect (shape a, shape b) {
+    float dist = max(a.distance, b.distance);
+    x_bbox bbox = intersect(a.bbox, b.bbox);
+    return shape(dist,bbox);
+}
+
+shape intersectRound (shape a, shape b, float r) {
+    shape c    = intersect(a,b);
+	vec2  v    = max(vec2(r+a.distance, r+b.distance), 0.0);
+	float dist = min(-r, c.distance) + length(v);
+    c.distance = dist;
+    return c;
+}
+
+shape intersectChamfer (shape a, shape b, float r) {
+    shape c    = intersect(a,b);
+	float dist = max(c.distance, (a.distance+r+b.distance)*sqrt(0.5));
+    c.distance = dist;
+    return c;
+}
+
+shape intersect (shape a, shape b, float r) {
+    return intersectRound(a,b,r);
+}
+
+
 
 ////// Difference //////
 
@@ -229,144 +332,330 @@ float sdf_differenceChamfer (float a, float b, float r) {
 	return sdf_intersectionChamfer(a, sdf_inverse(b), r);
 }
 
+shape difference (shape a, shape b) {
+    return intersect(a, invert(b));
+}
 
+shape difference (shape a, shape b, float r) {
+    return intersect(a, invert(b), r);
+}
 
-/////////////////////
-////// Filters //////
-/////////////////////
+shape differenceRound (shape a, shape b, float r) {
+	return intersectRound (a, invert(b), r);
+}
 
-float sdf_blur (float d, float radius, float power) {
-    return 1.0-2.0*pow(clamp((radius - d) / radius),power);
+shape differenceChamfer (shape a, shape b, float r) {
+	return intersectChamfer(a, invert(b), r);
 }
 
 
 
 
-/////////////////////////////////
-////// 2D Primitive shapes //////
-/////////////////////////////////
 
+
+
+////////////////////////////////
+////// Shape modification //////
+////////////////////////////////
+
+float sdf_grow   (float size, float d)  { return d - size;  }
+float sdf_shrink (float size, float d)  { return d + size;  }
+float sdf_border (float d)              { return abs(d);    }
+float sdf_flatten(float a)              { return clamp(-a); }
+// float sdf_render (float d)              { return clamp((0.5 - d) / zoom); }
+// float sdf_render (float d, float w)     { return clamp((0.5 - d) / zoom / w); }
+
+float sdf_removeOutside (float d) { return (d > 0.0) ?  INF : d; }
+float sdf_removeInside  (float d) { return (d < 0.0) ? -INF : d; }
+
+float sdf_render(float d, float w) {
+  float anti = fwidth(d) + w/2.0;
+  return (1.0 - smoothstep(-anti, anti, d));
+}
+
+float sdf_render(float d) {
+  return sdf_render(d, 0.0);
+}
+
+
+float sdf_render(shape s, float w) {
+  float anti = fwidth(s.distance) + w/2.0;
+  return (1.0 - smoothstep(-anti, anti, s.distance));
+}
+
+float sdf_render(shape s) {
+  return sdf_render(s, 0.0);
+}
+
+
+
+
+x_bbox x_grow(x_bbox b, float size) {
+    b.minX -= size;
+    b.maxX += size;
+    b.minY -= size;
+    b.maxY += size;
+    return b;
+}
+
+shape x_grow (shape s, float size) {
+    float  dist = s.distance - size;
+    x_bbox bbox = x_grow(s.bbox, size);
+    return shape(dist,bbox);
+}
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// 2D Primitive shapes /////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 ////// Plane //////
 
-float sdf_plane(vec2 p) {
-  return -1.0;
+shape plane (vec2 p) {
+    return shape_(-1.0);
 }
 
-float sdf_halfplaneFast(vec2 p, vec2 dir) {
-  return dir.x * p.x + dir.y * p.y;
+
+
+////// Pie //////
+
+shape pie (vec2 p, float angle) {
+    float distance = abs(p).x*cos(angle/2.0) - p.y*sin(angle/2.0);
+    return shape_(distance);
 }
 
-float sdf_halfplaneFast(vec2 p, float angle) {
-  return sdf_halfplaneFast(p, sdf_rotate(vec2(0.0,1.0), angle));
+shape pie (vec2 p) {
+    return pie(p, 0.0);
 }
 
-float sdf_halfplaneFast(vec2 p) {
-    return sdf_halfplaneFast(p, vec2(0.0, 1.0));
+
+////// Half Plane //////
+
+shape half_plane_right  (vec2 p) {return shape_(-p.x);}
+shape half_plane_left   (vec2 p) {return shape_( p.x);}
+shape half_plane_top    (vec2 p) {return shape_(-p.y);}
+shape half_plane_bottom (vec2 p) {return shape_( p.y);}
+shape half_plane        (vec2 p) {return half_plane_top(p);}
+
+shape half_plane(vec2 p, vec2 dir) {
+  float dx = -dir.x;
+  float dy = -dir.y;
+  float dist = (dx * p.x + dy * p.y) / sqrt(dx*dx + dy*dy);
+  return shape_(dist);
 }
 
-float sdf_halfplane(vec2 p, vec2 dir) {
-  float dx = dir.x;
-  float dy = dir.y;
-  return (dx * p.x + dy * p.y) / sqrt(dx*dx + dy*dy);
+shape half_plane (vec2 p, float angle) {
+  return half_plane(p, sdf_rotate(vec2(0.0,1.0), angle));
 }
 
-float sdf_halfplane(vec2 p, float angle) {
-  return sdf_halfplane(p, sdf_rotate(vec2(0.0,1.0), angle));
+
+////// Half Plane Fast //////
+
+shape half_plane_fast(vec2 p, vec2 dir) {
+  float dist = dir.x * p.x + dir.y * p.y;
+  return shape_(dist);
 }
 
-float sdf_halfplane(vec2 p) {
-    return sdf_halfplane(p, vec2(0.0, 1.0));
+shape half_plane_fast(vec2 p, float angle) {
+  return half_plane_fast(p, sdf_rotate(vec2(0.0,1.0), angle));
 }
 
-float sdf_halfplaneRight  (vec2 p) { return sdf_halfplane(p, vec2( 1.0,  0.0)); }
-float sdf_halfplaneLeft   (vec2 p) { return sdf_halfplane(p, vec2(-1.0,  0.0)); }
-float sdf_halfplaneTop    (vec2 p) { return sdf_halfplane(p, vec2( 0.0,  1.0)); }
-float sdf_halfplaneBottom (vec2 p) { return sdf_halfplane(p, vec2( 0.0, -1.0)); }
-
-float sdf_halfplaneFastRight  (vec2 p) { return sdf_halfplaneFast(p, vec2( 1.0,  0.0)); }
-float sdf_halfplaneFastLeft   (vec2 p) { return sdf_halfplaneFast(p, vec2(-1.0,  0.0)); }
-float sdf_halfplaneFastTop    (vec2 p) { return sdf_halfplaneFast(p, vec2( 0.0,  1.0)); }
-float sdf_halfplaneFastBottom (vec2 p) { return sdf_halfplaneFast(p, vec2( 0.0, -1.0)); }
-
-
-////// Line //////
-
-float sdf_line(vec2 p, vec2 dir, float width) {
-  float len  = length(dir);
-  vec2  n    = dir / len;
-  vec2  proj = max(0.0, min(len, dot(p,n))) * n;
-  return length(p-proj) - (width/2.0);
+shape half_plane_fast(vec2 p) {
+    return half_plane_fast(p, vec2(0.0, 1.0));
 }
+
 
 
 ////// Rectangle //////
 
-float sdf_rectSharp(vec2 p, vec2 size) {
-    return maxEl(abs(p) - size);
+
+shape x_sdf_rect_sharp(vec2 p, vec2 size) {
+    vec2  size2 = size / 2.0;
+    float dist = maxEl(abs(p) - size2);
+    x_bbox  bbox = x_bbox_(size);
+    return shape(dist,bbox);
 }
 
-float sdf_rect(vec2 p, vec2 size) {
-  size   = size / 2.0;
-  vec2 d = abs(p) - size;
-  return maxEl(min(d, 0.0)) + length(max(d, 0.0));
+shape x_sdf_rect (vec2 p, vec2 size) {
+  size       = size / 2.0;
+  vec2  d    = abs(p) - size;
+  float dist = maxEl(min(d, 0.0)) + length(max(d, 0.0));
+  x_bbox  bbox = x_bbox_(size);
+  return shape(dist,bbox);
 }
 
-float sdf_rect(vec2 p, vec2 size, float radius) {
-  return sdf_grow(radius, sdf_rect(p, size-2.0*radius));
+shape x_sdf_rect (vec2 p, vec2 size, vec4 corners) {
+  float tl = corners[0];
+  float tr = corners[1];
+  float br = corners[2];
+  float bl = corners[3];
+
+  size /= 2.0;
+  float dist;
+
+       if (p.x <  - size.x + tl && p.y >   size.y - tl ) { dist = length (p - vec2(- size.x + tl,   size.y - tl)) - tl; }
+  else if (p.x >    size.x - tr && p.y >   size.y - tr ) { dist = length (p - vec2(  size.x - tr,   size.y - tr)) - tr; }
+  else if (p.x <  - size.x + bl && p.y < - size.y + bl ) { dist = length (p - vec2(- size.x + bl, - size.y + bl)) - bl; }
+  else if (p.x >    size.x - br && p.y < - size.y + br ) { dist = length (p - vec2(  size.x - br, - size.y + br)) - br; }
+  else {
+    vec2 d = abs(p) - size;
+    dist = min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+  }
+  x_bbox bbox = x_bbox_(size);
+  return shape(dist,bbox);
 }
+
+shape x_sdf_rect (vec2 p, vec2 size, vec3 r) {
+  return x_sdf_rect(p, size, vec4(r.x,r.y,r.z,r.y));
+}
+
+shape x_sdf_rect (vec2 p, vec2 size, vec2 r) {
+  return x_sdf_rect(p, size, vec4(r.x,r.y,r.x,r.y));
+}
+
+shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2, float r3, float r4) {
+  return x_sdf_rect(p, size, vec4(r1,r2,r3,r4));
+}
+
+shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2, float r3) {
+  return x_sdf_rect(p, size, vec3(r1,r2,r3));
+}
+
+shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2) {
+  return x_sdf_rect(p, size, vec2(r1,r2));
+}
+
+shape x_sdf_rect (vec2 p, vec2 size, float r) {
+  return x_grow(x_sdf_rect(p, size-2.0*r), r);
+}
+
+shape x_sdf_rect (vec2 p) {
+  return x_sdf_rect(p, vec2(10.0,10.0));
+}
+
+shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2, float r3, float r4) {
+    return x_sdf_rect(p, vec2(w,h), r1, r2, r3, r4);
+}
+
+shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2, float r3) {
+    return x_sdf_rect(p, vec2(w,h), r1, r2, r3);
+}
+
+shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2) {
+    return x_sdf_rect(p, vec2(w,h), r1, r2);
+}
+
+shape x_sdf_rect (vec2 p, float w, float h, float r1) {
+    return x_sdf_rect(p, vec2(w,h), r1);
+}
+
+shape x_sdf_rect (vec2 p, float w, float h) {
+    return x_sdf_rect(p, vec2(w,h));
+}
+
+shape x_sdf_rect (vec2 p, float w) {
+    return x_sdf_rect(p, vec2(w,w));
+}
+
+
 
 
 ////// Triangle //////
 
-float sdf_triangle (vec2 p, float width, float height) {
-  vec2 n = normalize(vec2(height, width / 2.0));
-  return max(abs(p).x*n.x + p.y*n.y - (height*n.y), -p.y);
+shape triangle (vec2 p, float width, float height) {
+  vec2  n    = normalize(vec2(height, width / 2.0));
+  float y    = p.y + height / 2.0;
+  float dist = max(abs(p).x*n.x + y*n.y - (height*n.y), -y);
+  x_bbox bbox = x_bbox_(width,height);
+  return shape(dist,bbox);
+}
+
+shape triangle (vec2 p, float side) {
+    float height = side * sqrt(3.0) / 2.0;
+    return triangle(p, side, height);
+}
+
+shape triangle (vec2 p) {
+    return triangle(p, 10.0);
 }
 
 
 ////// Circle ///////
 
-float sdf_pie(vec2 p, float angle) {
-  return abs(p).x*cos(angle/2.0) + p.y*sin(angle/2.0);
+shape circle (vec2 p, float radius) {
+    float dist = length(p) - radius;
+    x_bbox bbox = x_bbox_(radius*2.0);
+    return shape(dist,bbox);
 }
 
-float sdf_circle (vec2 p, float radius) {
-  return length(p) - radius;
+shape circle (vec2 p, float radius, float angle) {
+  return intersect(circle(p,radius), pie(p,angle));
 }
 
-vec3 sdvf_circle (vec2 p, float radius) {
-  float len = length(p);
-  float d   = radius - len;
-  vec2  dir = (p / len) * sign(d);
-  return vec3(dir,d);
+shape circle (vec2 p) {
+    return circle(p, 10.0);
 }
 
-float sdf_circle(vec2 p, float radius, float angle) {
-  return sdf_intersection(sdf_circle(p,radius), sdf_pie(p, angle));
+
+
+////// Ellipse //////
+
+shape ellipse (vec2 p, float r1, float r2)
+{
+    vec2  r    = vec2(r1,r2);
+    float k0   = length(p/r);
+    float k1   = length(p/(r*r));
+    float dist = k0*(k0-1.0)/k1;
+    x_bbox bbox = x_bbox_(k0,k1);
+    return shape(dist,bbox);
 }
 
-float sdf_ellipse(vec2 p, float a, float b) {
-  float a2  = a * a;
-  float b2  = b * b;
-  float px2 = p.x * p.x;
-  float py2 = p.y * p.y;
-  return (b2 * px2 + a2 * py2 - a2 * b2)/(a2 * b2);
+shape ellipse (vec2 p, float r) {
+    return circle(p, r);
 }
 
-float sdf_ring(vec2 p, float radius, float width) {
-  width /= 2.0;
+
+////// Ring //////
+
+shape ring(vec2 p, float radius, float width) {
+  width  /= 2.0;
   radius -= width;
-  return abs(sdf_circle(p, radius)) - width;
+  shape s = circle(p,radius);
+  s.distance = abs(s.distance) - width;
+  return s;
 }
 
-float sdf_ring(vec2 p, float radius, float width, float angle) {
-   return sdf_difference(sdf_pie(p, angle), sdf_ring(p, radius, width));
+shape ring(vec2 p, float radius, float width, float angle) {
+   return intersect(ring(p,radius,width), pie(p,angle));
 }
+
+shape ring(vec2 p, float radius) {
+   return ring(p, radius, 0.0);
+}
+
+shape ring(vec2 p) {
+   return ring(p, 10.0);
+}
+
+
+
+////// Line //////
+
+shape line(vec2 p, vec2 dir, float width) {
+  float len  = length(dir);
+  vec2  n    = dir / len;
+  vec2  proj = max(0.0, min(len, dot(p,n))) * n;
+  float dist = length(p-proj) - (width/2.0);
+  x_bbox bbox = x_bbox_(dir);
+  return shape(dist,bbox);
+}
+
 
 
 ////// Bezier curve //////
-
 
 // Test if `p` crosses line (`a`, `b`), returns sign of result
 float testPointOnLine(vec2 p, vec2 a, vec2 b) {
@@ -531,23 +820,7 @@ vec3 sdf_debug (float a) {
 
 
 
-float sdf_rect(vec2 p, vec2 size, vec4 corners) {
-  float tl = corners[0];
-  float tr = corners[1];
-  float bl = corners[2];
-  float br = corners[3];
 
-  size /= 2.0;
-
-       if (p.x <  - size.x + tl && p.y >   size.y - tl ) { return length (p - vec2(- size.x + tl,   size.y - tl)) - tl; }
-  else if (p.x >    size.x - tr && p.y >   size.y - tr ) { return length (p - vec2(  size.x - tr,   size.y - tr)) - tr; }
-  else if (p.x <  - size.x + bl && p.y < - size.y + bl ) { return length (p - vec2(- size.x + bl, - size.y + bl)) - bl; }
-  else if (p.x >    size.x - br && p.y < - size.y + br ) { return length (p - vec2(  size.x - br, - size.y + br)) - br; }
-  else {
-    vec2 d = abs(p) - size;
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-  }
-}
 
 
 
@@ -676,22 +949,13 @@ float newIDLayer (float a, float i) {
     return (a <= 0.0) ? i : 0.0;
 }
 
-int id_union        (float a, float b, int ida, int idb) { return (b <= 0.0) ? idb : ida; }
-int id_difference   (float a, float b, int ida)          { return (sdf_difference(a,b) <= 0.0) ? ida : 0 ; }
-int id_intersection (float a, float b, int ida)          { return ((a <= 0.0) && (b <= 0.0)) ? ida : 0 ; }
 
 
 vec4 bbox_new (float w, float h) {
     return vec4(-w, -h, w, h);
 }
 
-vec4 bbox_union (vec4 a, vec4 b) {
-    float xmin = min(a[0],b[0]);
-    float ymin = min(a[1],b[1]);
-    float xmax = max(a[2],b[2]);
-    float ymax = max(a[3],b[3]);
-    return vec4(xmin, ymin, xmax, ymax);
-}
+
 
 vec4 bbox_grow (float d, vec4 bbox) {
     return bbox + vec4(-d,-d,d,d);
@@ -747,9 +1011,6 @@ vec4 alpha_premultiply (vec4 color) {
     return color;
 }
 
-vec4 color_merge (float d1, float d2, vec4 c1, vec4 c2) {
-    return c2 + (c1 * (1.0 - c2.a));
-}
 
 vec4 color_init (float density, vec4 color) {
     color.a *= density;
@@ -757,51 +1018,119 @@ vec4 color_init (float density, vec4 color) {
 }
 
 
-struct sdf_shape {
-  float distance;
+
+
+
+
+
+
+
+// int id_union        (float a, float b, int ida, int idb) { return (b <= 0.0) ? idb : ida; }
+// int id_difference   (float a, float b, int ida)          { return (sdf_difference(a,b) <= 0.0) ? ida : 0 ; }
+// int id_intersection (float a, float b, int ida)          
+//   { return ((a <= 0.0) && (b <= 0.0)) ? ida : 0 ; }
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Shape ///////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+struct sdf_symbol {
+  shape shape;
   float density;
   int   id;
-  vec4  bb;
-  vec4  cd;
+  vec4  color;
 };
 
 
-sdf_shape sdf_shape_new (int id, float distance, vec4 bbox) {
-    float density = sdf_render(distance);
-    vec4  color   = color_init(density, toLinear(vec4(1.0,0.0,0.0,1.0)));
-    return sdf_shape(distance, density, id, bbox, color);    
+
+////////////////////////////////////////////////////////////////////////////////
+// BBox ////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+vec4 bbox_union (vec4 a, vec4 b) {
+    float xmin = min(a[0],b[0]);
+    float ymin = min(a[1],b[1]);
+    float xmax = max(a[2],b[2]);
+    float ymax = max(a[3],b[3]);
+    return vec4(xmin, ymin, xmax, ymax);
 }
 
-sdf_shape sdf_shape_fill (int id, sdf_shape shape, vec4 newColor) {
-    vec4 color = color_init(shape.density, toLinear(newColor));
-    return sdf_shape(shape.distance, shape.density, id, shape.bb, color); 
+
+
+////////////////////////////////////////////////////////////////////////////////
+// ID //////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+int id_union (sdf_symbol s1, sdf_symbol s2) {
+    return (s2.shape.distance <= 0.0) ? s1.id : s2.id;
 }
 
-// sdf_shape sdf_shape_difference (sdf_shape s1, sdf_shape s2) {
-//     float distance = sdf_difference(s1.distance, s2.distance);
-//     float density  = sdf_render(distance);
-//     vec4  bbox     = bbox_union(s1.bb, s2.bb);
-//     vec4  color    = color_init(density, alpha_unpremultiply(s1.cd));
-//     int   id       = id_difference(s1.distance, s2.distance, s1.id);
-//     return sdf_shape(distance, density, id, bbox, color);
-// }
-
-sdf_shape sdf_shape_difference (sdf_shape s1, sdf_shape s2) {
-    float distance = sdf_difference(s1.distance, s2.distance);
-    float density  = sdf_render(distance);
-    vec4  bbox     = bbox_union(s1.bb, s2.bb);
-    
-    // vec4  color    = alpha_unpremultiply(s1.cd);
-    vec4 color = s1.cd;
-    color /= color.a;//s1.density;
-    // if (s1.density != 0.0) {
-    //   color.a /= s1.density;
-    // }
-    color = color_init(density, color);
-    
-    int   id       = id_difference(s1.distance, s2.distance, s1.id);
-    return sdf_shape(distance, density, id, bbox, color);
+int id_discardOutside (float distance, int id) { 
+    return (distance <= 0.0) ? id : 0;
 }
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Colors //////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+vec4 color_merge (sdf_symbol s1, sdf_symbol s2) {
+    float maxDensity        = clamp(s1.density + s2.density);
+    float interpolateSwitch = 1.0 - sign(maxDensity); 
+    maxDensity += interpolateSwitch; // Removing division by 0
+    float normDensity1 = s1.density / maxDensity;
+    float normDensity2 = s2.density / maxDensity;
+    vec4  color1       = s1.color * normDensity1;
+    vec4  color2       = s2.color * normDensity2;
+    vec4  insideColor  = color2 + (1.0 - color2.a) * color1;  
+    float border       = sdf_render(s1.shape.distance - s2.shape.distance);
+    vec4  outsideColor = mix(s2.color, s1.color, border);
+    vec4  color        = mix(insideColor, outsideColor, interpolateSwitch);
+    return color;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Shapes //////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+sdf_symbol sdf_shape_new (int id, shape s) {
+    float density = sdf_render(s);
+    vec4  color   = toLinear(vec4(1.0,0.0,0.0,1.0));
+    return sdf_symbol(s, density, id, color);    
+}
+
+sdf_symbol sdf_shape_fill (int id, sdf_symbol s, vec4 newColor) {
+    vec4 color = alpha_premultiply(toLinear(newColor));
+    s.id    = id;
+    s.color = color;
+    return s;
+}
+
+sdf_symbol sdf_shape_union (sdf_symbol s1, sdf_symbol s2) {
+    shape newShape = unify(s1.shape, s2.shape);
+    float density  = sdf_render(newShape);
+    vec4  color    = color_merge(s1, s2);
+    int   id       = id_union(s1,s2);
+    return sdf_symbol(newShape, density, id, color);
+}
+
+sdf_symbol sdf_shape_difference (sdf_symbol s1, sdf_symbol s2) {
+    shape newShape = difference(s1.shape, s2.shape);
+    float density  = sdf_render(newShape);
+    int   id       = id_discardOutside(newShape.distance, s1.id);
+    return sdf_symbol(newShape, density, id, s1.color);
+}
+
+sdf_symbol sdf_shape_intersection (sdf_symbol s1, sdf_symbol s2) {
+    shape newShape = intersect(s1.shape, s2.shape);
+    float density  = sdf_render(newShape);
+    int   id       = id_discardOutside(newShape.distance, s1.id);
+    return sdf_symbol(newShape, density, id, s1.color);
+}
+
 
 
 
