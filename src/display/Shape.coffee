@@ -505,7 +505,7 @@ export move = consAlias Move
 export class Alignx extends Shape
   constructor: (@a) -> super(); @addChildren @a
   render: (r) ->
-    r.withNewTxCtx () =>
+    # r.withNewTxCtx () =>
       ra = r.renderShape @a
       r.renderShape @a.moveX("-#{ra.name}.shape.bbox.minX")
 Shape::alignx  = protoBindCons Alignx
