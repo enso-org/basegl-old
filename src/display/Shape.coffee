@@ -26,26 +26,39 @@ import fragment_lib   from 'basegl/lib/shader/sdf/sdf'
 ### SDF Canvas ###
 ##################
 
-defCdC = Color.rgb [1,0,0,1]
+# defCdC = Color.rgb [1,0,0,1]
 # defCd  = "rgb2lch(#{GLSL.toCode defCdC})"
-defCd  = "(#{GLSL.toCode defCdC})"
+# defCd  = "(#{GLSL.toCode defCdC})"
 
-export class CanvasShape
-  constructor: (@shapeNum, @id) ->
-    @name     = "shape_#{@shapeNum}"
-    @distance = "#{@name}_distance"
-    @id       = "#{@name}_id"
-    @bbox     = "#{@name}_bbox"
-    @color    = "#{@name}_color"
-    @density  = "#{@name}_density"
+# export class CanvasShape
+#   constructor: (@shapeNum, @id) ->
+#     @name     = "shape_#{@shapeNum}"
+#     @distance = "#{@name}_distance"
+#     @id       = "#{@name}_id"
+#     @bbox     = "#{@name}_bbox"
+#     @color    = "#{@name}_color"
+#     @density  = "#{@name}_density"
 
 
 class CanvasShape2
   constructor: (@name, @id) ->
 
-TypeClass.implement CanvasShape2, GLSL.toExpr, -> GLSL.expr @name
-
 canvasShape = (name, id) -> new CanvasShape2 name, id
+
+
+
+
+toShapeCode = (a) -> 
+  if a instanceof CanvasShape2
+    return "f_#{a.name}(origin)"
+  else
+    return GLSL.toCode a
+
+toConvexCode = (a) -> 
+  if a instanceof CanvasShape2
+    return "convex_#{a.name}(origin,dir)"
+  else
+    return GLSL.toCode a
 
 
 export class Canvas
@@ -54,6 +67,7 @@ export class Canvas
     @lastID    = 1 # FIXME - use 0 as background
     @bbLines   = []
     @codeLines = []
+    @codeLines2 = []
 
   getNewID: () ->
     id = @lastID
@@ -83,10 +97,14 @@ export class Canvas
   #   null
 
   addCodeLine: (c) -> @codeLines.push c
+  addCodeLine2: (c) -> @codeLines2.push c
   addBBLine:   (c) -> @bbLines.push c
 
   code: () ->
     @codeLines.join '\n'
+
+  code2: () ->
+    @codeLines2.join '\n'
 
   # defShape_OLD: (sdf, bb, cd=defCd, generateID=@genNewColorID, doInitColors=true) ->
   #   @shapeNum += 1
@@ -118,26 +136,69 @@ export class Canvas
   #   shape    
 
   defNewShape: (fn, args...) ->
-    gargs    = (GLSL.toCode arg for arg in args)
+    gargsx    = (toShapeCode arg for arg in args)
+    gargs = gargsx.slice()
     gargs.unshift 'origin'
     gargs    = gargs.join ','
     distance = "#{fn}(#{gargs})"
     # bb0      = GLSL.toCode bbox.x
     # bb1      = GLSL.toCode bbox.y
     # bbox     = "bbox_new(#{bb0}, #{bb1})"
-    @defShape 'new', [distance] # , bbox]
+    @defShape 'new', [distance], {convex: fn, convexArgs: gargsx} # , bbox]
     
   defShape: (fn, args, cfg={}) ->
+    # args2 = args.slice()s
     args = args.slice()
-    fnx  = 'sdf_shape_' + fn
+    args3 = args.slice()
+    
+    if fn == ""
+      fnx = ""
+    else
+      fnx  = 'sdf_shape_' + fn
+
+    if fn == ""
+      fny = ""
+    else
+      fny  = 'sdf_shape_convex_' + fn
     if cfg.keepID
       shape = @newShapeAlias() 
     else 
       shape = @newShape()
       args.unshift "#{shape.id}"
-    gargs = (GLSL.toCode arg for arg in args)
+
+    gargs = (toShapeCode arg for arg in args)
     gargs = gargs.join ','
-    @addCodeLine "sdf_symbol #{shape.name} = #{fnx}(#{gargs});"    
+
+    gargs3 = (toConvexCode arg for arg in args3)
+    gargs3 = gargs3.join ','
+
+    # args2.unshift 'dir'
+    # args2.unshift 'origin'
+    # gargs2 = (GLSL.toCode arg for arg in args2)
+    # gargs2 = gargs2.join ','
+
+    # @addCodeLine "sdf_symbol #{shape.name} = #{fnx}(#{gargs});"    
+
+    if cfg.codeLines?
+      pfx = '\n' + cfg.codeLines.join('\n') + '\n'
+    else
+      pfx = ''
+
+    if cfg.codeLines2?
+      pfx2 = '\n' + cfg.codeLines2.join('\n') + '\n'
+    else
+      pfx2 = ''
+
+    @addCodeLine2 "sdf_symbol f_#{shape.name} (vec2 origin) {\n    #{pfx}return #{fnx}(#{gargs});\n}\n"
+
+    if cfg.convex?
+      gargs2 = cfg.convexArgs.slice()
+      gargs2.unshift 'dir'
+      gargs2.unshift 'origin'
+      gargs2 = gargs2.join ','
+      @addCodeLine2 "float convex_#{shape.name} (vec2 origin, vec2 dir) {\n    #{pfx2}return #{cfg.convex}_convex(#{gargs2});\n}\n"
+    else 
+      @addCodeLine2 "float convex_#{shape.name} (vec2 origin, vec2 dir) {\n    #{pfx2}return #{fny}(#{gargs3});\n}\n"
     shape
     
 
@@ -325,7 +386,7 @@ export halfPlane = consAlias class HalfPlane extends Shape
 #   render: (r) -> r.canvas.pie @angle
 # export pie = consAlias Pie
 
-export rect = consAlias class Rect extends Shape
+export rectangle = consAlias class Rectangle extends Shape
   constructor: (@args...) -> super()
   glslBinding: ->
     args: @args
@@ -491,11 +552,12 @@ export inside = consAlias Inside
 export class Move extends Shape
   constructor: (@a, @x, @y) -> super(); @addChildren @a
   render: (r) ->
-    r_x = resolve r, @x
-    r_y = resolve r, @y
-    r.withNewTxCtx () =>
-      r.canvas.move r_x, r_y
-      r.renderShape @a
+    # r_x = resolve r, @x
+    # r_y = resolve r, @y
+    code = "origin = sdf_translate(origin, vec2(#{GLSL.toCode @x}, #{GLSL.toCode @y}));"
+    code2 = "dir = sdf_translate(dir, vec2(#{GLSL.toCode @x}, #{GLSL.toCode @y}));"
+    a = r.renderShape @a
+    r.canvas.defShape "", [a], {codeLines: [code], codeLines2: [code, code2]}
 Shape::move  = protoBindCons Move
 Shape::moveX = (x) -> @move x,0
 Shape::moveY = (y) -> @move 0,y
@@ -505,17 +567,18 @@ export move = consAlias Move
 export class Alignx extends Shape
   constructor: (@a) -> super(); @addChildren @a
   render: (r) ->
-    # r.withNewTxCtx () =>
-      ra = r.renderShape @a
-      r.renderShape @a.moveX("-#{ra.name}.shape.bbox.minX")
+    ref = r.renderShape @a
+    r.renderShape @a.moveX("-convex_#{ref.name}(vec2(0.0), vec2(1.0,0.0))")
 Shape::alignx  = protoBindCons Alignx
 export alignx = consAlias Alignx
 
 export class Rotate extends Shape
   constructor: (@a, @angle) -> super(); @addChildren @a
-  render: (r) -> r.withNewTxCtx () =>
-    r.canvas.rotate @angle
-    r.renderShape @a
+  render: (r) ->
+    code = "origin = sdf_rotate(origin, - #{GLSL.toCode @angle});"
+    code2 = "dir = sdf_rotate(dir, - #{GLSL.toCode @angle});"
+    a = r.renderShape @a
+    r.canvas.defShape "", [a], {codeLines: [code], codeLines2: [code, code2]}    
 Shape :: rotate = protoBindCons Rotate
 export rotate = consAlias Rotate
 
@@ -643,23 +706,23 @@ export class GLSLRenderer
     @canvas    = new Canvas
     @done      = new Map
     @idmap     = new Map
-    @txCtx     = 0
-    @txCtxNext = @txCtx + 1
+    # @txCtx     = 0
+    # @txCtxNext = @txCtx + 1
 
-  getNewTxCtx: () ->
-    ctx         = @txCtxNext
-    @txCtx      = ctx
-    @txCtxNext += 1
-    ctx
+  # getNewTxCtx: () ->
+  #   ctx         = @txCtxNext
+  #   @txCtx      = ctx
+  #   @txCtxNext += 1
+  #   ctx
 
-  withNewTxCtx: (f) ->
-    oldCtx = @txCtx
-    newCtx = @getNewTxCtx()
-    @canvas.addCodeLine "vec2 origin_#{newCtx} = origin;"
-    out    = f(newCtx)
-    @canvas.addCodeLine "origin = origin_#{newCtx};"
-    @txCtx = oldCtx
-    out
+  # withNewTxCtx: (f) ->
+  #   oldCtx = @txCtx
+  #   newCtx = @getNewTxCtx()
+  #   @canvas.addCodeLine "vec2 origin_#{newCtx} = origin;"
+  #   out    = f(newCtx)
+  #   @canvas.addCodeLine "origin = origin_#{newCtx};"
+  #   @txCtx = oldCtx
+  #   out
 
   renderShape: (shape) ->
     shapeCache = @done.get(shape)
@@ -682,7 +745,9 @@ export class GLSLRenderer
   render: (s) ->
     shape    = @renderShape(s)
     # defsCode = 'sdf_symbol _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_symbol(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
-    defsCode = 'sdf_symbol _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
+    defsCode = @canvas.code2()
+    # defsCode = defsCode + '\n\nfff\n' + 'sdf_symbol _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
+    defsCode = defsCode + '\n\n\n' + 'sdf_symbol _main(vec2 origin) {\n' + "return f_#{shape.name}(origin);\n}"
     # new ShaderBuilder (new SDFShader {fragment: defsCode}), @idmap
     {fragment: defsCode}
 

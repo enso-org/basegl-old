@@ -414,6 +414,10 @@ shape x_grow (shape s, float size) {
 
 ////// Plane //////
 
+float plane_convex (vec2 origin, vec2 dir) {
+    return 0.0;
+}
+
 shape plane (vec2 p) {
     return shape_(-1.0);
 }
@@ -472,14 +476,23 @@ shape half_plane_fast(vec2 p) {
 ////// Rectangle //////
 
 
-shape x_sdf_rect_sharp(vec2 p, vec2 size) {
+float rectangle_convex(vec2 origin, vec2 dir, vec2 size) {
+    vec2  pt   = size / 2.0;
+    vec2  ndir = normalize(abs(dir-origin));
+    vec2  vdir = ndir * pt;
+    float len  = length(dir);
+    float dist = (vdir.x + vdir.y); ///len;
+    return dist - dot(ndir, origin); 
+}
+
+shape rectangle_sharp(vec2 p, vec2 size) {
     vec2  size2 = size / 2.0;
     float dist = maxEl(abs(p) - size2);
     x_bbox  bbox = x_bbox_(size);
     return shape(dist,bbox);
 }
 
-shape x_sdf_rect (vec2 p, vec2 size) {
+shape rectangle (vec2 p, vec2 size) {
   size       = size / 2.0;
   vec2  d    = abs(p) - size;
   float dist = maxEl(min(d, 0.0)) + length(max(d, 0.0));
@@ -487,7 +500,7 @@ shape x_sdf_rect (vec2 p, vec2 size) {
   return shape(dist,bbox);
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, vec4 corners) {
+shape rectangle (vec2 p, vec2 size, vec4 corners) {
   float tl = corners[0];
   float tr = corners[1];
   float br = corners[2];
@@ -508,56 +521,60 @@ shape x_sdf_rect (vec2 p, vec2 size, vec4 corners) {
   return shape(dist,bbox);
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, vec3 r) {
-  return x_sdf_rect(p, size, vec4(r.x,r.y,r.z,r.y));
+shape rectangle (vec2 p, vec2 size, vec3 r) {
+  return rectangle(p, size, vec4(r.x,r.y,r.z,r.y));
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, vec2 r) {
-  return x_sdf_rect(p, size, vec4(r.x,r.y,r.x,r.y));
+shape rectangle (vec2 p, vec2 size, vec2 r) {
+  return rectangle(p, size, vec4(r.x,r.y,r.x,r.y));
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2, float r3, float r4) {
-  return x_sdf_rect(p, size, vec4(r1,r2,r3,r4));
+shape rectangle (vec2 p, vec2 size, float r1, float r2, float r3, float r4) {
+  return rectangle(p, size, vec4(r1,r2,r3,r4));
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2, float r3) {
-  return x_sdf_rect(p, size, vec3(r1,r2,r3));
+shape rectangle (vec2 p, vec2 size, float r1, float r2, float r3) {
+  return rectangle(p, size, vec3(r1,r2,r3));
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, float r1, float r2) {
-  return x_sdf_rect(p, size, vec2(r1,r2));
+shape rectangle (vec2 p, vec2 size, float r1, float r2) {
+  return rectangle(p, size, vec2(r1,r2));
 }
 
-shape x_sdf_rect (vec2 p, vec2 size, float r) {
-  return x_grow(x_sdf_rect(p, size-2.0*r), r);
+shape rectangle (vec2 p, vec2 size, float r) {
+  return x_grow(rectangle(p, size-2.0*r), r);
 }
 
-shape x_sdf_rect (vec2 p) {
-  return x_sdf_rect(p, vec2(10.0,10.0));
+shape rectangle (vec2 p) {
+  return rectangle(p, vec2(10.0,10.0));
 }
 
-shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2, float r3, float r4) {
-    return x_sdf_rect(p, vec2(w,h), r1, r2, r3, r4);
+shape rectangle (vec2 p, float w, float h, float r1, float r2, float r3, float r4) {
+    return rectangle(p, vec2(w,h), r1, r2, r3, r4);
 }
 
-shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2, float r3) {
-    return x_sdf_rect(p, vec2(w,h), r1, r2, r3);
+shape rectangle (vec2 p, float w, float h, float r1, float r2, float r3) {
+    return rectangle(p, vec2(w,h), r1, r2, r3);
 }
 
-shape x_sdf_rect (vec2 p, float w, float h, float r1, float r2) {
-    return x_sdf_rect(p, vec2(w,h), r1, r2);
+shape rectangle (vec2 p, float w, float h, float r1, float r2) {
+    return rectangle(p, vec2(w,h), r1, r2);
 }
 
-shape x_sdf_rect (vec2 p, float w, float h, float r1) {
-    return x_sdf_rect(p, vec2(w,h), r1);
+shape rectangle (vec2 p, float w, float h, float r1) {
+    return rectangle(p, vec2(w,h), r1);
 }
 
-shape x_sdf_rect (vec2 p, float w, float h) {
-    return x_sdf_rect(p, vec2(w,h));
+float rectangle_convex (vec2 origin, vec2 dir, float w, float h) {
+    return rectangle_convex(origin, dir, vec2(w,h));
 }
 
-shape x_sdf_rect (vec2 p, float w) {
-    return x_sdf_rect(p, vec2(w,w));
+shape rectangle (vec2 p, float w, float h) {
+    return rectangle(p, vec2(w,h));
+}
+
+shape rectangle (vec2 p, float w) {
+    return rectangle(p, vec2(w,w));
 }
 
 
@@ -1108,6 +1125,18 @@ sdf_symbol sdf_shape_fill (int id, sdf_symbol s, vec4 newColor) {
     s.color = color;
     return s;
 }
+
+
+// TODO: REMOVE
+float sdf_shape_convex_fill (float a, vec4 newColor) {
+    return a;
+}
+
+// TODO: REMOVE
+float sdf_shape_convex_union (float a, float b) {
+    return a;
+}
+
 
 sdf_symbol sdf_shape_union (sdf_symbol s1, sdf_symbol s2) {
     shape newShape = unify(s1.shape, s2.shape);

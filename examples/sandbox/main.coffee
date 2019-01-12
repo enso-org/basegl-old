@@ -6,7 +6,7 @@ import {DisplayObject, displayObjectMixin} from 'basegl/display/DisplayObject'
 import {Vector}                            from "basegl/math/Vector"
 import {logger}                            from 'basegl/debug/logger'
 import * as basegl from 'basegl'
-import {circle, glslShape, union, grow, negate, triangle, rect, quadraticCurve, path, plane, halfPlane}      from 'basegl/display/Shape'
+import {circle, glslShape, union, grow, negate, triangle, rectangle, quadraticCurve, path, plane, halfPlane}      from 'basegl/display/Shape'
 import * as Shape  from 'basegl/display/Shape'
 import * as Color  from 'basegl/display/Color'
 import * as Symbol from 'basegl/display/Symbol'
@@ -28,7 +28,12 @@ myShape2 = basegl.expr ->
   # c = (circle(50) - circle(30).moveX(10)).fill(Color.rgb([1,0,0,1]))
   # b = circle(30).moveX(-30).fill(Color.rgb([0,0,1,0.5]))
   # c + b
-  circle(50).alignx()
+  # a = circle(50).moveY(50)
+  # b = circle(50)
+  # a = rectangle(100,150).rotate(Math.PI/10).alignx();
+  a = rectangle(100,150).moveX(-100).rotate(Math.PI/10).alignx();
+  b = rectangle(10,200).moveX(5);
+  a + b
   # circle(50)
   # circle(50).fill(Color.rgb([1,0,0,1]))
   # Shape.rect(50,20)
