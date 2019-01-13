@@ -31,9 +31,14 @@ myShape2 = basegl.expr ->
   # a = circle(50).moveY(50)
   # b = circle(50)
   # a = rectangle(100,150).rotate(Math.PI/10).alignx();
-  a = rectangle(100,150).moveX(-100).rotate(Math.PI/10).alignx();
-  b = rectangle(10,200).moveX(5);
-  a + b
+  # a = rectangle(100,150).moveX(-10).rotate(Math.PI/10).grow(30).alignx();
+  # a = rectangle(60,100).moveX(-10).rotate(Math.PI/10).grow(20).alignTR();
+  
+  a = rectangle(60,100) + rectangle(100,100).rotate(Math.PI/4).moveX(60)
+  a = a.rotate(-Math.PI/10).moveX(-30).align()
+  # b = rectangle(10,200).moveX(5);
+  c = rectangle(200,10).moveY(-5);
+  a + c
   # circle(50)
   # circle(50).fill(Color.rgb([1,0,0,1]))
   # Shape.rect(50,20)

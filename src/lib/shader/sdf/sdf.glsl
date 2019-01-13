@@ -414,7 +414,7 @@ shape x_grow (shape s, float size) {
 
 ////// Plane //////
 
-float plane_convex (vec2 origin, vec2 dir) {
+float plane_convex_hull (vec2 dir, float offset) {
     return 0.0;
 }
 
@@ -476,13 +476,14 @@ shape half_plane_fast(vec2 p) {
 ////// Rectangle //////
 
 
-float rectangle_convex(vec2 origin, vec2 dir, vec2 size) {
+float rectangle_convex(vec2 dir, float offset, vec2 size) {
     vec2  pt   = size / 2.0;
-    vec2  ndir = normalize(abs(dir-origin));
-    vec2  vdir = ndir * pt;
-    float len  = length(dir);
-    float dist = (vdir.x + vdir.y); ///len;
-    return dist - dot(ndir, origin); 
+    vec2  adir = abs(dir);
+    float dist = dot(adir,pt);
+    if (offset < 0.0) {
+        offset *= mix(sqrt(2.0), 1.0, cos(atan(adir.x/adir.y))); // FIXME
+    }
+    return dist + offset; 
 }
 
 shape rectangle_sharp(vec2 p, vec2 size) {
@@ -565,8 +566,8 @@ shape rectangle (vec2 p, float w, float h, float r1) {
     return rectangle(p, vec2(w,h), r1);
 }
 
-float rectangle_convex (vec2 origin, vec2 dir, float w, float h) {
-    return rectangle_convex(origin, dir, vec2(w,h));
+float rectangle_convex_hull (vec2 dir, float offset, float w, float h) {
+    return rectangle_convex(dir, offset, vec2(w,h));
 }
 
 shape rectangle (vec2 p, float w, float h) {
@@ -806,7 +807,7 @@ bool interiorChec_union(bool c1, bool c2) {
 // bool  d1_cover = quadraticCurve_interiorCheck (p1, A,B);
 // float d2       = sdf_quadraticCurve           (p2, C,D);
 // bool  d2_cover = quadraticCurve_interiorCheck (p2, C,D);
-// float d3       = sdf_quadraticCurve           (p3, E,F);
+// float d3       = sdf_quadraticCurve           (p3, E,F);convex
 // bool  d3_cover = quadraticCurve_interiorCheck (p3, E,F);
 // bool isInside = interiorChec_union(interiorChec_union(cover1,cover2),cover3);
 
@@ -1126,14 +1127,22 @@ sdf_symbol sdf_shape_fill (int id, sdf_symbol s, vec4 newColor) {
     return s;
 }
 
+sdf_symbol sdf_shape_grow (sdf_symbol s, float width) {
+    s.shape.distance -= width;
+    s.density   = sdf_render(s.shape);
+    return s;
+}
 
-// TODO: REMOVE
-float sdf_shape_convex_fill (float a, vec4 newColor) {
+
+float convex_hull_fill (float a, vec4 newColor) {
     return a;
 }
 
-// TODO: REMOVE
-float sdf_shape_convex_union (float a, float b) {
+float convex_hull_union (float a, float b) {
+    return max(a,b);
+}
+
+float convex_hull_grow (float a, float w) {
     return a;
 }
 
@@ -1160,6 +1169,19 @@ sdf_symbol sdf_shape_intersection (sdf_symbol s1, sdf_symbol s2) {
     return sdf_symbol(newShape, density, id, s1.color);
 }
 
+
+
+vec2 alignDir (vec2 a) {
+    return a;
+}
+
+vec2 alignDir () {
+    return vec2(0.0,-1.0);
+}
+
+vec2 alignDir (float x, float y) {
+    return vec2(x,y);
+}
 
 
 
