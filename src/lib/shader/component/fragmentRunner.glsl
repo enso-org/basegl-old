@@ -7,11 +7,11 @@ int pointerEvents2 = 1;
 
 void main() {
   vec2      p     = local.xy ;
-  sdf_symbol shape = _main(p);
-  int       sid   = shape.id;
-  float     alpha = sdf_render(shape.shape.distance);
+  shape     sss   = _main(p);
+  int       sid   = sss.id;
+  float     alpha = sdf_render(sss.sdf.distance);
 
-  float idMask           = (float(sid)) > 0. ? 1. : 0.; // shape.cd.a * float(sid)
+  float idMask           = (float(sid)) > 0. ? 1. : 0.; // sss.cd.a * float(sid)
   float symbolFamilyID_r = float(floor(symbolFamilyID + 0.5));
   float symbolID_r       = float(floor(symbolID + 0.5));
 
@@ -19,10 +19,10 @@ void main() {
 
   if (drawBuffer == 0) {
       if (displayMode == 0) {
-          output_color = shape.color;
-          output_color *= shape.density;
+          output_color = sss.color;
+          output_color *= sss.density;
       } else if (displayMode == 1) {
-          vec3 col = distanceMeter(shape.shape.distance, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
+          vec3 col = distanceMeter(sss.sdf.distance, 500.0 * zoom, vec3(0.0,1.0,0.0), 500.0/zoom);
           col = Uncharted2ToneMapping(col);
           output_color = vec4(col, 1.0);
       } else if (displayMode == 2) {

@@ -34,8 +34,8 @@ myShape2 = basegl.expr ->
   # a = rectangle(100,150).moveX(-10).rotate(Math.PI/10).grow(30).alignx();
   # a = rectangle(60,100).moveX(-10).rotate(Math.PI/10).grow(20).alignTR();
   
-  a = rectangle(60,100) + rectangle(100,100).rotate(Math.PI/4).moveX(60)
-  a = a.rotate(-Math.PI/10).moveX(-30).align()
+  a = circle(60) - rectangle(80,80).grow(11).rotate(Math.PI/4).moveX(60)
+  a = a.rotate(Math.PI/10).moveX(-30).align()
   # b = rectangle(10,200).moveX(5);
   c = rectangle(200,10).moveY(-5);
   a + c
@@ -49,6 +49,7 @@ main = () ->
   # gl = canvas.getContext("webgl2")
   # if (!gl) 
   #   return
+
 
 
 main()

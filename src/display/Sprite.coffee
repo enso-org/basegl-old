@@ -91,6 +91,9 @@ float sqrt(float x)
 vec2 sqrt(vec2 x)  
 vec3 sqrt(vec3 x)  
 vec4 sqrt(vec4 x)
+mat2 inverse(mat2 m)
+mat3 inverse(mat3 m)
+mat4 inverse(mat4 m)
 float inversesqrt(float x)  
 vec2 inversesqrt(vec2 x)  
 vec3 inversesqrt(vec3 x)  
@@ -242,6 +245,8 @@ bvec2 not(bvec2 x)
 bvec3 not(bvec3 x)  
 bvec4 not(bvec4 x)
 '''
+
+reservedBuiltins = ['union']
 
 
 
@@ -444,7 +449,7 @@ redirectBuiltins = ->
 
 redirections = redirectBuiltins()
 
-builtinsMap = new Set redirections.names
+builtinsMap = new Set redirections.names.concat(reservedBuiltins)
 
 
 anyVar = /([a-zA-Z_])[a-zA-Z_0-9]* *\(/gm

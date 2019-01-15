@@ -54,11 +54,17 @@ toShapeCode = (a) ->
   else
     return GLSL.toCode a
 
-toConvexCode = (a) -> 
+toConvexHullCode = (a) -> 
   if a instanceof CanvasShape2
     return "#{a.name}_convex_hull(origin,dir,offset)"
   else
     return GLSL.toCode a
+
+toShapeArgs = (args) ->
+  (toShapeCode arg for arg in args).join(',')
+
+toConvexHullArgs = (args) ->
+  (toConvexHullCode arg for arg in args).join(',')
 
 
 assembleCode = (a) ->
@@ -71,16 +77,60 @@ assembleCode = (a) ->
   else
     return null
 
-getCodeLines = (a) ->
+getCodeCfg = (a) ->
+  if not a?
+    return
+      shape:      []
+      convexHull: []
+  if a.constructor == Array
+    return
+      shape:      a.slice()
+      convexHull: a.slice()
+  if a.constructor == String
+    return
+      shape:      [a]
+      convexHull: [a]
+  if a.constructor == Object
+    return
+      shape:      toCodeArray(a.shape)      ? []
+      convexHull: toCodeArray(a.convexHull) ? []
+  null
+
+mergeCodes = (code1, code2) ->
+  if not code1?
+    return code2
+  if not code2? 
+    return code1
+  code1 = getCodeCfg code1
+  code2 = getCodeCfg code2
+  return 
+    shape:      code1.shape.concat      code2.shape
+    convexHull: code1.convexHull.concat code2.convexHull
+
+
+
+toCodeArray = (a) ->
   if not a? 
     return []
   if a.constructor == Array
-    return a.slice()
-  else if a.constructor == String
+    return a
+  if a.constructor == String
     return [a]
-  else
-    return null
+  null
 
+genShapeDefinition = (name, code) -> """
+shape f_#{name} (vec2 origin) {
+#{code}
+  return result;
+}
+"""
+
+genConvexHullDefinition = (name, code) -> """
+convex_hull #{name}_convex_hull (vec2 origin, vec2 dir, float offset) { 
+#{code}
+  return result;
+}
+"""
 
 export class Canvas
   constructor: () ->
@@ -99,96 +149,66 @@ export class Canvas
     @codeChunks.join '\n'
 
   newShape: () ->
-    id = @getNewID()
-    @shapeNum += 1
-    canvasShape "shape_#{@shapeNum}", id
+    shape = @newShapeAlias()
+    id    = @getNewID()
+    shape.id = id
+    shape
 
   newShapeAlias: () ->
     @shapeNum += 1
     canvasShape "shape_#{@shapeNum}"
 
   defNewShape: (fn, args...) ->
-    gargsx    = (toShapeCode arg for arg in args)
-    gargs = gargsx.slice()
-    gargs.unshift 'origin'
-    gargs    = gargs.join ','
-    distance = "#{fn}(#{gargs})"
-    @defShape 'new', [distance], {convex: fn, convexArgs: gargsx}
-    
-  defShape: (fn, args, cfg={}) ->
-    args = args.slice()
-    args3 = args.slice()
-    
-    if fn == ""
-      fnx = ""
-    else
-      fnx  = 'sdf_shape_' + fn
+    gargs   = (toShapeCode arg for arg in args)
+    sdfArgs = ['origin'].concat(gargs)
+    sdfArgs = sdfArgs.join ','
+    sdf     = "#{fn}(#{sdfArgs})"
+    code    = getCodeCfg null
 
-    if fn == ""
-      fny = ""
-    else
-      fny  = 'convex_hull_' + fn
-    if cfg.keepID
-      shape = @newShapeAlias() 
-    else 
-      shape = @newShape()
-      args.unshift "#{shape.id}"
-
-    gargs = (toShapeCode arg for arg in args)
+    gargs.unshift 'offset'
+    gargs.unshift 'dir'
     gargs = gargs.join ','
+    code.convexHull.push "dir = dir - origin;"
+    code.convexHull.push "convex_hull result = #{fn}_convex_hull(#{gargs});"
+    code.convexHull.push "result.distance -= dot(dir, origin);"
 
-    gargs3 = (toConvexCode arg for arg in args3)
-    gargs3 = gargs3.join ','
+    @defShape "new", [sdf], {code, skipConvexHullRunner: true}
 
 
-    shapeCode      = []
-    convexHullCode = []
-
-    code = cfg.code
-    if code?
-      if code.constructor == Object
-        shapeCode      = getCodeLines code.shape
-        convexHullCode = getCodeLines code.convexHull
-      else
-        shapeCode      = getCodeLines code
-        convexHullCode = getCodeLines code 
+  defShape: (fn, args, cfg={}) ->
+    code           = getCodeCfg cfg.code
+    postCode       = getCodeCfg cfg.postCode
+    shapeArgs      = toShapeArgs      args
+    convexHullArgs = toConvexHullArgs args
+    shape          = if cfg.keepID then @newShapeAlias() else @newShape()
 
     if cfg.transform?
-      shapeCode.push      "origin = #{cfg.transform 'origin'};"
-      convexHullCode.push "origin = #{cfg.transform 'origin'};"
-      convexHullCode.push "dir    = #{cfg.transform 'dir'};"
+      code.shape.push      "origin = #{cfg.transform 'origin'};"
+      code.convexHull.push "origin = #{cfg.transform 'origin'};"
+      code.convexHull.push "dir    = #{cfg.transform 'dir'};"
 
-    shapeCode      = assembleCode shapeCode
-    convexHullCode = assembleCode convexHullCode
-
-
-    @addCodeChunk "sdf_symbol f_#{shape.name} (vec2 origin) {\n    #{shapeCode}return #{fnx}(#{gargs});\n}\n"
-
-    if cfg.convex?
-      gargs2 = cfg.convexArgs.slice()
-      gargs2.unshift 'offset'
-      gargs2.unshift 'dir'
-      gargs2 = gargs2.join ','
-      @addCodeChunk """
-float #{shape.name}_convex_hull (vec2 origin, vec2 dir, float offset) 
-{ #{convexHullCode}
-  dir = dir - origin;
-  float result = #{cfg.convex}_convex_hull(#{gargs2});
-  result -= dot(dir, origin);
-  return result;
-}
-"""
-    else 
-      @addCodeChunk """
-float #{shape.name}_convex_hull (vec2 origin, vec2 dir, float offset)
-{ #{convexHullCode}
-  float result = #{fny}(#{gargs3});
-  return result;
-}
-"""
-    shape
+    if not cfg.skipShapeRunner
+      code.shape.push "shape result = #{fn}(#{shapeArgs});"
     
+    if not cfg.skipConvexHullRunner
+      code.convexHull.push "convex_hull result = #{fn}(#{convexHullArgs});" 
 
+    code.shape      = code.shape.concat      postCode.shape
+    code.convexHull = code.convexHull.concat postCode.convexHull
+
+    @addShapeCode code, shape
+    shape
+
+
+  addShapeCode: (code, shape) ->
+    if shape.id?
+      code.shape.push "result = setID(result,#{shape.id});"
+
+    shapeCode      = assembleCode code.shape
+    convexHullCode = assembleCode code.convexHull
+
+    @addCodeChunk ( genShapeDefinition      shape.name, shapeCode      )
+    @addCodeChunk ( genConvexHullDefinition shape.name, convexHullCode )
 
   # halfplane: (angle = 0, fast = false) ->
   #   g_a  = GLSL.toCode angle
@@ -271,191 +291,83 @@ float #{shape.name}_convex_hull (vec2 origin, vec2 dir, float offset)
 ###################
 
 
-# FIXME: Use M.<func> instad of basegl_sdfResolve. If resolve have to still be used, use typeclasses instead
-# FIXME: Make basegl_sdfResolve like standard - check if everything implements it
-# FIXME: Allow bboxes to be accessed as js struct / glsl code like everything else now
-Number::basegl_sdfResolve = () -> @
-String::basegl_sdfResolve = () -> @
-
-
-resolve = (r,a) -> a.basegl_sdfResolve(r)
-
-export negate = (a) -> a.basegl_sdfNegate()
-Number::basegl_sdfNegate = () -> -@
-String::basegl_sdfNegate = () -> '-' + @
-
-
-export class BBox
-  constructor: (@left, @top, @right, @bottom) ->
-
-  basegl_sdfResolve: (r) -> new BBox (resolve r,@left), (resolve r,@top), (resolve r,@right), (resolve r,@bottom)
-
-
-export class GLSLObjectRef
-  constructor: (@shape, @selector) ->
-    @_post = (a) => a
-
-  copy: () -> new GLSLObjectRef @shape, @selector
-
-  basegl_sdfNegate: () ->
-    ref = @.copy()
-    ref._post = (a) => (@_post a).basegl_sdfNegate()
-    ref
-
-  basegl_sdfResolve: (r) -> @_post (@selector (r.renderShape @shape))
-
-
-glslBBRef = (shape, idx) -> new GLSLObjectRef shape, ((s) => s.bbox + '[' + idx + ']')
-
-protoBind     = (f) -> (args...) -> f @, args...
-protoBindCons = (t) -> protoBind (consAlias t)
-
-
 cammelToSnakeCase = (s) ->
   s.split(/(?=[A-Z])/).join('_').toLowerCase()
 
 snakeToCammelCase = (s) ->
   s.replace /_\w/g, (m) => m[1].toUpperCase()
 
+glslArgs = (args) -> (GLSL.toCode arg for arg in args).join(', ')
 
 
-export class Shape extends Composable
-  cons: () ->
-    @mixin styleMixin
-    @mixin eventDispatcherMixin, @
-    @type  = Shape
+
+
+export class Shape
+  constructor: (name, @args, @glslBinding=(->)) ->
+    @name = cammelToSnakeCase name
+    @code = null
 
   TypeClass.implement @, M.add, (args...) -> @add args...
   TypeClass.implement @, M.sub, (args...) -> @sub args...
   TypeClass.implement @, M.mul, (args...) -> @mul args...
 
   render: (r) ->
-    parms   = @glslBinding() ? {}
-    nameSfx = if parms.nameSuffix? then "_#{parms.nameSuffix}" else ''
-    name    = cammelToSnakeCase(@constructor.name) + nameSfx
-    args    = parms.args ? []
-    r.canvas.defNewShape name, args...
+    @renderer = r
+    parms     = @glslBinding(@args...) ? {}
+    if parms.transform?
+      name    = ''
+      inpArgs = [@args[0]]
+    else if parms.output?
+      name    = ''
+      inpArgs = [parms.output]
+    else
+      nameSfx = if parms.nameSuffix? then "_#{parms.nameSuffix}" else ''
+      name    = parms.name ? @name
+      name    = name + nameSfx
+      inpArgs = parms.args ? @args
+    isModifier = false
+    args       = []
+    parms.code = mergeCodes @code, parms.code
+    for arg in inpArgs
+      if arg.constructor == Shape
+        isModifier = true
+        args.push r.renderShape(arg)
+      else
+        args.push arg
 
-  glslBinding: ->
+    if isModifier
+      cfg = Object.assign {keepID:true}, parms
+      r.canvas.defShape name, args, cfg 
+    else
+      r.canvas.defNewShape name, args...
+
+
+
+
+bindShape = (name, glslBinding) -> (args...) -> new Shape name, args, glslBinding
+
+bindMethod = (name, fn) ->
+  def = bindShape name, fn
+  Shape.prototype[name] = (args...) -> def @, args...
+  def
+
+
 
 
 #############
 ### Prims ###
 #############
 
-export circle = consAlias class Circle extends Shape
-  constructor: (@radius, @angle=null) -> super()
-  glslBinding: -> 
-    bbox: {x:@radius, y:@radius}
-    args: if @angle == null then [@radius] else [@radius,@angle]
-
-export plane = consAlias class Plane extends Shape
-
-export halfPlane = consAlias class HalfPlane extends Shape
-  constructor: (@dir = 0, @fast = false) -> super()
-  glslBinding: -> 
-    # TODO: Allow `dir` to be vector
-    switch @dir 
-      when 0             then {nameSuffix: 'top'}
-      when Math.PI * 0.5 then {nameSuffix: 'right'}
-      when Math.PI       then {nameSuffix: 'bottom'}
-      when Math.PI * 1.5 then {nameSuffix: 'left'}
-      else
-        args: [@dir]
-        nameSuffix: if @fast then 'fast' else null
-        
-# export class Pie extends Shape
-#   constructor: (@angle) -> super()
-#   render: (r) -> r.canvas.pie @angle
-# export pie = consAlias Pie
-
-export rectangle = consAlias class Rectangle extends Shape
-  constructor: (@args...) -> super()
-  glslBinding: ->
-    args: @args
-
-export triangle = consAlias class Triangle extends Shape
-  constructor: (@args...) -> super()
-  glslBinding: ->
-    args: @args
-
-export ellipse = consAlias class Ellipse extends Shape
-  constructor: (@args...) -> super()
-  glslBinding: ->
-    args: @args
-
-export ring = consAlias class Ring extends Shape
-  constructor: (@args...) -> super()
-  glslBinding: ->
-    args: @args
-
-# export class Triangle extends Shape
-#   constructor: (@width, @height) -> super()
-#   render: (r) -> r.canvas.triangle @width, @height
-# export triangle = consAlias Triangle
-
-
-s = fragment_lib
-
-input = fragment_lib
-targets = new Set
-pfx     = 'sdf_'
-pfxLen  = pfx.length
-funcDef = /[a-zA-Z_][a-zA-Z_0-9]* +([a-zA-Z_][a-zA-Z_0-9]*) *\(/gm
-m = funcDef.exec input
-while m
-  s = m[1]
-  if s.startsWith pfx
-    targets.add snakeToCammelCase(s.substr(pfxLen))
-  m = funcDef.exec input
-
-console.log targets
-
-
-
-##############
-### Curves ###
-##############
-
-export class QuadraticCurve extends Shape
-  constructor: (@control,@destination) -> super()
-  render: (r) -> r.canvas.quadraticCurveTo(@control.x, @control.y, @destination.x, @destination.y)
-export quadraticCurve = consAlias QuadraticCurve
-
-export class Path extends Shape
-  constructor: (@segments) -> super(); @addChildren @segments...
-  render: (r) ->
-    rsegments = []
-    interiors = []
-    offset    = point 0,0
-
-    r.withNewTxCtx () =>
-      for curve in @segments
-        r.canvas.move offset.x, offset.y
-        rs       = r.renderShape curve
-        offset   = curve.destination
-        interior = "#{rs.name}_pathInterior"
-        r.canvas.addCodeLine "bool #{interior} = quadraticCurve_interiorCheck(p, vec2(#{curve.control.x},#{curve.control.y}), vec2(#{curve.destination.x},#{curve.destination.y}));"
-        rsegments.push rs
-        interiors.push interior
-
-    path = fold (r.canvas.union.bind r.canvas), rsegments
-    interiorCheckExpr = GLSL.callRec 'interiorChec_union', interiors
-    interior = "#{path.name}_pathInterior"
-
-    r.canvas.addCodeLine "bool #{interior} = #{interiorCheckExpr};"
-    shape = r.canvas.defShape_OLD "(#{interior}) ? (-#{path.name}) : (#{path.name})", "bbox_new(0.0, 0.0)"
-    shape
-export path = consAlias Path
-
-
-
-
-#foldl :: (a -> b -> a) -> a -> [b] -> a
-fold  = (f, bs) => foldl f, bs[0], bs.slice(1)
-foldl = (f, a, bs) =>
-  if bs.length == 0 then a
-  else foldl f, f(a,bs[0]), bs.slice(1)
+export circle    = bindShape 'circle'
+export plane     = bindShape 'plane'
+export rectangle = bindShape 'rectangle'
+export halfPlane = bindShape 'halfPlane', (dir=0) ->
+  switch dir
+    when 0             then {nameSuffix: 'top'}
+    when Math.PI * 0.5 then {nameSuffix: 'right'}
+    when Math.PI       then {nameSuffix: 'bottom'}
+    when Math.PI * 1.5 then {nameSuffix: 'left'}
+    else {}
 
 
 
@@ -463,45 +375,10 @@ foldl = (f, a, bs) =>
 ### Booleans ###
 ################
 
-export class Union extends Shape
-  constructor: (@shapes...) -> super(); @addChildren @shapes...
-  render: (r) ->
-    rs = r.renderShapes @shapes...
-    # fold (r.canvas.union.bind r.canvas), rs
-    # FIXME: use all rs!
-    r.canvas.defShape 'union', [rs[0], rs[1]], {keepID: true}
-    
-Shape::union = protoBindCons Union
-export union = consAlias Union
-
-export class Intersection extends Shape
-  constructor: (@shapes...) -> super(); @addChildren @shapes...
-  render: (r) ->
-    rs = r.renderShapes @shapes...
-    # FIXME: use all rs!
-    r.canvas.defShape 'intersection', [rs[0], rs[1]], {keepID: true}
-    # fold (r.canvas.intersection.bind r.canvas), rs
-Shape::intersection = protoBindCons Intersection
-export intersection = consAlias Intersection
-
-export class UnionRound extends Shape
-  constructor: (@radius, @shapes...) -> super(); @addChildren @shapes...
-  render: (r) ->
-    rs = r.renderShapes @shapes...
-    fold ((a,b) => (r.canvas.unionRound.bind r.canvas) @radius,a,b), rs
-export unionRound = consAlias UnionRound
-
-
-export class Difference extends Shape
-  constructor: (@a, @b) -> 
-    super()
-    @addChildren @a, @b
-  render: (r) ->
-    [a, b] = r.renderShapes @a, @b
-    r.canvas.defShape 'difference', [a, b], {keepID: true}
-    
-Shape::difference = protoBindCons Difference
-export difference = consAlias Difference
+export intersection = bindMethod 'intersection'
+export difference   = bindMethod 'difference'
+export union        = bindMethod 'overloaded_union'
+Shape::union = (args...) -> union @, args...
 
 
 
@@ -509,72 +386,33 @@ export difference = consAlias Difference
 ### SDF Modification ###
 ########################
 
-export class Grow extends Shape
-  constructor: (@a, @radius) -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    code =
-      convexHull: "offset += #{GLSL.toCode @radius};"
-    r.canvas.defShape 'grow', [a, @radius], {keepID: true, code}
-    
-Shape::grow = protoBindCons Grow
+export grow = bindMethod 'grow', (base, radius) ->
+  code: convexHull: "offset += #{GLSL.toCode radius};"
 Shape::shrink = (radius) -> @grow(-radius)
-export grow = consAlias Grow
-
-export class Inside extends Shape
-  constructor: (@a) -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    r.canvas.inside a
-Shape::inside = protoBindCons Inside
-export inside = consAlias Inside
 
 
-glslArgs = (args) -> (GLSL.toCode arg for arg in args).join(', ')
 
 ##################
 ### Transforms ###
 ##################
 
-export class Move extends Shape
-  constructor: (@a, @args...) -> 
-    super()
-    @addChildren @a
-  render: (r, cfg) ->
-    code      = cfg.code
-    tx        = "vec2(#{glslArgs @args})"
-    transform = (name) => "sdf_translate(#{name},#{tx})"
-    a = r.renderShape @a
-    r.canvas.defShape "", [a], {code, transform}
-Shape::move  = protoBindCons Move
+export move = bindMethod 'move', (base, args...) ->
+  transform: (name) => "sdf_translate(#{name},vec2(#{glslArgs args}))"
 Shape::moveX = (x) -> @move x,0
 Shape::moveY = (y) -> @move 0,y
-export move = consAlias Move
 
+export rotate = bindMethod 'rotate', (base, angle) ->
+  transform: (name) => "sdf_rotate(#{name}, -(#{GLSL.toCode angle}))"  
 
-export class Rotate extends Shape
-  constructor: (@a, @angle) -> super(); @addChildren @a
-  render: (r) ->
-    transform = (name) => "sdf_rotate(#{name}, -(#{GLSL.toCode @angle}))"    
-    a = r.renderShape @a
-    r.canvas.defShape "", [a], {transform}    
-Shape :: rotate = protoBindCons Rotate
-export rotate = consAlias Rotate
-
-
-export class Align extends Shape
-  constructor: (@a, @args...) -> 
-    super()
-    @addChildren @a
-  render: (r) ->
-    ref  = r.renderShape @a
-    args = glslArgs @args
-    code = 
-      [ "vec2 _dir = normalize(alignDir(#{args}));"
-      , "vec2 _tx  = -#{ref.name}_convex_hull(vec2(0.0), _dir, 0.0) * _dir;"
-      ]
-    r.renderShape @a.move("_tx"), {code}
-Shape::align   = protoBindCons Align
+export align = bindMethod 'align', (base, args...) ->
+  ref    = @renderer.renderShape base
+  args   = glslArgs args
+  output = base.move("_tx")
+  output.code = 
+    [ "vec2 _dir = normalize(alignDir(#{args}));"
+    , "vec2 _tx  = -#{ref.name}_convex_hull(vec2(0.0), _dir, 0.0).distance * _dir;"
+    ]
+  {output}
 Shape::alignT  = -> @align  0 ,  1
 Shape::alignB  = -> @align  0 , -1
 Shape::alignL  = -> @align -1 ,  0
@@ -583,7 +421,6 @@ Shape::alignTL = -> @alignT().alignL()
 Shape::alignTR = -> @alignT().alignR()
 Shape::alignBL = -> @alignB().alignL()
 Shape::alignBR = -> @alignB().alignR()
-export align = consAlias Align
 
 
 
@@ -607,13 +444,13 @@ export align = consAlias Align
 ### Filters ###
 ###############
 
-export class Blur extends Shape
-  constructor: (@a, @radius, @power=2.0) -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    r.canvas.blur a, @radius, @power
-Shape::blur = protoBindCons Blur
-export blur = consAlias Blur
+# export class Blur extends Shape
+#   constructor: (@a, @radius, @power=2.0) -> super(); @addChildren @a
+#   render: (r) ->
+#     a = r.renderShape @a
+#     r.canvas.blur a, @radius, @power
+# Shape::blur = protoBindCons Blur
+# export blur = consAlias Blur
 
 
 
@@ -621,44 +458,97 @@ export blur = consAlias Blur
 ### Color ###
 #############
 
-export class Fill extends Shape
-  constructor: (@a, @color) -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    c = @color
-    if c.a == undefined
-      c = c.copy()
-      c.a = 1
-    r.canvas.defShape 'fill', [a, c]
+export fill = bindMethod 'fill'
+# , (base, color) ->
+#   if color.a == undefined
+#     color = color.copy()
+#     color.a = 1
+#   return
+#     args: [base, color]
+
+# export class Fill extends Shape
+#   constructor: (@a, @color) -> super(); @addChildren @a
+#   render: (r) ->
+#     a = r.renderShape @a
+#     c = @color
+#     if c.a == undefined
+#       c = c.copy()
+#       c.a = 1
+#     r.canvas.defShape 'fill', [a, c]
     
-Shape::fill = protoBindCons Fill
-export fill = consAlias Fill
+# Shape::fill = protoBindCons Fill
+# Shape::fill = protoBindCons Fill
+# export fill = consAlias Fill
 
 
-export class FillGLSL extends Shape
-  constructor: (@a, @color) -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    r.canvas.fillGLSL a, @color
-Shape::fillGLSL = protoBindCons FillGLSL
-export fillGLSL = consAlias FillGLSL
-
-
-
-
+# export class FillGLSL extends Shape
+#   constructor: (@a, @color) -> super(); @addChildren @a
+#   render: (r) ->
+#     a = r.renderShape @a
+#     r.canvas.fillGLSL a, @color
+# Shape::fillGLSL = protoBindCons FillGLSL
+# export fillGLSL = consAlias FillGLSL
 
 
 
-export class CodeCtx extends Shape
-  constructor: (@a, @post=()->"") -> super(); @addChildren @a
-  render: (r) ->
-    a = r.renderShape @a
-    r.canvas.defShape_OLD (@post a)
 
-export class GLSLShape extends Shape
-  constructor: (@code) -> super()
-  render: (r) ->
-    r.canvas.glslShape @code
+
+##############
+### Curves ###
+##############
+
+    # export class QuadraticCurve extends Shape
+    #   constructor: (@control,@destination) -> super()
+    #   render: (r) -> r.canvas.quadraticCurveTo(@control.x, @control.y, @destination.x, @destination.y)
+    # export quadraticCurve = consAlias QuadraticCurve
+
+    # export class Path extends Shape
+    #   constructor: (@segments) -> super(); @addChildren @segments...
+    #   render: (r) ->
+    #     rsegments = []
+    #     interiors = []
+    #     offset    = point 0,0
+
+    #     r.withNewTxCtx () =>
+    #       for curve in @segments
+    #         r.canvas.move offset.x, offset.y
+    #         rs       = r.renderShape curve
+    #         offset   = curve.destination
+    #         interior = "#{rs.name}_pathInterior"
+    #         r.canvas.addCodeLine "bool #{interior} = quadraticCurve_interiorCheck(p, vec2(#{curve.control.x},#{curve.control.y}), vec2(#{curve.destination.x},#{curve.destination.y}));"
+    #         rsegments.push rs
+    #         interiors.push interior
+
+    #     path = fold (r.canvas.union.bind r.canvas), rsegments
+    #     interiorCheckExpr = GLSL.callRec 'interiorChec_union', interiors
+    #     interior = "#{path.name}_pathInterior"
+
+    #     r.canvas.addCodeLine "bool #{interior} = #{interiorCheckExpr};"
+    #     shape = r.canvas.defShape_OLD "(#{interior}) ? (-#{path.name}) : (#{path.name})", "bbox_new(0.0, 0.0)"
+    #     shape
+    # export path = consAlias Path
+
+
+
+
+#foldl :: (a -> b -> a) -> a -> [b] -> a
+fold  = (f, bs) => foldl f, bs[0], bs.slice(1)
+foldl = (f, a, bs) =>
+  if bs.length == 0 then a
+  else foldl f, f(a,bs[0]), bs.slice(1)
+
+
+
+# export class CodeCtx extends Shape
+#   constructor: (@a, @post=()->"") -> super(); @addChildren @a
+#   render: (r) ->
+#     a = r.renderShape @a
+#     r.canvas.defShape_OLD (@post a)
+
+# export class GLSLShape extends Shape
+#   constructor: (@code) -> super()
+#   render: (r) ->
+#     r.canvas.glslShape @code
 
 
 ### Smart Constructors ###
@@ -669,8 +559,8 @@ export class GLSLShape extends Shape
 
 ### ... ###
 # export grow          = consAlias Grow
-export codeCtx       = consAlias CodeCtx
-export glslShape     = consAlias GLSLShape
+# export codeCtx       = consAlias CodeCtx
+# export glslShape     = consAlias GLSLShape
 
 
 
@@ -690,8 +580,8 @@ export glslShape     = consAlias GLSLShape
 
 
 # Shape::alignTL = (args...) -> alignTL @, args...
-Shape::inside  = (args...) -> inside @, args...
-Shape.getter 'inside', -> inside @
+# Shape::inside  = (args...) -> inside @, args...
+# Shape.getter 'inside', -> inside @
 # Shape.getter 'alignedTL', -> alignTL @
 # Shape.getter 'alignedTR', -> alignTR @
 # Shape.getter 'alignedBL', -> alignBL @
@@ -701,6 +591,10 @@ Shape.getter 'inside', -> inside @
 # Shape.getter 'alignedT' , -> alignT @
 # Shape.getter 'alignedB' , -> alignB @
 
+
+# Shape::sub = (args...) -> @.difference args...
+# Shape::add = (args...) -> @.union args...
+# Shape::mul = (args...) -> @.intersection args...
 
 Shape::sub = (args...) -> @.difference args...
 Shape::add = (args...) -> @.union args...
@@ -750,10 +644,10 @@ export class GLSLRenderer
 
   render: (s) ->
     shape    = @renderShape(s)
-    # defsCode = 'sdf_symbol _main(vec2 p) {\n' + @canvas.code() + "\nreturn sdf_symbol(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
+    # defsCode = 'shape _main(vec2 p) {\n' + @canvas.code() + "\nreturn shape(#{shape.distance}, #{shape.density}, #{shape.id}, #{shape.bbox}, #{shape.color});\n}"
     defsCode = @canvas.code()
-    # defsCode = defsCode + '\n\nfff\n' + 'sdf_symbol _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
-    defsCode = defsCode + '\n\n\n' + 'sdf_symbol _main(vec2 origin) {\n' + "return f_#{shape.name}(origin);\n}"
+    # defsCode = defsCode + '\n\nfff\n' + 'shape _main(vec2 origin) {\n' + @canvas.code() + "\nreturn #{shape.name};\n}"
+    defsCode = defsCode + '\n\n\n' + 'shape _main(vec2 origin) {\n' + "return f_#{shape.name}(origin);\n}"
     # new ShaderBuilder (new SDFShader {fragment: defsCode}), @idmap
     {fragment: defsCode}
 
@@ -810,9 +704,10 @@ export class SDFShader extends Shader
     @fragment = cfg.fragment
 
   genFragmentCode: () ->
-    def  = @fragment.replace (/^sdf_symbol\s+main/m), 'sdf_symbol _main'
+    def  = @fragment.replace (/^shape\s+main/m), 'shape _main'
     code = [def, fragmentRunner].join '\n'
     code
 
 
+# Shape::toShader = () -> (new GLSLRenderer).render @
 Shape::toShader = () -> (new GLSLRenderer).render @
