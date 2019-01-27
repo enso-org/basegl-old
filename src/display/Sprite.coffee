@@ -457,12 +457,140 @@ fragment_lib2 = fragment_lib.replace anyVar, (v) =>
   vv = v.slice(0,-1).trim()
   if builtinsMap.has vv then "overloaded_#{v}" else v
 
-
+# TODO: why its working? anyVar matches paren on the end!
 allowOverloading = (src) -> 
   src2 = src.replace anyVar, (v) =>
     vv = v.slice(0,-1).trim()
     if builtinsMap.has vv then "overloaded_#{v}" else v
   redirections.code + '\n' + src2
+
+
+anyMacro = /^#define(.*\\\s*$\n)*.*/gm
+macroFunctionHeader = /(^#define\s+)([a-zA-Z0-9_]+)(\(.*)/m
+
+insertAt = (str,ix,nstr) ->
+  return str.slice(0,ix) + nstr + str.slice(ix)
+
+replaceAt = (str,ix,len,nstr) ->
+  return str.slice(0,ix) + nstr + str.slice(ix+len)
+
+
+genArgs = (num) ->
+  args = []
+  for i in [0 ... num]
+    args.push "ARG#{i}"
+  args
+
+macroMarkLen = (macro, src, argsNum) ->
+  insertAt src, macro.headerPfx.length+macro.headerName.length, "_#{argsNum}"
+  
+anyVar2 = /([a-zA-Z_])[a-zA-Z_0-9]*/gm
+applyArityToBodyCalls = (macros, src) -> 
+  matches = matchAll(anyVar2, src).reverse()
+  for match in matches
+    name = match[0]
+    tgt  = macros.get name
+    if tgt?
+      {args,argsLen} = discoverArgs(src, match.index + name.length)
+      src  = insertAt src, (match.index + name.length), "_#{args.length}"
+      # console.log "!!!", name, 
+  # console.log "!!", matches
+  src
+
+
+matchAll = (regex, s) ->
+  matches = []
+  while match = regex.exec s
+    matches.push match
+  matches
+
+allowMacroVarArgs = (src) ->
+  macros  = new Map
+  matches = matchAll anyMacro, src
+  for match in matches
+    body   = match[0]
+    index  = match.index
+    header = macroFunctionHeader.exec body
+    if header
+      headerPfx      = header[1]
+      headerName     = header[2]
+      headerSfx      = header[3]
+      {args,argsLen} = discoverArgs headerSfx
+      headerArgs     = headerSfx.slice(0, argsLen)
+      headerSfx      = headerSfx.slice(argsLen)
+      lastArg        = args[args.length-1]
+      isVarArg       = lastArg == '...'
+      if isVarArg
+        args = args.slice(0,args.length-1)
+      macros.set headerName, {body, index, isVarArg, args, headerPfx, headerName, headerArgs, headerSfx}
+
+  macrosArray = Array.from(macros.values()).reverse()
+
+  tgt = src
+  for macro in macrosArray
+    if macro.isVarArg
+      newSrc = ''
+      for i in [0..4] by 1
+        newArgs     = genArgs(i)
+        newArgsBody = newArgs.join ','
+        newArgsBody2 = newArgsBody
+        if newArgsBody != ''
+          newArgsBody2 = ',' + newArgsBody
+        args        = macro.args.concat newArgs
+        argsNum     = args.length
+        argsBody    = args.join(',')
+        argsCall    = "(#{argsBody})"
+        argsPos     = macro.headerPfx.length + macro.headerName.length
+        argsLen     = macro.headerArgs.length
+        specStr     = replaceAt macro.body, argsPos, argsLen, argsCall
+        specStr     = macroMarkLen macro, specStr, argsNum
+        specStr     = specStr.replace /,\s*\.\.\./gm, newArgsBody2
+        specStr     = specStr.replace /\.\.\./gm, newArgsBody
+        specStr     = applyArityToBodyCalls macros, specStr
+        newSrc     += specStr + '\n\n'
+
+      tgt = replaceAt tgt, macro.index, macro.body.length, newSrc
+    else
+      argsNum = macro.args.length 
+      newSrc  = macro.body
+      newSrc  = macroMarkLen macro, newSrc, argsNum
+      newSrc  = applyArityToBodyCalls macros, newSrc
+      newSrc += '\n'
+      tgt     = insertAt tgt, macro.index, newSrc
+  # console.log tgt
+  tgt
+
+
+
+discoverArgs = (str, offset=0) ->
+  args  = []
+  depth = 0
+  start = offset
+  end   = start
+  submitArg = -> 
+    start += 1
+    if start != end
+      arg = str.slice(start,end).trim()
+      args.push arg
+      start = end
+  for end in [offset ... str.length] by 1
+    char = str[end]
+    if char == '('
+      depth += 1
+    else if char == ')'
+      depth -= 1
+      if depth == 0 
+        submitArg()
+        end += 1
+        break
+    else if char == ',' && depth == 1
+      submitArg()
+    else if depth == 0
+      return null
+  argsLen = end-offset
+  {args, argsLen}
+      
+
 
 
 spriteBasciMaterialVertexShader = '''
@@ -549,9 +677,8 @@ export class SpriteSystem extends DisplayObject
       @dirty.unset()
 
 
+fragment_lib2 = allowMacroVarArgs(allowOverloading(fragment_lib))
 
-
-fragment_lib2 = allowOverloading fragment_lib
 
 symbolBasicMaterialFragmentShader = (shapeShader) ->
   [fragment_lib2, shapeShader, fragmentRunner].join '\n'

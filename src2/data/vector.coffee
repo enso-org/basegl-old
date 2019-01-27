@@ -202,7 +202,7 @@ class NumberBase
   @generateAccessors()
   constructor : (@_array) -> 
   @default: -> @from 0
-  @from : (a) -> 
+  @from : (a) ->
     if a.constructor == Number
       array = new @bufferType [a]
       new @ array
@@ -475,12 +475,17 @@ export uimat4 = gl class UIMat4 extends Mat4Base
 
 export value = (a) ->
   switch a.constructor
-    when Number then new Float a
+    when Number then float a
     else a
 
 export type = (a) -> 
   switch a.constructor
-    when Number   then Float
+    when Number then Float
     else a.type
 
 export toGLSL = (a) -> value(a).toGLSL()
+
+
+
+
+

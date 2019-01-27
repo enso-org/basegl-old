@@ -1,5 +1,44 @@
 
 
+////////////////////////////////////////////////////////////////////////////////
+// Macro Builders///////////// /////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define SHAPE_TRANS(NAME,F) shape NAME (sdf_sampler2 origin) {F}
+#define CONVEX_HULL_TRANS(NAME,F) hull NAME (sdf_sampler2 origin, ray2 ray) {F} 
+#define SHAPE(NAME,...) NAME(origin,...)
+#define CONVEX_HULL(NAME,...) NAME(origin,ray,...)
+
+
+#define PRIM(NAME,TARGET,...)                                                  \
+SHAPE_TRANS(TARGET,                                                            \
+  sdf _sdf = SHAPE(NAME,...);                                                  \
+  return new(_sdf);)                                                           \
+CONVEX_HULL_TRANS(TARGET,                                                      \
+  ray.direction = ray.direction - origin.position;                                                  \
+  hull result = NAME(ray,...);                                          \
+  result.distance -= dot(ray.direction,origin.position);                                      \
+  return result;)
+
+
+#define SIMPLE_MODIFIER1(NAME,TARGET,A,...)                                    \
+SHAPE_TRANS(TARGET, return NAME(SHAPE(A),...);)                                \
+CONVEX_HULL_TRANS(TARGET, return NAME(CONVEX_HULL(A),...);)     
+
+#define SIMPLE_MODIFIER2(NAME,TARGET,A,B,...)                                  \
+SHAPE_TRANS(TARGET, return NAME(SHAPE(A),SHAPE(B),...);)                       \
+CONVEX_HULL_TRANS(TARGET, return NAME(CONVEX_HULL(A),CONVEX_HULL(B),...);)     
+
+#define SIMPLE_SHAPE_MODIFIER1(NAME,TARGET,A,...)                              \
+SHAPE_TRANS(TARGET, return NAME(SHAPE(A),...);)                                \
+CONVEX_HULL_TRANS(TARGET, return CONVEX_HULL(A);)
+
+#define SIMPLE_SHAPE_MODIFIER2(NAME,TARGET,A,B,...)                            \
+SHAPE_TRANS(TARGET, return NAME(SHAPE(A),SHAPE(B),...);)                       \
+CONVEX_HULL_TRANS(TARGET, return CONVEX_HULL(A);)
+
+
+
 // float mix (float a, float b, float w1, float w2) {
 //     return (a * w1 + b * w2) / (w1 + w2);
 // }
@@ -160,18 +199,88 @@ float sdf_blur (float d, float radius, float power) {
 
 
 
-/////////////////////////////////
-////// 2D Primitive shapes //////
-/////////////////////////////////
-
+////////////////////////////////////////////////////////////////////////////////
+// Signed Distance Field ///////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 struct sdf {
   float distance;
 };
 
-struct convex_hull {
+struct sdf_sampler2 {
+  vec2 position;
+};
+
+float length (sdf_sampler2 sampler) {
+  return length(sampler.position);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Vector Distance Field 2D ////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+struct vdf2 {
+  vec2 distance;
+};
+
+struct vdf_sampler2 {
+  vec2 position;
+};
+
+float length (vdf_sampler2 sampler) {
+  return length(sampler.position);
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Vector Distance Field 3D ////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+struct vdf3 {
+  vec3 distance;
+};
+
+struct vdf_sampler3 {
+  vec3 position;
+};
+
+float length (vdf_sampler3 sampler) {
+  return length(sampler.position);
+}
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Convex Hulls ////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+struct hull {
   float distance;
 };
+
+struct ray2 {
+  vec2  direction;
+  float offset;
+};
+
+struct ray3 {
+  vec3  direction;
+  float offset;
+};
+
+
+
+
+
 
 
 
@@ -180,7 +289,10 @@ struct convex_hull {
 //////////////////////
 
 
+
 ////// Inverse //////
+
+
 
 sdf inverse (sdf s) {
     s.distance *= -1.0;
@@ -309,14 +421,15 @@ sdf grow (sdf s, float size) {
 
 ////// Plane //////
 
-convex_hull plane_convex_hull (vec2 dir, float offset) {
-    return convex_hull(0.0);
+hull plane (ray2 ray) {
+    return hull(0.0);
 }
 
-sdf plane (vec2 p) {
+sdf plane (sdf_sampler2 p) {
     return sdf(-1.0);
 }
 
+// vdf2 plane (sdf_sampler2 p)
 
 
 ////// Pie //////
@@ -339,9 +452,9 @@ sdf half_plane_top    (vec2 p) {return sdf(-p.y);}
 sdf half_plane_bottom (vec2 p) {return sdf( p.y);}
 sdf half_plane        (vec2 p) {return half_plane_top(p);}
 
-sdf half_plane(vec2 p, vec2 dir) {
-  float dx = -dir.x;
-  float dy = -dir.y;
+sdf half_plane(vec2 p, vec2 direction) {
+  float dx = -direction.x;
+  float dy = -direction.y;
   float dist = (dx * p.x + dy * p.y) / sqrt(dx*dx + dy*dy);
   return sdf(dist);
 }
@@ -353,8 +466,8 @@ sdf half_plane (vec2 p, float angle) {
 
 ////// Half Plane Fast //////
 
-sdf half_plane_fast(vec2 p, vec2 dir) {
-  float dist = dir.x * p.x + dir.y * p.y;
+sdf half_plane_fast(vec2 p, vec2 direction) {
+  float dist = direction.x * p.x + direction.y * p.y;
   return sdf(dist);
 }
 
@@ -371,14 +484,14 @@ sdf half_plane_fast(vec2 p) {
 ////// Rectangle //////
 
 
-convex_hull rectangle_convex_hull(vec2 dir, float offset, vec2 size) {
+hull rectangle(ray2 ray, vec2 size) {
     vec2  pt   = size / 2.0;
-    vec2  adir = abs(dir);
+    vec2  adir = abs(ray.direction);
     float dist = dot(adir,pt);
-    if (offset < 0.0) {
-        offset *= mix(sqrt(2.0), 1.0, cos(atan(adir.x/adir.y))); // FIXME
+    if (ray.offset < 0.0) {
+        ray.offset *= mix(sqrt(2.0), 1.0, cos(atan(adir.x/adir.y))); // FIXME
     }
-    return convex_hull(dist + offset); 
+    return hull(dist + ray.offset); 
 }
 
 sdf rectangle_sharp(vec2 p, vec2 size) {
@@ -387,90 +500,90 @@ sdf rectangle_sharp(vec2 p, vec2 size) {
     return sdf(dist);
 }
 
-sdf rectangle (vec2 p, vec2 size) {
+sdf rectangle (sdf_sampler2 sampler, vec2 size) {
   size       = size / 2.0;
-  vec2  d    = abs(p) - size;
+  vec2  d    = abs(sampler.position) - size;
   float dist = maxEl(min(d, 0.0)) + length(max(d, 0.0));
   return sdf(dist);
 }
 
-sdf rectangle (vec2 p, vec2 size, vec4 corners) {
-  float tl = corners[0];
-  float tr = corners[1];
-  float br = corners[2];
-  float bl = corners[3];
+// sdf rectangle (vec2 p, vec2 size, vec4 corners) {
+//   float tl = corners[0];
+//   float tr = corners[1];
+//   float br = corners[2];
+//   float bl = corners[3];
 
-  size /= 2.0;
-  float dist;
+//   size /= 2.0;
+//   float dist;
 
-       if (p.x <  - size.x + tl && p.y >   size.y - tl ) { dist = length (p - vec2(- size.x + tl,   size.y - tl)) - tl; }
-  else if (p.x >    size.x - tr && p.y >   size.y - tr ) { dist = length (p - vec2(  size.x - tr,   size.y - tr)) - tr; }
-  else if (p.x <  - size.x + bl && p.y < - size.y + bl ) { dist = length (p - vec2(- size.x + bl, - size.y + bl)) - bl; }
-  else if (p.x >    size.x - br && p.y < - size.y + br ) { dist = length (p - vec2(  size.x - br, - size.y + br)) - br; }
-  else {
-    vec2 d = abs(p) - size;
-    dist = min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
-  }
-  return sdf(dist);
+//        if (p.x <  - size.x + tl && p.y >   size.y - tl ) { dist = length (p - vec2(- size.x + tl,   size.y - tl)) - tl; }
+//   else if (p.x >    size.x - tr && p.y >   size.y - tr ) { dist = length (p - vec2(  size.x - tr,   size.y - tr)) - tr; }
+//   else if (p.x <  - size.x + bl && p.y < - size.y + bl ) { dist = length (p - vec2(- size.x + bl, - size.y + bl)) - bl; }
+//   else if (p.x >    size.x - br && p.y < - size.y + br ) { dist = length (p - vec2(  size.x - br, - size.y + br)) - br; }
+//   else {
+//     vec2 d = abs(p) - size;
+//     dist = min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+//   }
+//   return sdf(dist);
+// }
+
+// sdf rectangle (vec2 p, vec2 size, vec3 r) {
+//   return rectangle(p, size, vec4(r.x,r.y,r.z,r.y));
+// }
+
+// sdf rectangle (vec2 p, vec2 size, vec2 r) {
+//   return rectangle(p, size, vec4(r.x,r.y,r.x,r.y));
+// }
+
+// sdf rectangle (vec2 p, vec2 size, float r1, float r2, float r3, float r4) {
+//   return rectangle(p, size, vec4(r1,r2,r3,r4));
+// }
+
+// sdf rectangle (vec2 p, vec2 size, float r1, float r2, float r3) {
+//   return rectangle(p, size, vec3(r1,r2,r3));
+// }
+
+// sdf rectangle (vec2 p, vec2 size, float r1, float r2) {
+//   return rectangle(p, size, vec2(r1,r2));
+// }
+
+// sdf rectangle (vec2 p, vec2 size, float r) {
+//   return grow(rectangle(p, size-2.0*r), r);
+// }
+
+// sdf rectangle (vec2 p) {
+//   return rectangle(p, vec2(10.0,10.0));
+// }
+
+// sdf rectangle (vec2 p, float w, float h, float r1, float r2, float r3, float r4) {
+//     return rectangle(p, vec2(w,h), r1, r2, r3, r4);
+// }
+
+// sdf rectangle (vec2 p, float w, float h, float r1, float r2, float r3) {
+//     return rectangle(p, vec2(w,h), r1, r2, r3);
+// }
+
+// sdf rectangle (vec2 p, float w, float h, float r1, float r2) {
+//     return rectangle(p, vec2(w,h), r1, r2);
+// }
+
+// sdf rectangle (vec2 p, float w, float h, float r1) {
+//     return rectangle(p, vec2(w,h), r1);
+// }
+
+hull rectangle (ray2 ray, float w, float h) {
+    return rectangle(ray, vec2(w,h));
+}
+sdf rectangle (sdf_sampler2 sampler, float w, float h) {
+    return rectangle(sampler, vec2(w,h));
 }
 
-sdf rectangle (vec2 p, vec2 size, vec3 r) {
-  return rectangle(p, size, vec4(r.x,r.y,r.z,r.y));
-}
-
-sdf rectangle (vec2 p, vec2 size, vec2 r) {
-  return rectangle(p, size, vec4(r.x,r.y,r.x,r.y));
-}
-
-sdf rectangle (vec2 p, vec2 size, float r1, float r2, float r3, float r4) {
-  return rectangle(p, size, vec4(r1,r2,r3,r4));
-}
-
-sdf rectangle (vec2 p, vec2 size, float r1, float r2, float r3) {
-  return rectangle(p, size, vec3(r1,r2,r3));
-}
-
-sdf rectangle (vec2 p, vec2 size, float r1, float r2) {
-  return rectangle(p, size, vec2(r1,r2));
-}
-
-sdf rectangle (vec2 p, vec2 size, float r) {
-  return grow(rectangle(p, size-2.0*r), r);
-}
-
-sdf rectangle (vec2 p) {
-  return rectangle(p, vec2(10.0,10.0));
-}
-
-sdf rectangle (vec2 p, float w, float h, float r1, float r2, float r3, float r4) {
-    return rectangle(p, vec2(w,h), r1, r2, r3, r4);
-}
-
-sdf rectangle (vec2 p, float w, float h, float r1, float r2, float r3) {
-    return rectangle(p, vec2(w,h), r1, r2, r3);
-}
-
-sdf rectangle (vec2 p, float w, float h, float r1, float r2) {
-    return rectangle(p, vec2(w,h), r1, r2);
-}
-
-sdf rectangle (vec2 p, float w, float h, float r1) {
-    return rectangle(p, vec2(w,h), r1);
-}
-
-convex_hull rectangle_convex_hull (vec2 dir, float offset, float w, float h) {
-    return rectangle_convex_hull(dir, offset, vec2(w,h));
-}
-sdf rectangle (vec2 p, float w, float h) {
-    return rectangle(p, vec2(w,h));
-}
-
-convex_hull rectangle_convex_hull (vec2 dir, float offset, float w) {
-    return rectangle_convex_hull(dir, offset, vec2(w,w));
-}
-sdf rectangle (vec2 p, float w) {
-    return rectangle(p, vec2(w,w));
-}
+// hull rectangle (ray2 ray, float w) {
+//     return rectangle(ray, vec2(w,w));
+// }
+// sdf rectangle (vec2 p, float w) {
+//     return rectangle(p, vec2(w,w));
+// }
 
 
 
@@ -495,69 +608,76 @@ sdf triangle (vec2 p) {
 
 
 ////// Circle ///////
+#define CIRCLE(...) PRIM(circle,...) 
 
-convex_hull circle_convex_hull(vec2 dir, float offset, float radius) {
-    return convex_hull(radius + offset); 
-}
-sdf circle (vec2 p, float radius) {
-    return sdf(length(p) - radius);
+hull circle(ray2 ray, float radius) {
+    return hull(radius + ray.offset); 
 }
 
-sdf circle (vec2 p, float radius, float angle) {
-  return intersection(circle(p,radius), pie(p,angle));
+// vdf2 circle (vdf_sampler2 sampler, float radius) {
+//     return vdf2(length(sampler) - radius);
+// }
+
+sdf circle (sdf_sampler2 sampler, float radius) {
+    return sdf(length(sampler) - radius);
 }
 
-sdf circle (vec2 p) {
-    return circle(p, 10.0);
-}
+// sdf circle (sdf_sampler2 sampler, float radius, float angle) {
+//   return intersection(circle(sampler,radius), pie(sampler,angle));
+// }
+
+// sdf circle (sdf_sampler2 sampler) {
+//     return circle(sampler, 10.0);
+// }
 
 
 
-////// Ellipse //////
 
-sdf ellipse (vec2 p, float r1, float r2)
-{
-    vec2  r    = vec2(r1,r2);
-    float k0   = length(p/r);
-    float k1   = length(p/(r*r));
-    float dist = k0*(k0-1.0)/k1;
-    return sdf(dist);
-}
+// ////// Ellipse //////
 
-sdf ellipse (vec2 p, float r) {
-    return circle(p, r);
-}
+// sdf ellipse (vec2 p, float r1, float r2)
+// {
+//     vec2  r    = vec2(r1,r2);
+//     float k0   = length(p/r);
+//     float k1   = length(p/(r*r));
+//     float dist = k0*(k0-1.0)/k1;
+//     return sdf(dist);
+// }
+
+// sdf ellipse (vec2 p, float r) {
+//     return circle(p, r);
+// }
 
 
-////// Ring //////
+// ////// Ring //////
 
-sdf ring(vec2 p, float radius, float width) {
-  width  /= 2.0;
-  radius -= width;
-  sdf s = circle(p,radius);
-  s.distance = abs(s.distance) - width;
-  return s;
-}
+// sdf ring(vec2 p, float radius, float width) {
+//   width  /= 2.0;
+//   radius -= width;
+//   sdf s = circle(p,radius);
+//   s.distance = abs(s.distance) - width;
+//   return s;
+// }
 
-sdf ring(vec2 p, float radius, float width, float angle) {
-   return intersection(ring(p,radius,width), pie(p,angle));
-}
+// sdf ring(vec2 p, float radius, float width, float angle) {
+//    return intersection(ring(p,radius,width), pie(p,angle));
+// }
 
-sdf ring(vec2 p, float radius) {
-   return ring(p, radius, 0.0);
-}
+// sdf ring(vec2 p, float radius) {
+//    return ring(p, radius, 0.0);
+// }
 
-sdf ring(vec2 p) {
-   return ring(p, 10.0);
-}
+// sdf ring(vec2 p) {
+//    return ring(p, 10.0);
+// }
 
 
 
 ////// Line //////
 
-sdf line(vec2 p, vec2 dir, float width) {
-  float len  = length(dir);
-  vec2  n    = dir / len;
+sdf line(vec2 p, vec2 direction, float width) {
+  float len  = length(direction);
+  vec2  n    = direction / len;
   vec2  proj = max(0.0, min(len, dot(p,n))) * n;
   float dist = length(p-proj) - (width/2.0);
   return sdf(dist);
@@ -705,8 +825,8 @@ bool interiorChec_union(bool c1, bool c2) {
 
 
 
-vec2 sdf_repeat (vec2 p, vec2 dir) {
-    return mod(p,dir);
+vec2 sdf_repeat (vec2 p, vec2 direction) {
+    return mod(p,direction);
 }
 
 
@@ -1044,29 +1164,144 @@ shape intersection (shape s1, shape s2) {
 }
 
 
-convex_hull fill (convex_hull a, vec4 newColor) {
-  return a;
-}
-
-convex_hull union (convex_hull a, convex_hull b) {
-  return convex_hull(max(a.distance,b.distance));
-}
-
-convex_hull difference (convex_hull a, convex_hull b) {
-  return a;
-}
-
-convex_hull grow (convex_hull a, float w) {
-  return a;
-}
-
-
-
-// convex_hull grow ($f, vec2 origin, vec2 dir, float offset) {
-//     offset += radius;
-//     return grow($f(origin,dir,offset), radius);
+// hull fill (hull a, vec4 newColor) {
+//   return a;
 // }
 
+hull union (hull a, hull b) {
+  return hull(max(a.distance,b.distance));
+}
+
+
+// hull grow ($f, vec2 origin, vec2 direction, float offset) {
+//     offset += radius;
+//     return grow($f(origin,direction,offset), radius);
+// }
+// ray2
+// #define CONVEX_HULL_TRANS(NAME,F) hull NAME (vec2 origin, vec2 direction, float offset) {F} 
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Primitive Shapes Generators /////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define RECTANGLE(...) PRIM(rectangle,...) 
+#define PLANE(...)     PRIM(plane,...)
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Shapes Transforms ///////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define MOVE(TARGET,SOURCE,...)                                                \
+SHAPE_TRANS(TARGET, MOVE_SHAPE(SOURCE,...))                                    \
+CONVEX_HULL_TRANS(TARGET, MOVE_CONVEX_HULL(SOURCE,...))                           
+#define MOVE_SHAPE(SOURCE,...)                                                 \
+  vec2 tx = vec2(...);                                                         \
+  origin = sdf_translate(origin,tx);                                           \
+  return SHAPE(SOURCE);                                                   
+#define MOVE_CONVEX_HULL(SOURCE,...)                                           \
+  vec2 tx = vec2(...);                                                         \
+  origin  = sdf_translate(origin,tx);                                          \
+  ray.direction = sdf_translate(ray.direction,tx);                                         \
+  return CONVEX_HULL(SOURCE);                                             
+
+#define ROTATE(TARGET,SOURCE,ANGLE)                                            \
+SHAPE_TRANS(TARGET,                                                            \
+  origin = sdf_rotate(origin,ANGLE);                                           \
+  return SHAPE(SOURCE);)                                                                              \
+CONVEX_HULL_TRANS(TARGET,                                                      \
+  origin = sdf_rotate(origin,ANGLE);                                           \
+  ray.direction = sdf_rotate(ray.direction,ANGLE);                                         \
+  return CONVEX_HULL(SOURCE);)
+
+#define ALIGN(TARGET,SOURCE,...)                                               \
+SHAPE_TRANS(TARGET, ALIGN_SHAPE(SOURCE,...))                                   \
+CONVEX_HULL_TRANS(TARGET, ALIGN_CONVEX_HULL_1(SOURCE,...))
+#define ALIGN_COMMON(SOURCE,...)                                               \
+  vec2 _dir            = normalize(alignDir(...));                             \
+  ray2 _ray = ray2(_dir, 0.0);                           \
+  vec2 _tx             = -SOURCE(vec2(0.0), _ray).distance * _dir;
+#define ALIGN_SHAPE(SOURCE,...)                                                \
+  ALIGN_COMMON(SOURCE,...)                                                     \
+  MOVE_SHAPE(SOURCE,_tx)
+#define ALIGN_CONVEX_HULL(SOURCE,...)                                          \
+  ALIGN_COMMON(SOURCE,...)                                                     \
+  MOVE_CONVEX_HULL(SOURCE,_tx)
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Shapes Modifiers ////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define DIFFERENCE(...)   SIMPLE_SHAPE_MODIFIER2(difference,...)
+#define INTERSECTION(...) SIMPLE_MODIFIER2(intersection,...)
+#define FILL(...)         SIMPLE_SHAPE_MODIFIER1(fill,...)
+#define UNION(...)        SIMPLE_MODIFIER2(overloaded_union,...)
+
+#define GROW(TARGET,SOURCE,RADIUS)                                             \
+SHAPE_TRANS(TARGET, return grow(SHAPE(SOURCE),RADIUS);)                        \
+CONVEX_HULL_TRANS(TARGET, ray.offset += RADIUS; return CONVEX_HULL(SOURCE);)
+
+
+
+
+
+// #define GROW_DEF(TARGET,SOURCE,...)                                            \
+// SHAPE_TRANS(TARGET,                                                              \
+//   return grow(SHAPE(SOURCE),...);                                         \
+// )                                                                              \
+// CONVEX_HULL_TRANS(TARGET,                                                        \
+//   offset += ...;                                                               \
+//   return grow(CONVEX_HULL(SOURCE),...);                                   \
+// )
+
+
+// #define MOVE_SHAPE(SOURCE,...)                                                 \
+//   vec2 tx = vec2(...);                                                         \
+//   origin  = sdf_translate(origin,tx);                                          \
+//   return SHAPE(SOURCE);                                                   \
+
+// #define MOVE_CONVEX_HULL(SOURCE,...)                                           \
+//   vec2 tx = vec2(...);                                                         \
+//   origin  = sdf_translate(origin,tx);                                          \
+//   direction     = sdf_translate(direction,tx);                                             \
+//   return CONVEX_HULL(SOURCE);                                             \
+
+// #define MOVE_DEF(TARGET,SOURCE,...)                                            \
+// SHAPE_TRANS(TARGET, MOVE_SHAPE(SOURCE,...))                                      \
+// CONVEX_HULL_TRANS(TARGET, MOVE_CONVEX_HULL(SOURCE,...))                           
+
+
+
+// #define ALIGN_COMMON(SOURCE,...)                                               \
+//   vec2 _dir = normalize(alignDir(...));                                        \
+//   vec2 _tx  = -SOURCE(vec2(0.0), _dir, 0.0).distance * _dir;                   
+
+// #define ALIGN_SHAPE(SOURCE,...)                                                \
+//   ALIGN_COMMON(SOURCE...)                                                      \
+//   MOVE_SHAPE_1(SOURCE,_tx)
+
+// #define ALIGN_CONVEX_HULL(SOURCE,...)                                          \
+//   ALIGN_COMMON(SOURCE...)                                                      \
+//   MOVE_CONVEX_HULL_1(SOURCE,_tx)
+
+// #define ALIGN_DEF(TARGET,SOURCE,...)                                           \
+// SHAPE_TRANS(TARGET, ALIGN_SHAPE(SOURCE,...))                                     \
+// CONVEX_HULL_TRANS(TARGET, ALIGN_CONVEX_HULL(SOURCE,...))
+
+
+
+
+
+
+// growXX(shape_3,shape_2,11.0);
 
 vec2 alignDir (vec2 a) {
     return a;

@@ -7,7 +7,7 @@ int pointerEvents2 = 1;
 
 void main() {
   vec2      p     = local.xy ;
-  shape     sss   = _main(p);
+  shape     sss   = _main(sdf_sampler2(p));
   int       sid   = sss.id;
   float     alpha = sdf_render(sss.sdf.distance);
 
