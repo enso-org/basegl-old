@@ -1,13 +1,13 @@
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// Macro Builders///////////// /////////////////////////////////////////////////
+// Macro Builders //////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
 #define SHAPE_TRANS(NAME,F) shape NAME (sdf_sampler2 origin) {F}
-#define CONVEX_HULL_TRANS(NAME,F) hull NAME (sdf_sampler2 origin, ray2 ray) {F} 
+#define CONVEX_HULL_TRANS(NAME,F) hull NAME (fixed_ray2 ray) {F} 
 #define SHAPE(NAME,...) NAME(origin,...)
-#define CONVEX_HULL(NAME,...) NAME(origin,ray,...)
+#define CONVEX_HULL(NAME,...) NAME(ray,...)
 
 
 #define PRIM(NAME,TARGET,...)                                                  \
@@ -15,9 +15,9 @@ SHAPE_TRANS(TARGET,                                                            \
   sdf _sdf = SHAPE(NAME,...);                                                  \
   return new(_sdf);)                                                           \
 CONVEX_HULL_TRANS(TARGET,                                                      \
-  ray.direction = ray.direction - origin.position;                                                  \
-  hull result = NAME(ray,...);                                          \
-  result.distance -= dot(ray.direction,origin.position);                                      \
+  ray2 free_ray = ray2(ray.direction - ray.position, ray.offset);              \
+  hull result = NAME(free_ray,...);                                            \
+  result.distance -= dot(ray.direction,ray.position);                          \
   return result;)
 
 
@@ -278,6 +278,11 @@ struct ray3 {
 };
 
 
+struct fixed_ray2 {
+    vec2  position;
+    vec2  direction;
+    float offset;
+};
 
 
 
@@ -1235,6 +1240,16 @@ CONVEX_HULL_TRANS(TARGET, ALIGN_CONVEX_HULL_1(SOURCE,...))
   ALIGN_COMMON(SOURCE,...)                                                     \
   MOVE_CONVEX_HULL(SOURCE,_tx)
 
+
+// #define MOVE_SH(F)\
+//   vec2 
+
+
+// #define SHAPE_TRANS(NAME,F) shape NAME (sdf_sampler2 origin) {F}
+// #define CONVEX_HULL_TRANS(NAME,F) hull NAME (fixed_ray2 ray) {F} 
+
+
+vec2 foo[100];
 
 ////////////////////////////////////////////////////////////////////////////////
 // Shapes Modifiers ////////////////////////////////////////////////////////////
