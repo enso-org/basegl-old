@@ -1,9 +1,9 @@
 import * as Buffer from 'basegl/data/buffer'
 import * as Config from 'basegl/object/config'
 import * as Lazy   from 'basegl/object/lazy'
-import * as Pool   from 'basegl/data/pool'
 import * as GL     from 'basegl/lib/webgl/utils'
 import * as Type   from 'basegl/data/vector'
+import {Pool}   from 'basegl/data/pool'
 
 
 
@@ -261,7 +261,7 @@ export class AttributeScope extends Lazy.LazyManager
   @getter 'length' , -> @_indexPool.dirtySize
 
   _initIndexPool: () ->
-    @_indexPool = Pool.create()
+    @_indexPool = new Pool
     @_indexPool.onResized = @_handlePoolResized.bind @
   
   _initValues: (data) -> 

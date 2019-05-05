@@ -3,7 +3,7 @@ import * as Property from "basegl/object/Property"
 import * as Buffer   from 'basegl/data/buffer'
 import * as Matrix   from 'gl-matrix'
 
-import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
+import {SingleShotEventDispatcher} from 'basegl/event/dispatcher'
 
 
 
@@ -38,7 +38,7 @@ class Texture
   @getter 'gl'     , -> @type.gl
   
   constructor: (url) ->
-    @_onLoaded = singleShotEventDispatcher() 
+    @_onLoaded = new SingleShotEventDispatcher 
     @_cache    = new WeakMap
     if url?
       @_load url

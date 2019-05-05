@@ -5,10 +5,8 @@ import * as Material from 'basegl/display/symbol/3D/material'
 import * as Mesh     from 'basegl/display/symbol/3D/mesh'
 import * as Lazy     from 'basegl/object/lazy'
 import * as Property from 'basegl/object/Property'
-import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Buffer   from 'basegl/data/buffer'
-
-import {singleShotEventDispatcher} from 'basegl/event/dispatcher'
+import {EventDispatcher} from 'basegl/event/dispatcher'
 
 import {logger}                             from 'logger'
 import {vec2, vec3, vec4, mat2, mat3, mat4, Vec3, float, texture, ivec3, ivec4} from 'basegl/data/vector'
@@ -289,8 +287,8 @@ class WatchableSet
 
   constructor: (args...) ->
     @_data      = new Set args...
-    @_onAdded   = EventDispatcher.create()
-    @_onDeleted = EventDispatcher.create()
+    @_onAdded   = new EventDispatcher
+    @_onDeleted = new EventDispatcher
 
   add: (a) -> 
     @data.add a
@@ -311,8 +309,8 @@ class WatchableMap
 
   constructor: (args...) ->
     @_data      = new Map args...
-    @_onSet     = EventDispatcher.create()
-    @_onDeleted = EventDispatcher.create()
+    @_onSet     = new EventDispatcher
+    @_onDeleted = new EventDispatcher
 
   set: (k,v) -> 
     @data.set k,v
@@ -1259,7 +1257,7 @@ class Scene extends DisplayObject
 
     @_mouse = {x:0,y:0}
 
-    @_onFrame = EventDispatcher.create()
+    @_onFrame = new EventDispatcher
 
     @__renderLoopStarted = false
     @__frameRequested    = false
@@ -1418,7 +1416,7 @@ class SceneDOM
   @generateAccessors()
 
   constructor: (cfg={}) ->
-    @_onResize = EventDispatcher.create()
+    @_onResize = new EventDispatcher
     @_initDomElement cfg.dom
 
   _initDomElement: (cfg) ->

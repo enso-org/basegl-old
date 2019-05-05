@@ -1,7 +1,7 @@
 import * as Config          from 'basegl/object/config'
-import * as EventDispatcher from 'basegl/event/dispatcher'
 import * as Logged          from 'basegl/object/logged'
 import * as Property        from 'basegl/object/Property'
+import {EventDispatcher} from 'basegl/event/dispatcher'
 
 
 ###############
@@ -11,8 +11,8 @@ import * as Property        from 'basegl/object/Property'
 export class Manager
   @generateAccessors()
   constructor: () ->
-    @_onSet   = EventDispatcher.create() 
-    @_onUnset = EventDispatcher.create() 
+    @_onSet   = new EventDispatcher 
+    @_onUnset = new EventDispatcher 
     @_isSet   = false
 
   set: ->

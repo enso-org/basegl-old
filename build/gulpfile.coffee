@@ -7,12 +7,17 @@ debug     = require 'gulp-debug'
 path      = require 'path'
 execSync  = require('child_process').execSync
 exec      = require('child_process').exec
+ts        = require("gulp-typescript")
+
+
 
 
 # jsnextRules =
 #   'basegl.math': [ jsnext.overloadOperators((n) => 'op'+n)
 #                  , jsnext.replaceQualifiedAccessors('Math', 'basegl.Math')
 #                  ]
+
+
 
 
 ### Globals ###
@@ -45,7 +50,28 @@ watchableTask = (name, basepath, pp, dst, fn) ->
   gulp.task watchName , (gulp.series name, runner)
 
 
+
+### TypeScript ###
+tsProject    = ts.createProject("../tsconfig.json");
+tsProjectLib = ts.createProject("../tsconfig.json");
+
+# gulp.task "typescript", =>
+#   tsProject.src()
+#     .pipe(tsProject())
+#     .js.pipe(gulp.dest(distPath))
+
+
 ### Transpilation ###
+
+watchableTask 'lib_ts', 'lib', '**/*.ts', "#{distPath}/lib", (t) =>
+  tsProjectLib.src()
+    .pipe(tsProjectLib())
+    .js
+
+watchableTask 'ts', 'src2', '**/*.ts', distPath, (t) =>
+  tsProject.src()
+    .pipe(tsProject())
+    .js
 
 watchableTask 'coffee2', 'src2', '**/*.coffee', distPath, (t) =>
   t .pipe coffee {bare: true}
@@ -55,6 +81,7 @@ watchableTask 'coffee', 'src', '**/*.coffee', distPath, (t) =>
 
 watchableTask 'lib', 'lib', '**/*.coffee', "#{distPath}/lib", (t) =>
   t .pipe coffee {bare: true}
+
     # .pipe transform 'utf8', (str) => jsnext.preprocessModule 'unknown.js', jsnextRules, str
 watchableTask 'glsl'  , 'src', '**/*.glsl' , distPath, (t) =>
   t .pipe transform 'utf8', (str) => "var code = `\n#{str.replace(/`/g,"'")}`;\nexport default code;"
@@ -65,7 +92,6 @@ watchableTask 'js'  , 'src', '**/*.js', distPath, (t) => t
 gulp.task 'watch', (gulp.parallel watchables...)
 
 
-gulp.task 'watch', (gulp.parallel watchables...)
 
 
 ### Logging ###
@@ -110,7 +136,7 @@ gulp.task 'copy:pkgCfg', -> gulp.src(pkgCfgPath).pipe gulp.dest distPath
 
 ### Group tasks ###
 
-gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'coffee2', 'lib', 'glsl', 'js'
+gulp.task 'build'   , gulp.series 'copy:pkgCfg', 'coffee', 'coffee2', 'lib', 'glsl', 'js' #, 'typescript'
 gulp.task 'default' , gulp.series 'build'
 
 mkPublishTask = (tag, useTag=true) =>

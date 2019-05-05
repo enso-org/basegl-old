@@ -1,12 +1,12 @@
-import * as Property        from 'basegl/object/Property'
-import * as EventDispatcher from 'basegl/event/dispatcher'
+import * as Property          from 'basegl/object/Property'
+import {EventDispatcher} from 'basegl/event/dispatcher'
 
 export class HierarchicalObject
   @generateAccessors()
 
   constructor: () ->
-    @_onChildAdded   = EventDispatcher.create() 
-    @_onChildRemoved = EventDispatcher.create() 
+    @_onChildAdded   = new EventDispatcher
+    @_onChildRemoved = new EventDispatcher
     @__children = new Set
     @_parent    = null
 
