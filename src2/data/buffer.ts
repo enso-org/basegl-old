@@ -2,7 +2,7 @@ import * as _ from 'lodash'
 import {EventDispatcher} from 'basegl/event/dispatcher'
 import {assert}          from 'basegl/lib/runtime-check/assert'
 
-
+import {mixed} from "basegl/lib/composable-mixins"
 
 /////////////
 /// Types ///
