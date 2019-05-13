@@ -60,7 +60,7 @@
     "escodegen": "^1.11.0",
     "glsl-gamma": "^2.0.0",
     "glslify-loader": "^1.0.2",
-    "gulp": "next",
+    "gulp": "^4.0.2",
     "gulp-coffee": "^3.0.3",
     "gulp-debug": "^3.2.0",
     "gulp-plumber": "^1.2.0",
