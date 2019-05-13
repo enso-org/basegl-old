@@ -1,6 +1,6 @@
 export class Unique {
-    private static _nextID : number = 0
-    private _id : number
+    private static _nextID: number = 0
+    private _id: number
 
     static getID(): number {
         const id = this._nextID
@@ -8,7 +8,7 @@ export class Unique {
         return id
     }
 
-    constructor(){
+    constructor() {
         this._id = Unique.getID()
     }
 

@@ -44,6 +44,7 @@
     "gulp-typescript": "^5.0.1",
     "luna-logger": "^0.1.5",
     "mocha": "^6.1.4",
+    "prettier": "1.17.1",
     "ts-loader": "^5.3.0",
     "ts-node": "^8.1.0",
     "tsconfig-paths": "^3.8.0",
