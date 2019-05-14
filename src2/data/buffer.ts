@@ -1,13 +1,12 @@
 import * as _ from 'lodash'
 import {EventDispatcher} from 'basegl/event/dispatcher'
 import {assert} from 'basegl/lib/runtime-check/assert'
-import {mixed} from 'basegl/lib/composable-mixins'
 
 /////////////
 /// Types ///
 /////////////
 
-type TypedArray =
+export type TypedArray =
     | Int8Array
     | Uint8Array
     | Uint8ClampedArray
@@ -18,7 +17,7 @@ type TypedArray =
     | Float32Array
     | Float64Array
 
-type TypedArrayCons = new (...args: any[]) => TypedArray
+export type TypedArrayCons = new (...args: any[]) => TypedArray
 
 function patternArray(
     cls: TypedArrayCons,
@@ -57,10 +56,10 @@ export class Buffer {
     private default: Iterable<number> | undefined
     private _array: TypedArray
 
-    get array() {
+    get array(): TypedArray {
         return this._array
     }
-    get length() {
+    get length(): number {
         return this._array.length
     }
 
@@ -70,7 +69,7 @@ export class Buffer {
         this._array = this._newArray(arg)
     }
 
-    _newArray(arg: any) {
+    _newArray(arg: any): TypedArray {
         if (this.default && arg.constructor == Number) {
             return patternArray(this.type, this.default, arg)
         } else {
@@ -80,24 +79,27 @@ export class Buffer {
 
     /// Read / Write ///
 
-    read(ix: number) {
+    read(ix: number): number {
         return this.array[ix]
     }
 
-    write(ix: number, v: number) {
-        assert(this.array.length > ix, () => {
-            throw `Index ${ix} is too big, array has ${
-                this.array.length
-            } elements`
-        })
+    write(ix: number, v: number): void {
+        assert(
+            this.array.length > ix,
+            (): never => {
+                throw `Index ${ix} is too big, array has ${
+                    this.array.length
+                } elements`
+            }
+        )
         this.array[ix] = v
     }
 
-    readMultiple(ixs: number[]) {
-        return ixs.map(ix => this.array[ix])
+    readMultiple(ixs: number[]): number[] {
+        return ixs.map((ix): number => this.array[ix])
     }
 
-    writeMultiple(ixs: number[], vals: number[]) {
+    writeMultiple(ixs: number[], vals: number[]): void {
         for (let i = 0; i < ixs.length; i++) {
             let ix = ixs[i]
             let val = vals[i]
@@ -107,7 +109,7 @@ export class Buffer {
 
     /// Size Management ///
 
-    resize(newLength: number) {
+    resize(newLength: number): void {
         let newArray = this._newArray(newLength)
         let arrayView =
             this.length <= newLength
@@ -119,7 +121,7 @@ export class Buffer {
 
     /// Redirect ///
 
-    set(array: ArrayLike<number>, offset?: number | undefined) {
+    set(array: ArrayLike<number>, offset?: number | undefined): void {
         this.array.set(array, offset)
     }
 }
@@ -138,13 +140,13 @@ export class View {
     private _offset: number
     private _length: number
 
-    get buffer() {
+    get buffer(): Buffer {
         return this._buffer
     }
-    get offset() {
+    get offset(): number {
         return this._offset
     }
-    get length() {
+    get length(): number {
         return this._length
     }
 
@@ -154,20 +156,25 @@ export class View {
         this._length = length
     }
 
-    read(ix: number) {
+    read(ix: number): number {
         return this.buffer.read(ix + this.offset)
     }
 
-    write(ix: number, val: number) {
+    write(ix: number, val: number): void {
         this.buffer.write(ix + this.offset, val)
     }
 
-    readMultiple(ixs: number[]) {
-        return this.buffer.readMultiple(ixs.map(ix => ix + this.offset))
+    readMultiple(ixs: number[]): number[] {
+        return this.buffer.readMultiple(
+            ixs.map((ix): number => ix + this.offset)
+        )
     }
 
-    writeMultiple(ixs: number[], vals: number[]) {
-        this.buffer.writeMultiple(ixs.map(ix => ix + this.offset), vals)
+    writeMultiple(ixs: number[], vals: number[]): void {
+        this.buffer.writeMultiple(
+            ixs.map((ix): number => ix + this.offset),
+            vals
+        )
     }
 }
 
@@ -187,13 +194,13 @@ export class Bindable {
     public onChangedRange: (offset: number, length: number) => void
     private _buffer: Buffer
 
-    get buffer() {
+    get buffer(): Buffer {
         return this._buffer
     }
-    get length() {
+    get length(): number {
         return this.buffer.length
     }
-    get array() {
+    get array(): TypedArray {
         return this.buffer.array
     }
 
@@ -201,42 +208,42 @@ export class Bindable {
         this._buffer = buffer
         this.onResized = _.noop
         this.onChanged = _.noop
-        this.onChangedMultiple = ixs => {
+        this.onChangedMultiple = (ixs): void => {
             for (let ix of ixs) {
                 this.onChanged(ix)
             }
         }
-        this.onChangedRange = (offset, length) => {
+        this.onChangedRange = (offset, length): void => {
             for (let ix of _.range(offset, offset + length)) {
                 this.onChanged(ix)
             }
         }
     }
 
-    read(ix: number) {
+    read(ix: number): number {
         return this.buffer.read(ix)
     }
 
-    readMultiple(ixs: number[]) {
+    readMultiple(ixs: number[]): number[] {
         return this.buffer.readMultiple(ixs)
     }
 
-    write(ix: number, val: number) {
+    write(ix: number, val: number): void {
         this.buffer.write(ix, val)
         this.onChanged(ix)
     }
 
-    writeMultiple(ixs: number[], vals: number[]) {
+    writeMultiple(ixs: number[], vals: number[]): void {
         this.buffer.writeMultiple(ixs, vals)
         this.onChangedMultiple(ixs)
     }
 
-    set(buffer: ArrayLike<number>, offset = 0) {
+    set(buffer: ArrayLike<number>, offset = 0): void {
         this.buffer.set(buffer, offset)
         this.onChangedRange(offset, buffer.length)
     }
 
-    resize(newLength: number) {
+    resize(newLength: number): void {
         let oldLength = this.length
         if (oldLength != newLength) {
             this.buffer.resize(newLength)
@@ -258,16 +265,16 @@ export class Observable {
     private _buffer: Buffer
     private _onChanged: EventDispatcher
 
-    get buffer() {
+    get buffer(): Buffer {
         return this._buffer
     }
-    get onChanged() {
+    get onChanged(): EventDispatcher {
         return this._onChanged
     }
-    get length() {
+    get length(): number {
         return this.buffer.length
     }
-    get array() {
+    get array(): TypedArray {
         return this.buffer.array
     }
 
@@ -278,32 +285,32 @@ export class Observable {
 
     /// Read / Write ///
 
-    read(ix: number) {
+    read(ix: number): number {
         return this.buffer.read(ix)
     }
 
-    readMultiple(ixs: number[]) {
+    readMultiple(ixs: number[]): number[] {
         return this.buffer.readMultiple(ixs)
     }
 
-    write(ix: number, val: number) {
+    write(ix: number, val: number): void {
         this.buffer.write(ix, val)
         this.__onChanged(ix)
     }
 
-    writeMultiple(ixs: number[], vals: number[]) {
+    writeMultiple(ixs: number[], vals: number[]): void {
         this.buffer.writeMultiple(ixs, vals)
         this.__onChangedMultiple(ixs)
     }
 
-    set(buffer: ArrayLike<number>, offset = 0) {
+    set(buffer: ArrayLike<number>, offset = 0): void {
         this.buffer.set(buffer, offset)
         this.__onChangedRange(offset, buffer.length)
     }
 
     /// Size Management ///
 
-    resize(newLength: number) {
+    resize(newLength: number): void {
         let oldLength = this.length
         if (oldLength != newLength) {
             this.buffer.resize(newLength)
@@ -313,22 +320,22 @@ export class Observable {
 
     /// Events ///
 
-    __onResized(oldSize: number, newSize: number) {
+    __onResized(oldSize: number, newSize: number): void {
         _.noop(oldSize)
         _.noop(newSize)
     }
 
-    __onChanged(ix: number) {
+    __onChanged(ix: number): void {
         this.onChanged.dispatch(ix)
     }
 
-    __onChangedMultiple(ixs: number[]) {
+    __onChangedMultiple(ixs: number[]): void {
         for (let ix of ixs) {
             this.__onChanged(ix)
         }
     }
 
-    __onChangedRange(offset: number, length: number) {
+    __onChangedRange(offset: number, length: number): void {
         for (let ix of _.range(offset, offset + length)) {
             this.__onChanged(ix)
         }

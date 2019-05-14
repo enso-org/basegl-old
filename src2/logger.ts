@@ -21,7 +21,7 @@ export class Log {
         this.scope = scope
         this.time = Date.now()
     }
-    hasTag(tag: Tag) {
+    hasTag(tag: Tag): boolean {
         return this.tags.has(tag)
     }
 }
@@ -64,14 +64,16 @@ export class Logger {
         this.streams = new Set()
     }
 
-    attachStream(stream: Stream) {
+    attachStream(stream: Stream): void {
         this.streams.add(stream)
     }
 
-    addLog(log: Log) {
-        this.streams.forEach(stream => {
-            stream.addLog(log)
-        })
+    addLog(log: Log): void {
+        this.streams.forEach(
+            (stream): void => {
+                stream.addLog(log)
+            }
+        )
     }
 
     groupWith_<T>(tags: Tag[], msg: string, f: () => T): T {
@@ -88,7 +90,7 @@ export class Logger {
         return out
     }
 
-    groupWith<T>(tags: Tag[]) {
+    groupWith<T>(tags: Tag[]): T | Promise<T> {
         return (msg: string, f: () => T) => {
             if (f.constructor.name == 'AsyncFunction') {
                 return this.asyncGroupWith_(tags, msg, f)
@@ -102,23 +104,23 @@ export class Logger {
         return this.groupWith([])(msg, f)
     }
 
-    log(tags: Tag[]) {
-        return (...msgs: string[]) => {
+    log(tags: Tag[]): (...msgs: string[]) => void {
+        return (...msgs: string[]): void => {
             this.addLog(new Message(tags, this.scope, msgs))
         }
     }
 
-    info(...msgs: string[]) {
+    info(...msgs: string[]): void {
         this.log([Tag.info])(...msgs)
     }
-    warning(...msgs: string[]) {
+    warning(...msgs: string[]): void {
         this.log([Tag.warning])(...msgs)
     }
-    error(...msgs: string[]) {
+    error(...msgs: string[]): void {
         this.log([Tag.error])(...msgs)
     }
 
-    scoped(scope: string) {
+    scoped(scope: string): Logger {
         let childScope = this.scope == '' ? scope : this.scope + '.' + scope
         let child = new Logger(childScope)
         child.streams = this.streams
@@ -138,10 +140,10 @@ export class Logger {
 export class StreamBase {
     private formatter: (msg: Log) => Log
     constructor() {
-        this.formatter = a => a
+        this.formatter = (a): Log => a
     }
 
-    setFormatter(f: (msg: Log) => Log) {
+    setFormatter(f: (msg: Log) => Log): void {
         this.formatter = f
     }
 
