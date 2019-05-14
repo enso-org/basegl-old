@@ -42,7 +42,7 @@ export class GroupStart extends Log {
     }
 }
 
-export class GroupEnd extends Log {}
+export class GroupEnd extends Log { }
 
 //////////////
 /// Stream ///
@@ -90,7 +90,7 @@ export class Logger {
         return out
     }
 
-    groupWith<T>(tags: Tag[]): T | Promise<T> {
+    groupWith<T>(tags: Tag[]) {
         return (msg: string, f: () => T) => {
             if (f.constructor.name == 'AsyncFunction') {
                 return this.asyncGroupWith_(tags, msg, f)
