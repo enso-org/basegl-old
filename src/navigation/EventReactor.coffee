@@ -26,18 +26,17 @@ export class EventInfo
   isCtrlMinus:        (e) => e.key == "-"  and (e.ctrlKey or e.metaKey)
   isCtrlZero:         (e) => e.key == "0"  and (e.ctrlKey or e.metaKey)
 
-  isTouchpadEvent: (e) =>
-    return unless e.type == 'wheel'
+  detectTouchpad: (e) =>
+    return unless (@isTouchPad == null) and (e.type == 'wheel')
 
     currTime = now()
-    @eventCountStart = currTime if @eventCount == 0
+    @eventCountStart ?= currTime
     @eventCount++
 
     if currTime - @eventCountStart > 100
       @isTouchPad = @eventCount > 5
       @eventCount = 0
-
-    return @isTouchPad
+      @eventCountStart = null
 
 
 ######################################################################
@@ -121,14 +120,13 @@ export class KeyboardMouseReactor extends EventReactor
 
   onWheel: (event) =>
     event.preventDefault()
-    isTouchPad = @eventInfo.isTouchpadEvent event
-    console.log "isTouchPad: ", isTouchPad
-    return if isTouchPad == null
+    @eventInfo.detectTouchpad event
+    return if @eventInfo.isTouchPad == null
 
     movement = Movement.fromEvent event
     @navigator.calcCameraPath movement
 
-    if isTouchPad
+    if @eventInfo.isTouchPad
       if event.ctrlKey
         # ctrl + wheel is how the trackpad-pinch is represented
         @navigator.zoom movement
