@@ -40,7 +40,7 @@
   "dependencies": {
     "bluebird": "^3.5.1",
     "stats.js": "^0.17.0",
-    "three": "^0.94.0",
+    "three": "^0.125.0",
     "three-effectcomposer-es6": "^0.0.4",
     "glslify-loader": "^1.0.2",
     "raw-loader": "^0.5.1",
